@@ -1,0 +1,6 @@
+{
+  "name": "emrexplore",
+  "description": "A unified file manager and media gallery combining modern file exploration and gallery into a cohesive, offline-first utility app.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

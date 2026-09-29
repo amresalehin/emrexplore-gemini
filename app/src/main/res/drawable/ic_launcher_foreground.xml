@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Folder Back tab & body -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M28,34 C28,31.8 29.8,30 32,30 L46,30 C47.5,30 48.9,30.8 49.6,32.2 L52,36 L76,36 C78.2,36 80,37.8 80,40 L80,44 L28,44 Z" />
+    <!-- Folder Main Card / Photo container -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,42 C28,40.3 29.3,39 31,39 L77,39 C78.7,39 80,40.3 80,42 L80,74 C80,76.2 78.2,78 76,78 L32,78 C29.8,78 28,76.2 28,74 Z" />
+    <!-- Gallery Image inner preview frame -->
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M33,45 L75,45 C76.1,45 77,45.9 77,47 L77,73 C77,74.1 76.1,75 75,75 L33,75 C31.9,75 31,74.1 31,73 L31,47 C31,45.9 31.9,45 33,45 Z" />
+    <!-- Sun / Aperture in photo -->
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M43,53 A4,4 0 1,0 43,45 A4,4 0 1,0 43,53 Z" />
+    <!-- Mountain 1 (Cyan) -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M31,73 L46,55 L58,69 L53,74 Z" />
+    <!-- Mountain 2 (Indigo/Sky) -->
+    <path
+        android:fillColor="#818CF8"
+        android:pathData="M48,74 L61,59 L77,74 Z" />
+</vector>

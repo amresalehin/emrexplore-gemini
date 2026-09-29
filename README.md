@@ -1,11 +1,20 @@
-<div align="center">
+# emrexplore
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+A unified file manager and media gallery combining modern file exploration and gallery into a cohesive, offline-first utility app.
 
-  <h1>Built with AI Studio</h2>
+## Run Locally
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+**Prerequisites:** Android Studio
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+1. Open Android Studio.
+2. Select **Open** and choose the project directory.
+3. Allow Android Studio to sync the Gradle project.
+4. Run the app on an emulator or physical device.
 
-</div>
+No `.env` file or API key is required to build or run the app.
+
+### Release signing
+
+Release builds use credentials supplied by the build environment.
+Keep the signing keystore and its credentials outside the repository.
+Do not commit signing material or API keys.
