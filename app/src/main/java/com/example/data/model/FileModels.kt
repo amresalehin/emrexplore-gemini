@@ -87,6 +87,13 @@ enum class ViewMode {
     GRID
 }
 
+enum class GroupByOption(val label: String) {
+    NONE("None"),
+    DATE("Date"),
+    TYPE("File Type"),
+    SIZE("File Size")
+}
+
 data class StorageStats(
     val totalBytes: Long = 0L,
     val freeBytes: Long = 0L,

@@ -8,6 +8,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import com.example.ui.viewmodel.ExplorerTab
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +46,7 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
@@ -58,6 +63,7 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
@@ -65,8 +71,10 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -375,53 +383,32 @@ fun FileExplorerScreen(
                             ) {
                                 val canNavigateUp = uiState.currentPath.isNotBlank() && uiState.currentPath != "/" && uiState.currentPath != "/storage/emulated/0"
                                 if (canNavigateUp) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(CircleShape)
-                                            .clickable { viewModel.navigateUp() }
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                                contentDescription = "Navigate up",
-                                                tint = MaterialTheme.colorScheme.onSurface,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        }
-                                    }
-                                } else {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                    IconButton(
+                                        onClick = { viewModel.navigateUp() },
                                         modifier = Modifier.size(40.dp)
                                     ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = Icons.Default.FolderOpen,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = "Navigate up",
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(22.dp)
+                                        )
                                     }
+                                    Spacer(modifier = Modifier.width(8.dp))
                                 }
 
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Files",
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        text = "${uiState.files.size} items",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 6.dp),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    ExplorerTabSegmentedSwitcher(
+                                        tabs = uiState.explorerTabs,
+                                        activeTabId = uiState.activeExplorerTabId,
+                                        onSelectTab = { tabId -> viewModel.switchExplorerTab(tabId) },
+                                        onCloseTab = { tabId -> viewModel.closeExplorerTab(tabId) },
+                                        onNewTab = { viewModel.openNewExplorerTab() }
                                     )
                                 }
 
@@ -456,7 +443,7 @@ fun FileExplorerScreen(
                                         Icon(
                                             Icons.Default.FilterList,
                                             contentDescription = "Toggle filters",
-                                            tint = if (hasActiveFilters) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            tint = if (hasActiveFilters || uiState.explorerFilterBarVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                         )
                                     }
                                 }
@@ -503,6 +490,7 @@ fun FileExplorerScreen(
                                         expanded = showOptionsMenu,
                                         onDismissRequest = { showOptionsMenu = false }
                                     ) {
+                                        // Grid / List View Toggle
                                         DropdownMenuItem(
                                             text = {
                                                 Text(if (uiState.viewMode == ViewMode.GRID) "List view" else "Grid view")
@@ -519,6 +507,79 @@ fun FileExplorerScreen(
                                                 showOptionsMenu = false
                                             }
                                         )
+
+                                        // New tab
+                                        DropdownMenuItem(
+                                            text = { Text("New tab") },
+                                            leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+                                            onClick = {
+                                                viewModel.openNewExplorerTab()
+                                                showOptionsMenu = false
+                                            }
+                                        )
+
+                                        // Show/Hide hidden files (functional)
+                                        DropdownMenuItem(
+                                            text = { Text(if (uiState.showHidden) "Hide hidden files" else "Show hidden files") },
+                                            leadingIcon = {
+                                                Icon(
+                                                    if (uiState.showHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                    contentDescription = null
+                                                )
+                                            },
+                                            onClick = {
+                                                viewModel.toggleShowHidden()
+                                                showOptionsMenu = false
+                                            }
+                                        )
+
+                                        // Remember Last Folder Preference
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(if (uiState.explorerPreferences.rememberLastDirectory) "Remember folder (On)" else "Remember folder (Off)")
+                                            },
+                                            leadingIcon = {
+                                                Icon(Icons.Default.History, contentDescription = null)
+                                            },
+                                            onClick = {
+                                                viewModel.toggleRememberLastDirectory()
+                                                showOptionsMenu = false
+                                            }
+                                        )
+
+                                        // Fast SQLite Room Search Preference
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(if (uiState.isFastSearchRoomPowered) "Fast search: Room (On)" else "Fast search: Disk (Off)")
+                                            },
+                                            leadingIcon = {
+                                                Icon(Icons.Default.Bolt, contentDescription = null)
+                                            },
+                                            onClick = {
+                                                viewModel.toggleFastSearch()
+                                                showOptionsMenu = false
+                                            }
+                                        )
+
+                                        // Re-index Local Storage
+                                        DropdownMenuItem(
+                                            text = { Text(if (uiState.isIndexing) "Indexing storage..." else "Re-index storage") },
+                                            leadingIcon = {
+                                                if (uiState.isIndexing) {
+                                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                                } else {
+                                                    Icon(Icons.Default.Storage, contentDescription = null)
+                                                }
+                                            },
+                                            enabled = !uiState.isIndexing,
+                                            onClick = {
+                                                viewModel.reindexStorage(force = true)
+                                                showOptionsMenu = false
+                                            }
+                                        )
+
+                                        HorizontalDivider()
+
                                         DropdownMenuItem(
                                             text = { Text("New folder") },
                                             leadingIcon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null) },
@@ -546,19 +607,6 @@ fun FileExplorerScreen(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text(if (uiState.showHidden) "Hide hidden files" else "Show hidden files") },
-                                            leadingIcon = {
-                                                Icon(
-                                                    if (uiState.showHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                                    contentDescription = null
-                                                )
-                                            },
-                                            onClick = {
-                                                viewModel.toggleShowHidden()
-                                                showOptionsMenu = false
-                                            }
-                                        )
-                                        DropdownMenuItem(
                                             text = { Text("Refresh") },
                                             leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
                                             onClick = {
@@ -567,10 +615,33 @@ fun FileExplorerScreen(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Explorer Preferences") },
-                                            leadingIcon = { Icon(Icons.Default.Tune, contentDescription = null) },
+                                            text = { Text("Recycle Bin (${uiState.trashList.size})") },
+                                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                                             onClick = {
-                                                viewModel.setShowPreferencesDialog(true)
+                                                viewModel.openRecycleBin()
+                                                showOptionsMenu = false
+                                            }
+                                        )
+
+                                        val isAllFilesGranted = isAllFilesAccessGranted()
+                                        if (!isAllFilesGranted) {
+                                            DropdownMenuItem(
+                                                text = { Text("Grant storage permission") },
+                                                leadingIcon = { Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) },
+                                                onClick = {
+                                                    openAllFilesAccessSettings(context)
+                                                    showOptionsMenu = false
+                                                }
+                                            )
+                                        }
+
+                                        HorizontalDivider()
+
+                                        DropdownMenuItem(
+                                            text = { Text("Reset preferences") },
+                                            leadingIcon = { Icon(Icons.Default.RestartAlt, contentDescription = null) },
+                                            onClick = {
+                                                viewModel.resetPreferences()
                                                 showOptionsMenu = false
                                             }
                                         )
@@ -588,7 +659,7 @@ fun FileExplorerScreen(
                         }
 
                         // --- Quick Filter Chips Bar ---
-                        val filterBarShouldShow = uiState.explorerSearchActive || uiState.searchQuery.isNotEmpty() || uiState.explorerFilterBarVisible || hasActiveFilters
+                        val filterBarShouldShow = uiState.explorerFilterBarVisible
                         AnimatedVisibility(visible = filterBarShouldShow) {
                             LazyRow(
                                 modifier = Modifier
@@ -602,7 +673,12 @@ fun FileExplorerScreen(
                                     val isSelected = uiState.explorerFilterType == filterType
                                     FilterChip(
                                         selected = isSelected,
-                                        onClick = { viewModel.setExplorerFilterType(filterType) },
+                                        onClick = {
+                                            viewModel.setExplorerFilterType(filterType)
+                                            if (filterType == ExplorerFilterType.ALL && uiState.explorerDateFilter == ExplorerDateFilter.ALL && uiState.explorerSizeFilter == ExplorerSizeFilter.ALL) {
+                                                viewModel.toggleExplorerFilterBar(false)
+                                            }
+                                        },
                                         label = { Text(filterType.label) },
                                         leadingIcon = {
                                             val icon = when (filterType) {
@@ -1076,6 +1152,18 @@ fun FileExplorerScreen(
                                     }
                                 }
                             )
+                            if (item.isDirectory) {
+                                DropdownMenuItem(
+                                    text = { Text("Open in new tab") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Add, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        activeMenuItem = null
+                                        viewModel.openNewExplorerTab(item.path)
+                                    }
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text(if (item.isFavorite) "Remove Favorite" else "Add to Favorites") },
                                 leadingIcon = {
@@ -1343,15 +1431,6 @@ fun FileExplorerScreen(
             }
         )
     }
-
-    // Dialog: Explorer Preferences (Persistent in Room)
-    if (uiState.showPreferencesDialog) {
-        ExplorerPreferencesDialog(
-            uiState = uiState,
-            viewModel = viewModel,
-            onDismiss = { viewModel.setShowPreferencesDialog(false) }
-        )
-    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1571,6 +1650,124 @@ private fun FileGridCard(
                     text = if (item.isDirectory) "${item.childCount} items" else formatFileSize(item.size),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ExplorerTabSegmentedSwitcher(
+    tabs: List<ExplorerTab>,
+    activeTabId: String,
+    onSelectTab: (String) -> Unit,
+    onCloseTab: (String) -> Unit,
+    onNewTab: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scrollState = rememberScrollState()
+
+    Row(
+        modifier = modifier.horizontalScroll(scrollState),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // Modern Material 3 Segmented Pill Switcher
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            tonalElevation = 1.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                tabs.forEach { tab ->
+                    val isActive = tab.id == activeTabId
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (isActive) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            Color.Transparent
+                        },
+                        tonalElevation = if (isActive) 2.dp else 0.dp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { onSelectTab(tab.id) }
+                            .testTag("explorer_tab_${tab.id}")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(
+                                start = 10.dp,
+                                end = if (tabs.size > 1) 6.dp else 10.dp,
+                                top = 6.dp,
+                                bottom = 6.dp
+                            ),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isActive) Icons.Default.FolderOpen else Icons.Default.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp),
+                                tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Text(
+                                text = tab.title,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = if (tabs.size > 1) 85.dp else 110.dp)
+                            )
+
+                            if (tabs.size > 1) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clip(CircleShape)
+                                        .clickable { onCloseTab(tab.id) }
+                                        .testTag("close_tab_${tab.id}"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Close tab",
+                                        tint = if (isActive) {
+                                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        },
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Plus button: ALWAYS present next to tabs ("keep a plus button if no other tab is open")
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .clickable { onNewTab() }
+                .testTag("add_tab_button")
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "New tab",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }

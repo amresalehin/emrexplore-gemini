@@ -51,6 +51,7 @@ import androidx.paging.cachedIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.UUID
 
 enum class MainTab {
     HOME,
@@ -95,10 +96,20 @@ data class ClipboardState(
     val sourcePaths: List<String>
 )
 
+data class ExplorerTab(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String = "Storage",
+    val path: String = "/storage/emulated/0"
+)
+
 data class UiState(
     val currentTab: MainTab = MainTab.HOME,
     // File Explorer
     val currentPath: String = "",
+    val explorerTabs: List<ExplorerTab> = listOf(
+        ExplorerTab(id = "default_tab", title = "Storage", path = "/storage/emulated/0")
+    ),
+    val activeExplorerTabId: String = "default_tab",
     val files: List<FileItem> = emptyList(),
     val searchQuery: String = "",
     val sortOption: SortOption = SortOption.NAME_ASC,
@@ -121,7 +132,7 @@ data class UiState(
     val explorerSizeFilter: ExplorerSizeFilter = ExplorerSizeFilter.ALL,
     val explorerSearchResults: List<FileItem> = emptyList(),
     val isExplorerSearching: Boolean = false,
-    val explorerFilterBarVisible: Boolean = true,
+    val explorerFilterBarVisible: Boolean = false,
 
     // Explorer Preferences & Room Indexing
     val explorerPreferences: ExplorerPreferencesEntity = ExplorerPreferencesEntity(),
@@ -182,6 +193,7 @@ data class UiState(
     // Storage Tools & Trash
     val storageStats: StorageStats = StorageStats(),
     val trashList: List<TrashEntity> = emptyList(),
+    val isRecycleBinOpen: Boolean = false,
     val favoritesList: List<FavoriteEntity> = emptyList(),
     val recentsList: List<RecentEntity> = emptyList(),
 
@@ -310,7 +322,14 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             } else {
                 repository.rootPath
             }
-            _uiState.update { it.copy(currentPath = initialPath) }
+            val initialTabTitle = resolveTabTitle(initialPath)
+            _uiState.update {
+                it.copy(
+                    currentPath = initialPath,
+                    explorerTabs = listOf(ExplorerTab(id = "default_tab", title = initialTabTitle, path = initialPath)),
+                    activeExplorerTabId = "default_tab"
+                )
+            }
             // Fast loading of initial folder
             loadFiles(initialPath)
             loadStorageStats()
@@ -394,13 +413,88 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     // --- File Explorer Actions ---
 
+    fun resolveTabTitle(path: String): String {
+        return if (path.isBlank() || path == "/" || path == "/storage/emulated/0" || path == repository.rootPath) {
+            "Storage"
+        } else {
+            val file = File(path)
+            file.name.ifEmpty { "Folder" }
+        }
+    }
+
+    fun openNewExplorerTab(path: String = repository.rootPath) {
+        val targetPath = if (path.isNotBlank() && File(path).exists()) path else repository.rootPath
+        val title = resolveTabTitle(targetPath)
+        val newTab = ExplorerTab(
+            id = UUID.randomUUID().toString(),
+            title = title,
+            path = targetPath
+        )
+        _uiState.update { current ->
+            current.copy(
+                explorerTabs = current.explorerTabs + newTab,
+                activeExplorerTabId = newTab.id,
+                currentPath = targetPath,
+                searchQuery = "",
+                isSelectionMode = false,
+                selectedPaths = emptySet()
+            )
+        }
+        loadFiles(targetPath)
+        showMessage("Opened new tab: $title")
+    }
+
+    fun switchExplorerTab(tabId: String) {
+        val targetTab = _uiState.value.explorerTabs.find { it.id == tabId } ?: return
+        if (targetTab.id == _uiState.value.activeExplorerTabId) return
+        _uiState.update { current ->
+            current.copy(
+                activeExplorerTabId = tabId,
+                currentPath = targetTab.path,
+                searchQuery = "",
+                isSelectionMode = false,
+                selectedPaths = emptySet()
+            )
+        }
+        loadFiles(targetTab.path)
+    }
+
+    fun closeExplorerTab(tabId: String) {
+        val currentTabs = _uiState.value.explorerTabs
+        if (currentTabs.size <= 1) return
+        val newTabs = currentTabs.filter { it.id != tabId }
+        val newActiveTab = if (_uiState.value.activeExplorerTabId == tabId) {
+            newTabs.last()
+        } else {
+            newTabs.find { it.id == _uiState.value.activeExplorerTabId } ?: newTabs.last()
+        }
+        _uiState.update { current ->
+            current.copy(
+                explorerTabs = newTabs,
+                activeExplorerTabId = newActiveTab.id,
+                currentPath = newActiveTab.path,
+                searchQuery = "",
+                isSelectionMode = false,
+                selectedPaths = emptySet()
+            )
+        }
+        loadFiles(newActiveTab.path)
+    }
+
     fun navigateToDirectory(path: String) {
         if (path == _uiState.value.currentPath && _uiState.value.files.isNotEmpty()) return
 
         loadFilesJob?.cancel()
 
-        _uiState.update {
-            it.copy(
+        val tabTitle = resolveTabTitle(path)
+        _uiState.update { current ->
+            val updatedTabs = current.explorerTabs.map { tab ->
+                if (tab.id == current.activeExplorerTabId) {
+                    tab.copy(path = path, title = tabTitle)
+                } else tab
+            }
+            current.copy(
+                explorerTabs = updatedTabs,
                 currentPath = path,
                 searchQuery = "",
                 isSelectionMode = false,
@@ -746,7 +840,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             it.copy(
                 explorerFilterType = ExplorerFilterType.ALL,
                 explorerDateFilter = ExplorerDateFilter.ALL,
-                explorerSizeFilter = ExplorerSizeFilter.ALL
+                explorerSizeFilter = ExplorerSizeFilter.ALL,
+                explorerFilterBarVisible = false
             )
         }
         triggerExplorerSearch()
@@ -763,7 +858,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 explorerDateFilter = ExplorerDateFilter.ALL,
                 explorerSizeFilter = ExplorerSizeFilter.ALL,
                 explorerSearchResults = emptyList(),
-                isExplorerSearching = false
+                isExplorerSearching = false,
+                explorerFilterBarVisible = false
             )
         }
     }
@@ -1434,7 +1530,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     // --- Browse / Categories Actions ---
 
     fun selectCategory(category: CategoryType?) {
-        _uiState.update { it.copy(selectedCategory = category) }
+        _uiState.update { it.copy(selectedCategory = category, isRecycleBinOpen = false) }
         if (category != null) {
             viewModelScope.launch {
                 val list = repository.getFilesByCategory(category)
@@ -1696,6 +1792,14 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             showMessage("Recycle Bin emptied")
             loadStorageStats()
         }
+    }
+
+    fun openRecycleBin() {
+        _uiState.update { it.copy(isRecycleBinOpen = true, selectedCategory = null, currentTab = MainTab.HOME) }
+    }
+
+    fun closeRecycleBin() {
+        _uiState.update { it.copy(isRecycleBinOpen = false) }
     }
 
     fun loadStorageStats() {
