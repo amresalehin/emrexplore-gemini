@@ -6,6 +6,11 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.data.brain.BrainChunkEntity
+import com.example.data.brain.BrainDocumentEntity
+import com.example.data.brain.BrainEdgeEntity
+import com.example.data.brain.BrainNodeEntity
+import com.example.data.brain.BrainRunEntity
 
 @Database(
     entities = [
@@ -19,17 +24,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MediaMetadataEntity::class,
         PlaceSearchCacheEntity::class,
         AiProviderConfigEntity::class,
-        KgNodeEntity::class,
-        BrainTopicEntity::class,
-        KgEdgeEntity::class,
-        KgEdgeEvidenceEntity::class,
-        RagChunkEntity::class,
-        MemoryFactEntity::class,
-        EntityMentionEntity::class,
-        IndexFingerprintEntity::class,
-        ModelRunEntity::class
+        BrainNodeEntity::class,
+        com.example.data.brain.BrainTopicEntity::class,
+        BrainEdgeEntity::class,
+        BrainChunkEntity::class,
+        BrainDocumentEntity::class,
+        BrainRunEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -43,14 +45,12 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun mediaMetadataDao(): MediaMetadataDao
     abstract fun placeSearchCacheDao(): PlaceSearchCacheDao
     abstract fun aiProviderConfigDao(): AiProviderConfigDao
-    abstract fun kgDao(): KgDao
-    abstract fun brainTopicDao(): BrainTopicDao
-    abstract fun ragDao(): RagDao
-
-    abstract fun memoryFactDao(): MemoryFactDao
-    abstract fun entityMentionDao(): EntityMentionDao
-    abstract fun indexFingerprintDao(): IndexFingerprintDao
-    abstract fun modelRunDao(): ModelRunDao
+    abstract fun brainNodeDao(): com.example.data.brain.BrainNodeDao
+    abstract fun brainEdgeDao(): com.example.data.brain.BrainEdgeDao
+    abstract fun brainTopicDao(): com.example.data.brain.BrainTopicDao
+    abstract fun brainChunkDao(): com.example.data.brain.BrainChunkDao
+    abstract fun brainDocumentDao(): com.example.data.brain.BrainDocumentDao
+    abstract fun brainRunDao(): com.example.data.brain.BrainRunDao
 
     companion object {
         private val MIGRATION_7_8 = object : Migration(7, 8) {
@@ -251,6 +251,106 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_model_runs_startedAt` ON `model_runs` (`startedAt`)")
             }
         }
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS kg_edge_evidence")
+                db.execSQL("DROP TABLE IF EXISTS kg_edges")
+                db.execSQL("DROP TABLE IF EXISTS kg_nodes")
+                db.execSQL("DROP TABLE IF EXISTS rag_chunks")
+                db.execSQL("DROP TABLE IF EXISTS memory_facts")
+                db.execSQL("DROP TABLE IF EXISTS entity_mentions")
+                db.execSQL("DROP TABLE IF EXISTS index_fingerprints")
+                db.execSQL("DROP TABLE IF EXISTS model_runs")
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `brain_documents` (
+                        `path` TEXT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `mimeType` TEXT NOT NULL,
+                        `size` INTEGER NOT NULL,
+                        `lastModified` INTEGER NOT NULL,
+                        `contentHash` TEXT NOT NULL,
+                        `modelSignature` TEXT NOT NULL,
+                        `state` TEXT NOT NULL,
+                        `error` TEXT,
+                        `indexedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`path`)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_documents_lastModified` ON `brain_documents` (`lastModified`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_documents_state` ON `brain_documents` (`state`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_documents_modelSignature` ON `brain_documents` (`modelSignature`)")
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `brain_chunks` (
+                        `id` TEXT NOT NULL,
+                        `filePath` TEXT NOT NULL,
+                        `chunkIndex` INTEGER NOT NULL,
+                        `content` TEXT NOT NULL,
+                        `embeddingJson` TEXT NOT NULL,
+                        `embeddingModel` TEXT NOT NULL,
+                        `locator` TEXT NOT NULL,
+                        `pageNumber` INTEGER,
+                        `indexedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_chunks_filePath` ON `brain_chunks` (`filePath`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_chunks_embeddingModel` ON `brain_chunks` (`embeddingModel`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_chunks_indexedAt` ON `brain_chunks` (`indexedAt`)")
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `brain_nodes` (
+                        `id` TEXT NOT NULL,
+                        `label` TEXT NOT NULL,
+                        `nodeType` TEXT NOT NULL,
+                        `sourceFilePath` TEXT,
+                        `thumbnailUri` TEXT,
+                        `summary` TEXT NOT NULL,
+                        `degree` INTEGER NOT NULL,
+                        `confidence` REAL NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_nodes_label` ON `brain_nodes` (`label`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_nodes_nodeType` ON `brain_nodes` (`nodeType`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_nodes_sourceFilePath` ON `brain_nodes` (`sourceFilePath`)")
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `brain_edges` (
+                        `sourceNodeId` TEXT NOT NULL,
+                        `targetNodeId` TEXT NOT NULL,
+                        `relation` TEXT NOT NULL,
+                        `weight` REAL NOT NULL,
+                        `evidenceSnippet` TEXT NOT NULL,
+                        `evidenceSource` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`sourceNodeId`, `targetNodeId`, `relation`)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_edges_sourceNodeId` ON `brain_edges` (`sourceNodeId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_edges_targetNodeId` ON `brain_edges` (`targetNodeId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_edges_relation` ON `brain_edges` (`relation`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_edges_evidenceSource` ON `brain_edges` (`evidenceSource`)")
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `brain_runs` (
+                        `id` TEXT NOT NULL,
+                        `filePath` TEXT,
+                        `operation` TEXT NOT NULL,
+                        `success` INTEGER NOT NULL,
+                        `error` TEXT,
+                        `startedAt` INTEGER NOT NULL,
+                        `finishedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_runs_filePath` ON `brain_runs` (`filePath`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_runs_startedAt` ON `brain_runs` (`startedAt`)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -267,7 +367,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_7_8,
                         MIGRATION_8_9,
                         MIGRATION_9_10,
-                        MIGRATION_10_11
+                        MIGRATION_10_11,
+                        MIGRATION_11_12
                     )
                     .fallbackToDestructiveMigrationFrom(1, 2, 3, 5)
                     .fallbackToDestructiveMigrationOnDowngrade()
