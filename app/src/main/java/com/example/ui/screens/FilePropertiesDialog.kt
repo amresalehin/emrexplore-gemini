@@ -25,14 +25,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.FileItem
+import com.example.data.ai.ConnectedDotsItem
+import com.example.ui.components.ConnectedDotsCard
 import com.example.ui.components.formatDate
 import com.example.ui.components.formatFileSize
+import java.io.File
 
 @Composable
 fun FilePropertiesDialog(
     item: FileItem,
+    connectedDots: List<ConnectedDotsItem> = emptyList(),
     onDismiss: () -> Unit,
-    onInspectMetadata: ((FileItem) -> Unit)? = null
+    onInspectMetadata: ((FileItem) -> Unit)? = null,
+    onOpenFile: ((File) -> Unit)? = null,
+    onOpenImage: ((File) -> Unit)? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -65,6 +71,21 @@ fun FilePropertiesDialog(
                     PropertyRow("Items", "${item.childCount} files & folders")
                 }
                 PropertyRow("Modified", formatDate(item.lastModified))
+
+                // Connected Dots Card
+                if (!item.isDirectory && (connectedDots.isNotEmpty() || onOpenFile != null)) {
+                    ConnectedDotsCard(
+                        connectedItems = connectedDots,
+                        onOpenFile = { file ->
+                            onDismiss()
+                            onOpenFile?.invoke(file)
+                        },
+                        onOpenImage = { file ->
+                            onDismiss()
+                            onOpenImage?.invoke(file)
+                        }
+                    )
+                }
 
                 if (item.isImage && onInspectMetadata != null) {
                     Spacer(modifier = Modifier.height(4.dp))

@@ -137,6 +137,9 @@ interface FileIndexDao {
     @Query("SELECT category, COUNT(*) as count, SUM(size) as totalSize FROM indexed_files WHERE isDirectory = 0 GROUP BY category")
     suspend fun getCategoryStats(): List<CategoryStatTuple>
 
+    @Query("SELECT * FROM indexed_files WHERE isDirectory = 0 ORDER BY lastModified DESC LIMIT :limit")
+    suspend fun getAllNonDirectoryFiles(limit: Int = 300): List<IndexedFileEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(file: IndexedFileEntity)
 
@@ -218,3 +221,94 @@ interface PlaceSearchCacheDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(cache: PlaceSearchCacheEntity)
 }
+
+@Dao
+interface AiProviderConfigDao {
+    @Query("SELECT * FROM ai_provider_config WHERE id = 1 LIMIT 1")
+    fun getConfigFlow(): Flow<AiProviderConfigEntity?>
+
+    @Query("SELECT * FROM ai_provider_config WHERE id = 1 LIMIT 1")
+    suspend fun getConfig(): AiProviderConfigEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveConfig(config: AiProviderConfigEntity)
+}
+
+@Dao
+interface KgDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNodes(nodes: List<KgNodeEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEdges(edges: List<KgEdgeEntity>)
+
+    @Query("SELECT * FROM kg_nodes ORDER BY degree DESC, updatedAt DESC")
+    fun getAllNodesFlow(): Flow<List<KgNodeEntity>>
+
+    @Query("SELECT * FROM kg_edges ORDER BY weight DESC")
+    fun getAllEdgesFlow(): Flow<List<KgEdgeEntity>>
+
+    @Query("SELECT * FROM kg_nodes WHERE id = :id LIMIT 1")
+    suspend fun getNode(id: String): KgNodeEntity?
+
+    @Query("SELECT * FROM kg_nodes WHERE sourceFilePath = :path LIMIT 1")
+    suspend fun getNodeByFilePath(path: String): KgNodeEntity?
+
+    @Query("SELECT * FROM kg_edges WHERE sourceNodeId = :nodeId OR targetNodeId = :nodeId")
+    suspend fun getEdgesForNode(nodeId: String): List<KgEdgeEntity>
+
+    @Query("SELECT * FROM kg_nodes WHERE label LIKE '%' || :query || '%' OR summary LIKE '%' || :query || '%'")
+    suspend fun searchNodes(query: String): List<KgNodeEntity>
+
+    @Query("SELECT * FROM kg_nodes WHERE nodeType = :nodeType ORDER BY degree DESC LIMIT :limit")
+    suspend fun getNodesByType(nodeType: String, limit: Int = 20): List<KgNodeEntity>
+
+    @Query("SELECT * FROM kg_nodes ORDER BY updatedAt DESC LIMIT :limit")
+    suspend fun getRecentNodes(limit: Int = 20): List<KgNodeEntity>
+
+    @Query("SELECT * FROM kg_nodes WHERE nodeType IN ('DOCUMENT', 'IMAGE') ORDER BY updatedAt DESC LIMIT :limit")
+    suspend fun getRecentFileNodes(limit: Int = 10): List<KgNodeEntity>
+
+    @Query("SELECT DISTINCT nodeType FROM kg_nodes")
+    suspend fun getDistinctNodeTypes(): List<String>
+
+    @Query("SELECT COUNT(*) FROM kg_nodes")
+    fun getNodeCountFlow(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM kg_edges")
+    fun getEdgeCountFlow(): Flow<Int>
+
+    @Query("DELETE FROM kg_nodes WHERE sourceFilePath = :filePath")
+    suspend fun deleteNodeByFilePath(filePath: String)
+
+    @Query("DELETE FROM kg_edges WHERE sourceNodeId = :nodeId OR targetNodeId = :nodeId")
+    suspend fun deleteEdgesForNode(nodeId: String)
+
+    @Query("DELETE FROM kg_nodes")
+    suspend fun clearAllNodes()
+
+    @Query("DELETE FROM kg_edges")
+    suspend fun clearAllEdges()
+}
+
+@Dao
+interface RagDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertChunks(chunks: List<RagChunkEntity>)
+
+    @Query("SELECT * FROM rag_chunks WHERE filePath = :filePath ORDER BY chunkIndex ASC")
+    suspend fun getChunksForFile(filePath: String): List<RagChunkEntity>
+
+    @Query("SELECT * FROM rag_chunks WHERE content LIKE '%' || :query || '%' OR tagsJson LIKE '%' || :query || '%' LIMIT :limit")
+    suspend fun searchChunks(query: String, limit: Int = 20): List<RagChunkEntity>
+
+    @Query("SELECT COUNT(*) FROM rag_chunks")
+    fun getChunkCountFlow(): Flow<Int>
+
+    @Query("DELETE FROM rag_chunks WHERE filePath = :filePath")
+    suspend fun deleteChunksForFile(filePath: String)
+
+    @Query("DELETE FROM rag_chunks")
+    suspend fun clearAllChunks()
+}
+

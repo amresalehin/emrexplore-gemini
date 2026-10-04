@@ -2,6 +2,9 @@ package com.example.ui.viewmodel
 
 import android.app.Application
 import android.media.MediaPlayer
+import android.net.Uri
+import android.os.Environment
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.ExplorerPreferencesEntity
@@ -25,6 +28,13 @@ import com.example.data.media.MediaFilter
 import com.example.data.media.MediaRepository
 import com.example.data.media.FullscreenMediaSource
 import com.example.data.media.MediaViewerWindow
+import com.example.data.ai.KnowledgeGraphRepository
+import com.example.data.ai.ConnectedDotsItem
+import com.example.data.ai.ConnectionTestResult
+import com.example.data.ai.RagAnswer
+import com.example.data.local.AiProviderConfigEntity
+import com.example.data.local.KgEdgeEntity
+import com.example.data.local.KgNodeEntity
 import com.example.data.model.ConflictResolution
 import com.example.data.model.FileOperationProgress
 import com.example.data.model.OperationStatus
@@ -45,6 +55,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
@@ -56,7 +67,8 @@ import java.util.UUID
 enum class MainTab {
     HOME,
     FILES,
-    GALLERY
+    GALLERY,
+    BRAIN
 }
 
 enum class GallerySubTab {
@@ -165,6 +177,7 @@ data class UiState(
     val selectedCategory: CategoryType? = null,
     val categoryFiles: List<FileItem> = emptyList(),
     val categoryCounts: Map<CategoryType, Int> = emptyMap(),
+    val categorySizes: Map<CategoryType, Long> = emptyMap(),
 
     // Viewers & Modals
     val fullscreenMediaIndex: Int? = null,
@@ -207,6 +220,25 @@ data class UiState(
     val fileOperationProgress: FileOperationProgress = FileOperationProgress(),
     val performanceMetrics: PerformanceMetrics = PerformanceMetrics(),
 
+    // Knowledge Graph & RAG State
+    val kgNodes: List<KgNodeEntity> = emptyList(),
+    val kgEdges: List<KgEdgeEntity> = emptyList(),
+    val kgNodeCount: Int = 0,
+    val kgEdgeCount: Int = 0,
+    val kgChunkCount: Int = 0,
+    val aiConfig: AiProviderConfigEntity = AiProviderConfigEntity(),
+    val isTestingAiConnection: Boolean = false,
+    val aiTestResult: ConnectionTestResult? = null,
+    val showAiSettingsDialog: Boolean = false,
+    val isAiSettingsScreenOpen: Boolean = false,
+    val isKgIndexing: Boolean = false,
+    val kgIndexingProgress: Float = 0f,
+    val kgIndexingStatus: String = "Ready",
+    val ragAnswer: RagAnswer? = null,
+    val isRagQuerying: Boolean = false,
+    val activeFileConnectedDots: List<ConnectedDotsItem> = emptyList(),
+    val kgSmartSuggestions: List<String> = emptyList(),
+
     // User Feedback
     val userMessage: String? = null
 )
@@ -215,6 +247,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     private val repository = FileRepository(application)
     private val mediaRepository = MediaRepository(application)
+    private val kgRepository = KnowledgeGraphRepository(application)
     private val galleryFilterFlow = MutableStateFlow<MediaFilter?>(MediaFilter.ALL)
     private val galleryDateFilterFlow = MutableStateFlow(GalleryDateFilter.ALL)
     private val galleryLocationFilterFlow = MutableStateFlow(GalleryLocationFilter.ALL)
@@ -341,6 +374,14 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 if (prefs.autoIndexOnStart && repository.totalIndexedCount() == 0) {
                     repository.indexStorage(force = false)
                 }
+                try {
+                    val currentNodes = kgRepository.nodeCountFlow.firstOrNull() ?: 0
+                    if (currentNodes == 0) {
+                        indexAllFilesForKnowledgeGraph()
+                    }
+                } catch (e: Exception) {
+                    Log.w("UnifiedViewModel", "Initial KG index check: ${e.message}")
+                }
             }
         }
 
@@ -388,6 +429,31 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.update { it.copy(recentsList = recents) }
             }
         }
+
+        // Collect Knowledge Graph and AI config flows
+        viewModelScope.launch {
+            kgRepository.allNodesFlow.collectLatest { nodes ->
+                val suggestions = try { kgRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
+                _uiState.update { it.copy(kgNodes = nodes, kgNodeCount = nodes.size, kgSmartSuggestions = suggestions) }
+            }
+        }
+        viewModelScope.launch {
+            kgRepository.allEdgesFlow.collectLatest { edges ->
+                _uiState.update { it.copy(kgEdges = edges, kgEdgeCount = edges.size) }
+            }
+        }
+        viewModelScope.launch {
+            kgRepository.aiConfigFlow.collectLatest { config ->
+                config?.let { c ->
+                    _uiState.update { it.copy(aiConfig = c) }
+                }
+            }
+        }
+        viewModelScope.launch {
+            kgRepository.chunkCountFlow.collectLatest { count ->
+                _uiState.update { it.copy(kgChunkCount = count) }
+            }
+        }
     }
 
 
@@ -407,6 +473,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 // Timeline is backed by Paging and starts loading only when the UI
                 // collects galleryPagingFlow. Albums/favorites retain their legacy
                 // path temporarily and are loaded only when explicitly needed.
+            }
+            MainTab.BRAIN -> {
+                // Brain Knowledge Graph & RAG view - auto-connect if empty
+                if (_uiState.value.kgNodes.isEmpty() && !_uiState.value.isKgIndexing) {
+                    indexAllFilesForKnowledgeGraph()
+                }
             }
         }
     }
@@ -610,6 +682,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
         loadStorageStats()
         calculateCategoryCounts()
+        if (_uiState.value.kgNodes.isEmpty() && !_uiState.value.isKgIndexing) {
+            indexAllFilesForKnowledgeGraph()
+        }
     }
 
     fun loadFiles(path: String = _uiState.value.currentPath) {
@@ -1536,13 +1611,27 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 val list = repository.getFilesByCategory(category)
                 _uiState.update { it.copy(categoryFiles = list) }
             }
+        } else {
+            calculateCategoryCounts()
+            loadStorageStats()
         }
     }
 
     private fun calculateCategoryCounts() {
         viewModelScope.launch {
             val counts = repository.getCategoryCounts()
-            _uiState.update { it.copy(categoryCounts = counts) }
+            val sizes = repository.getCategorySizes()
+            _uiState.update { it.copy(categoryCounts = counts, categorySizes = sizes) }
+        }
+    }
+
+    val rootPath: String get() = repository.rootPath
+
+    fun refreshHomeScreen() {
+        viewModelScope.launch {
+            loadStorageStats()
+            calculateCategoryCounts()
+            showMessage("Counts & storage refreshed")
         }
     }
 
@@ -1673,7 +1762,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun openProperties(fileItem: FileItem) {
-        _uiState.update { it.copy(activeDetailItem = fileItem) }
+        _uiState.update { it.copy(activeDetailItem = fileItem, activeFileConnectedDots = emptyList()) }
+        loadConnectedDotsForFile(fileItem.path)
     }
 
     fun closeProperties() {
@@ -1800,6 +1890,182 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun closeRecycleBin() {
         _uiState.update { it.copy(isRecycleBinOpen = false) }
+    }
+
+    // --- Knowledge Graph & RAG Actions ---
+
+    fun setShowAiSettings(show: Boolean) {
+        _uiState.update { it.copy(isAiSettingsScreenOpen = show, showAiSettingsDialog = show) }
+    }
+
+    fun saveAiConfig(config: AiProviderConfigEntity) {
+        viewModelScope.launch {
+            kgRepository.saveAiConfig(config)
+            _uiState.update { it.copy(aiConfig = config) }
+            showMessage("AI settings saved")
+        }
+    }
+
+    fun testAiConnection(config: AiProviderConfigEntity) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isTestingAiConnection = true, aiTestResult = null) }
+            val result = kgRepository.testConnection(config)
+            _uiState.update { it.copy(isTestingAiConnection = false, aiTestResult = result) }
+        }
+    }
+
+    fun clearKnowledgeGraph() {
+        viewModelScope.launch {
+            kgRepository.clearGraph()
+            _uiState.update { it.copy(ragAnswer = null, activeFileConnectedDots = emptyList()) }
+            showMessage("Knowledge Graph cleared")
+        }
+    }
+
+    fun queryRag(question: String) {
+        if (question.isBlank()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRagQuerying = true) }
+            val answer = kgRepository.queryRag(question)
+            _uiState.update { it.copy(isRagQuerying = false, ragAnswer = answer) }
+        }
+    }
+
+    fun loadConnectedDotsForFile(filePath: String) {
+        viewModelScope.launch {
+            val dots = kgRepository.getConnectedDotsForFile(filePath)
+            _uiState.update { it.copy(activeFileConnectedDots = dots) }
+        }
+    }
+
+    fun indexAllFilesForKnowledgeGraph() {
+        if (_uiState.value.isKgIndexing) return
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isKgIndexing = true,
+                    kgIndexingProgress = 0.05f,
+                    kgIndexingStatus = "Connecting storage files & photos..."
+                )
+            }
+            try {
+                val config = kgRepository.getAiConfig()
+                data class FileCandidate(val file: File, val uri: Uri?)
+                val candidateMap = mutableMapOf<String, FileCandidate>()
+
+                // 1. Files from database index
+                try {
+                    val indexed = repository.getAllNonDirectoryFiles(limit = 400)
+                    for (ent in indexed) {
+                        val f = File(ent.path)
+                        candidateMap[ent.path] = FileCandidate(f, Uri.fromFile(f))
+                    }
+                } catch (e: Exception) {
+                    Log.w("UnifiedViewModel", "Error fetching indexed files: ${e.message}")
+                }
+
+                // 2. Real photos & images from MediaStore
+                try {
+                    val realImages = repository.getFilesByCategory(CategoryType.IMAGES)
+                    for (item in realImages) {
+                        val f = File(item.path)
+                        candidateMap[item.path] = FileCandidate(f, item.uri)
+                    }
+                } catch (e: Exception) {
+                    Log.w("UnifiedViewModel", "Error scanning real images: ${e.message}")
+                }
+
+                // 3. Real documents across storage
+                try {
+                    val realDocs = repository.getFilesByCategory(CategoryType.DOCUMENTS)
+                    for (item in realDocs) {
+                        val f = File(item.path)
+                        candidateMap[item.path] = FileCandidate(f, item.uri)
+                    }
+                } catch (e: Exception) {
+                    Log.w("UnifiedViewModel", "Error scanning real docs: ${e.message}")
+                }
+
+                // 4. Downloads
+                try {
+                    val realDownloads = repository.getFilesByCategory(CategoryType.DOWNLOADS)
+                    for (item in realDownloads) {
+                        val f = File(item.path)
+                        candidateMap[item.path] = FileCandidate(f, item.uri)
+                    }
+                } catch (e: Exception) {
+                    Log.w("UnifiedViewModel", "Error scanning downloads: ${e.message}")
+                }
+
+                // 5. Standard public user directories
+                val publicDirs = listOf(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    File(repository.rootPath, "DCIM"),
+                    File(repository.rootPath, "Pictures"),
+                    File(repository.rootPath, "Documents"),
+                    File(repository.rootPath, "Download"),
+                    repository.baseWorkingDir
+                )
+
+                for (dir in publicDirs.distinctBy { it.absolutePath }) {
+                    if (dir.exists() && dir.isDirectory) {
+                        dir.walkTopDown().maxDepth(3).filter { it.isFile && !it.name.startsWith(".") }.take(40).forEach { f ->
+                            candidateMap[f.absolutePath] = FileCandidate(f, Uri.fromFile(f))
+                        }
+                    }
+                }
+
+                // 6. Explorer files, recents, and favorites
+                for (item in _uiState.value.files) {
+                    if (!item.isDirectory) {
+                        val f = File(item.path)
+                        candidateMap[item.path] = FileCandidate(f, item.uri)
+                    }
+                }
+                for (recent in _uiState.value.recentsList) {
+                    val f = File(recent.path)
+                    candidateMap[recent.path] = FileCandidate(f, Uri.fromFile(f))
+                }
+                for (fav in _uiState.value.favoritesList) {
+                    val f = File(fav.path)
+                    candidateMap[fav.path] = FileCandidate(f, Uri.fromFile(f))
+                }
+
+                val distinctCandidates = candidateMap.values.toList()
+                val total = distinctCandidates.size.coerceAtLeast(1)
+
+                distinctCandidates.forEachIndexed { index, candidate ->
+                    val progress = ((index + 1).toFloat() / total.toFloat()).coerceIn(0.1f, 0.95f)
+                    _uiState.update {
+                        it.copy(
+                            kgIndexingProgress = progress,
+                            kgIndexingStatus = "Connecting dots: ${candidate.file.name} (${index + 1}/$total)"
+                        )
+                    }
+                    kgRepository.indexFile(candidate.file, candidate.uri, config)
+                }
+
+                val suggestions = try { kgRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
+                _uiState.update {
+                    it.copy(
+                        isKgIndexing = false,
+                        kgIndexingProgress = 1f,
+                        kgIndexingStatus = "Connected ${distinctCandidates.size} files in Brain",
+                        kgSmartSuggestions = suggestions
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isKgIndexing = false,
+                        kgIndexingStatus = "Indexing error: ${e.message}"
+                    )
+                }
+            }
+        }
     }
 
     fun loadStorageStats() {

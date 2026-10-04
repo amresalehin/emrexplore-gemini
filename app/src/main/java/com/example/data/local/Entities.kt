@@ -128,3 +128,74 @@ data class PlaceSearchCacheEntity(
     val label: String = "",
     val cachedAt: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "ai_provider_config")
+data class AiProviderConfigEntity(
+    @PrimaryKey val id: Int = 1,
+    val providerType: String = "GEMINI", // "GEMINI", "OPENAI_COMPATIBLE", "OLLAMA"
+    val apiKey: String = "",
+    val baseUrl: String = "https://generativelanguage.googleapis.com/",
+    val chatModel: String = "gemini-3.5-flash",
+    val visionModel: String = "gemini-3.5-flash",
+    val embeddingModel: String = "gemini-embedding-2-preview",
+    val customHeadersJson: String = "{}",
+    val temperature: Float = 0.2f,
+    val isEnabled: Boolean = false,
+    val autoSync: Boolean = true,
+    val lastSyncTimestamp: Long = 0L
+)
+
+@Entity(
+    tableName = "kg_nodes",
+    indices = [
+        Index(value = ["label"]),
+        Index(value = ["nodeType"]),
+        Index(value = ["sourceFilePath"])
+    ]
+)
+data class KgNodeEntity(
+    @PrimaryKey val id: String, // e.g. "doc:/path/file.txt", "img:/path/photo.jpg", "ent:Tokyo"
+    val label: String,
+    val nodeType: String, // "DOCUMENT", "IMAGE", "ENTITY", "LOCATION", "TOPIC", "PERSON"
+    val sourceFilePath: String? = null,
+    val thumbnailUri: String? = null,
+    val summary: String = "",
+    val degree: Int = 0,
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "kg_edges",
+    primaryKeys = ["sourceNodeId", "targetNodeId", "relation"],
+    indices = [
+        Index(value = ["sourceNodeId"]),
+        Index(value = ["targetNodeId"]),
+        Index(value = ["relation"])
+    ]
+)
+data class KgEdgeEntity(
+    val sourceNodeId: String,
+    val targetNodeId: String,
+    val relation: String, // "REFERENCES", "DEPICTS", "MENTIONS", "LOCATED_AT", "CREATED_AT", "SIMILAR_TO"
+    val weight: Float = 1.0f,
+    val evidenceSnippet: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "rag_chunks",
+    indices = [
+        Index(value = ["filePath"]),
+        Index(value = ["fileType"])
+    ]
+)
+data class RagChunkEntity(
+    @PrimaryKey val chunkId: String, // hash(filePath + chunkIndex)
+    val filePath: String,
+    val fileType: String, // "DOCUMENT" or "IMAGE"
+    val chunkIndex: Int,
+    val content: String,
+    val tagsJson: String = "[]",
+    val indexedTimestamp: Long = System.currentTimeMillis()
+)
+

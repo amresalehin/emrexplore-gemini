@@ -645,6 +645,18 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.width(4.dp))
 
+                        // Refresh button beside search bar
+                        IconButton(
+                            onClick = { viewModel.refreshHomeScreen() },
+                            modifier = Modifier.testTag("home_refresh_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh counts",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
                         // Three-dot menu button beside search bar
                         Box {
                             IconButton(
@@ -661,6 +673,21 @@ fun HomeScreen(
                                 expanded = showHomeMenu,
                                 onDismissRequest = { showHomeMenu = false }
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text("AI & BYOK Settings") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.ElectricBolt,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
+                                    onClick = {
+                                        showHomeMenu = false
+                                        viewModel.setShowAiSettings(true)
+                                    },
+                                    modifier = Modifier.testTag("menu_ai_settings")
+                                )
                                 DropdownMenuItem(
                                     text = { Text("Preferences") },
                                     leadingIcon = {
@@ -1054,13 +1081,45 @@ fun HomeScreen(
                 }
             }
         } else {
-            // Modern Home Dashboard: Recent Items + Quick Tiles
+            // Modern Home Dashboard: Storage Hero + Quick Actions + Recent Items + Quick Tiles
             LazyColumn(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                // Recent Items
+                // 1. Storage Status Hero Card
+                item(key = "home_storage_card") {
+                    StorageOverviewCard(
+                        storageStats = uiState.storageStats,
+                        onManageClick = {
+                            viewModel.setTab(MainTab.FILES)
+                            viewModel.jumpToFolder(viewModel.rootPath)
+                        }
+                    )
+                }
+
+                // 2. Quick Action Shortcuts Row
+                item(key = "home_quick_actions") {
+                    HomeQuickActionChips(
+                        onOpenStorage = {
+                            viewModel.setTab(MainTab.FILES)
+                            viewModel.jumpToFolder(viewModel.rootPath)
+                        },
+                        onOpenDcim = {
+                            viewModel.setTab(MainTab.FILES)
+                            viewModel.jumpToFolder(File(viewModel.rootPath, "DCIM").absolutePath)
+                        },
+                        onOpenDownloads = {
+                            viewModel.selectCategory(CategoryType.DOWNLOADS)
+                        },
+                        onOpenRecycleBin = {
+                            viewModel.openRecycleBin()
+                        },
+                        trashCount = uiState.trashList.size
+                    )
+                }
+
+                // 3. Recent Items
                 if (uiState.recentsList.isNotEmpty()) {
                     item(key = "home_recent_items") {
                         val recentFileItems = remember(uiState.recentsList, recentsSortOption) {
@@ -1216,14 +1275,16 @@ fun HomeScreen(
                     }
                 }
 
-                // Quick Tiles
+                // 4. Categories Quick Tiles
                 item(key = "home_quick_tiles") {
                     val recycleBinColor = MaterialTheme.colorScheme.error
-                    val quickTiles = remember(uiState.categoryCounts, uiState.trashList.size, recycleBinColor) {
+                    val quickTiles = remember(uiState.categoryCounts, uiState.categorySizes, uiState.trashList.size, recycleBinColor) {
+                        val trashBytes = uiState.trashList.sumOf { it.size }
                         listOf(
                             QuickTileEntry(
                                 title = CategoryType.IMAGES.displayName,
                                 count = uiState.categoryCounts[CategoryType.IMAGES] ?: 0,
+                                sizeBytes = uiState.categorySizes[CategoryType.IMAGES] ?: 0L,
                                 icon = Icons.Default.Image,
                                 tint = ColorImages,
                                 description = "Photos, screenshots & illustrations",
@@ -1232,6 +1293,7 @@ fun HomeScreen(
                             QuickTileEntry(
                                 title = CategoryType.VIDEOS.displayName,
                                 count = uiState.categoryCounts[CategoryType.VIDEOS] ?: 0,
+                                sizeBytes = uiState.categorySizes[CategoryType.VIDEOS] ?: 0L,
                                 icon = Icons.Default.Movie,
                                 tint = ColorVideos,
                                 description = "Movies, camera recordings & clips",
@@ -1240,6 +1302,7 @@ fun HomeScreen(
                             QuickTileEntry(
                                 title = CategoryType.AUDIO.displayName,
                                 count = uiState.categoryCounts[CategoryType.AUDIO] ?: 0,
+                                sizeBytes = uiState.categorySizes[CategoryType.AUDIO] ?: 0L,
                                 icon = Icons.Default.AudioFile,
                                 tint = ColorAudio,
                                 description = "Music, voice recordings & podcasts",
@@ -1248,6 +1311,7 @@ fun HomeScreen(
                             QuickTileEntry(
                                 title = CategoryType.DOCUMENTS.displayName,
                                 count = uiState.categoryCounts[CategoryType.DOCUMENTS] ?: 0,
+                                sizeBytes = uiState.categorySizes[CategoryType.DOCUMENTS] ?: 0L,
                                 icon = Icons.Default.Description,
                                 tint = ColorDocuments,
                                 description = "PDF, Word, Excel, text & ebooks",
@@ -1256,6 +1320,7 @@ fun HomeScreen(
                             QuickTileEntry(
                                 title = CategoryType.ARCHIVES.displayName,
                                 count = uiState.categoryCounts[CategoryType.ARCHIVES] ?: 0,
+                                sizeBytes = uiState.categorySizes[CategoryType.ARCHIVES] ?: 0L,
                                 icon = Icons.Default.Archive,
                                 tint = ColorArchives,
                                 description = "ZIP, RAR, 7Z & tarball files",
@@ -1264,6 +1329,7 @@ fun HomeScreen(
                             QuickTileEntry(
                                 title = CategoryType.APKS.displayName,
                                 count = uiState.categoryCounts[CategoryType.APKS] ?: 0,
+                                sizeBytes = uiState.categorySizes[CategoryType.APKS] ?: 0L,
                                 icon = Icons.Default.VideogameAsset,
                                 tint = ColorApks,
                                 description = "Android app installer packages",
@@ -1272,6 +1338,7 @@ fun HomeScreen(
                             QuickTileEntry(
                                 title = CategoryType.DOWNLOADS.displayName,
                                 count = uiState.categoryCounts[CategoryType.DOWNLOADS] ?: 0,
+                                sizeBytes = uiState.categorySizes[CategoryType.DOWNLOADS] ?: 0L,
                                 icon = Icons.Default.Download,
                                 tint = ColorDownloads,
                                 description = "Downloaded files & browser items",
@@ -1280,6 +1347,7 @@ fun HomeScreen(
                             QuickTileEntry(
                                 title = "Recycle Bin",
                                 count = uiState.trashList.size,
+                                sizeBytes = trashBytes,
                                 icon = Icons.Default.Delete,
                                 tint = recycleBinColor,
                                 description = "Safely recoverable deleted files",
@@ -1431,6 +1499,7 @@ fun HomeScreen(
                                                 CategoryCard(
                                                     title = tile.title,
                                                     count = tile.count,
+                                                    sizeBytes = tile.sizeBytes,
                                                     icon = tile.icon,
                                                     tint = tile.tint,
                                                     onClick = tile.onClick
@@ -1467,6 +1536,7 @@ fun HomeScreen(
                                                 CategoryCompactCard(
                                                     title = tile.title,
                                                     count = tile.count,
+                                                    sizeBytes = tile.sizeBytes,
                                                     icon = tile.icon,
                                                     tint = tile.tint,
                                                     onClick = tile.onClick
@@ -1497,6 +1567,7 @@ fun HomeScreen(
                                     CategoryDetailedListCard(
                                         title = tile.title,
                                         count = tile.count,
+                                        sizeBytes = tile.sizeBytes,
                                         icon = tile.icon,
                                         tint = tile.tint,
                                         description = tile.description,
@@ -1582,17 +1653,19 @@ private fun StorageOverviewCard(
     val usedPercent = (usedFraction * 100).toInt()
 
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = modifier.fillMaxWidth()
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("home_storage_card")
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(18.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1605,7 +1678,7 @@ private fun StorageOverviewCard(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(44.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center
@@ -1614,7 +1687,7 @@ private fun StorageOverviewCard(
                             imageVector = Icons.Default.Storage,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                     Column {
@@ -1635,7 +1708,7 @@ private fun StorageOverviewCard(
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                 ) {
                     Text(
-                        text = "$usedPercent% used",
+                        text = "$usedPercent% Used",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
@@ -1652,7 +1725,7 @@ private fun StorageOverviewCard(
             val docFraction = (storageStats.documentsBytes.toFloat() / total.toFloat()).coerceIn(0f, 1f)
             val sumFraction = imgFraction + vidFraction + audFraction + docFraction
 
-            if (sumFraction > 0.01f) {
+            if (sumFraction > 0.005f) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1661,24 +1734,24 @@ private fun StorageOverviewCard(
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Row(modifier = Modifier.fillMaxSize()) {
-                        if (imgFraction > 0.005f) {
+                        if (imgFraction > 0.003f) {
                             Box(modifier = Modifier.weight(imgFraction).fillMaxHeight().background(ColorImages))
                         }
-                        if (vidFraction > 0.005f) {
+                        if (vidFraction > 0.003f) {
                             Box(modifier = Modifier.weight(vidFraction).fillMaxHeight().background(ColorVideos))
                         }
-                        if (audFraction > 0.005f) {
+                        if (audFraction > 0.003f) {
                             Box(modifier = Modifier.weight(audFraction).fillMaxHeight().background(ColorAudio))
                         }
-                        if (docFraction > 0.005f) {
+                        if (docFraction > 0.003f) {
                             Box(modifier = Modifier.weight(docFraction).fillMaxHeight().background(ColorDocuments))
                         }
                         val remainingUsed = (usedFraction - sumFraction).coerceAtLeast(0f)
-                        if (remainingUsed > 0.005f) {
+                        if (remainingUsed > 0.003f) {
                             Box(modifier = Modifier.weight(remainingUsed).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
                         }
                         val freeFraction = (1f - usedFraction).coerceAtLeast(0f)
-                        if (freeFraction > 0.005f) {
+                        if (freeFraction > 0.003f) {
                             Box(modifier = Modifier.weight(freeFraction).fillMaxHeight().background(Color.Transparent))
                         }
                     }
@@ -1695,19 +1768,134 @@ private fun StorageOverviewCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Quick Breakdown Pills
+            // Quick Breakdown Pills & Explore action
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                StorageCategoryPill("Images", storageStats.imagesBytes, ColorImages)
-                StorageCategoryPill("Videos", storageStats.videosBytes, ColorVideos)
-                StorageCategoryPill("Audio", storageStats.audioBytes, ColorAudio)
-                StorageCategoryPill("Docs", storageStats.documentsBytes, ColorDocuments)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    StorageCategoryPill("Images", storageStats.imagesBytes, ColorImages)
+                    StorageCategoryPill("Videos", storageStats.videosBytes, ColorVideos)
+                    StorageCategoryPill("Audio", storageStats.audioBytes, ColorAudio)
+                    StorageCategoryPill("Docs", storageStats.documentsBytes, ColorDocuments)
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onManageClick)
+                        .testTag("storage_explore_btn")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "Browse",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun HomeQuickActionChips(
+    onOpenStorage: () -> Unit,
+    onOpenDcim: () -> Unit,
+    onOpenDownloads: () -> Unit,
+    onOpenRecycleBin: () -> Unit,
+    trashCount: Int,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        HomeActionChipItem(
+            icon = Icons.Default.Storage,
+            label = "Storage",
+            modifier = Modifier.weight(1f),
+            testTag = "quick_action_storage",
+            onClick = onOpenStorage
+        )
+        HomeActionChipItem(
+            icon = Icons.Default.Image,
+            label = "DCIM",
+            modifier = Modifier.weight(1f),
+            testTag = "quick_action_dcim",
+            onClick = onOpenDcim
+        )
+        HomeActionChipItem(
+            icon = Icons.Default.Download,
+            label = "Downloads",
+            modifier = Modifier.weight(1f),
+            testTag = "quick_action_downloads",
+            onClick = onOpenDownloads
+        )
+        HomeActionChipItem(
+            icon = Icons.Default.Delete,
+            label = if (trashCount > 0) "Trash ($trashCount)" else "Trash",
+            modifier = Modifier.weight(1f),
+            testTag = "quick_action_trash",
+            onClick = onOpenRecycleBin
+        )
+    }
+}
+
+@Composable
+private fun HomeActionChipItem(
+    icon: ImageVector,
+    label: String,
+    testTag: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .testTag(testTag)
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
@@ -1735,6 +1923,7 @@ private fun StorageCategoryPill(label: String, bytes: Long, color: Color) {
 private data class QuickTileEntry(
     val title: String,
     val count: Int,
+    val sizeBytes: Long = 0L,
     val icon: ImageVector,
     val tint: Color,
     val description: String = "",
@@ -1767,6 +1956,7 @@ enum class TileFilterOption(val label: String) {
 private fun CategoryCard(
     title: String,
     count: Int,
+    sizeBytes: Long = 0L,
     icon: ImageVector,
     tint: Color,
     onClick: () -> Unit
@@ -1810,8 +2000,10 @@ private fun CategoryCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                val countLabel = if (title == "Recycle Bin") "$count items" else "$count files"
+                val sizeLabel = if (sizeBytes > 0) " • ${formatFileSize(sizeBytes)}" else ""
                 Text(
-                    text = if (title == "Recycle Bin") "$count items" else "$count files",
+                    text = "$countLabel$sizeLabel",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1830,6 +2022,7 @@ private fun CategoryCard(
 private fun CategoryCompactCard(
     title: String,
     count: Int,
+    sizeBytes: Long = 0L,
     icon: ImageVector,
     tint: Color,
     onClick: () -> Unit
@@ -1873,12 +2066,16 @@ private fun CategoryCompactCard(
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center
             )
+            val countLabel = "$count"
+            val sizeLabel = if (sizeBytes > 0) " (${formatFileSize(sizeBytes)})" else ""
             Text(
-                text = "$count",
+                text = "$countLabel$sizeLabel",
                 style = MaterialTheme.typography.labelSmall,
                 color = tint,
                 fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -1888,6 +2085,7 @@ private fun CategoryCompactCard(
 private fun CategoryDetailedListCard(
     title: String,
     count: Int,
+    sizeBytes: Long = 0L,
     icon: ImageVector,
     tint: Color,
     description: String,
@@ -1943,8 +2141,10 @@ private fun CategoryDetailedListCard(
                 color = tint.copy(alpha = 0.12f),
                 modifier = Modifier.padding(start = 8.dp)
             ) {
+                val countLabel = if (title == "Recycle Bin") "$count items" else "$count files"
+                val sizeLabel = if (sizeBytes > 0) " • ${formatFileSize(sizeBytes)}" else ""
                 Text(
-                    text = if (title == "Recycle Bin") "$count items" else "$count files",
+                    text = "$countLabel$sizeLabel",
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                     color = tint,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)

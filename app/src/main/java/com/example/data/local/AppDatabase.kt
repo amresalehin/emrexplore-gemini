@@ -15,9 +15,13 @@ import androidx.room.RoomDatabase
         ExplorerPreferencesEntity::class,
         IndexStatusEntity::class,
         MediaMetadataEntity::class,
-        PlaceSearchCacheEntity::class
+        PlaceSearchCacheEntity::class,
+        AiProviderConfigEntity::class,
+        KgNodeEntity::class,
+        KgEdgeEntity::class,
+        RagChunkEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -30,6 +34,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun indexStatusDao(): IndexStatusDao
     abstract fun mediaMetadataDao(): MediaMetadataDao
     abstract fun placeSearchCacheDao(): PlaceSearchCacheDao
+    abstract fun aiProviderConfigDao(): AiProviderConfigDao
+    abstract fun kgDao(): KgDao
+    abstract fun ragDao(): RagDao
 
     companion object {
         @Volatile

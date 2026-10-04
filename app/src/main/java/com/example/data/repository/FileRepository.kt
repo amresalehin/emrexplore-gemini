@@ -221,6 +221,10 @@ class FileRepository(private val context: Context) {
         fileIndexDao.getTotalCount()
     }
 
+    suspend fun getAllNonDirectoryFiles(limit: Int = 300): List<IndexedFileEntity> = withContext(Dispatchers.IO) {
+        fileIndexDao.getAllNonDirectoryFiles(limit)
+    }
+
     suspend fun indexStorage(force: Boolean = false): Int = withContext(Dispatchers.IO) {
         indexingMutex.withLock {
             val currentStatus = indexStatusDao.getStatus()
@@ -536,19 +540,12 @@ class FileRepository(private val context: Context) {
             // Text Label
             val textPaint = Paint().apply {
                 color = Color.WHITE
-                textSize = 54f
+                textSize = 48f
                 isAntiAlias = true
                 isFakeBoldText = true
                 setShadowLayer(8f, 2f, 2f, Color.argb(150, 0, 0, 0))
             }
-            canvas.drawText(label, 70f, height - 80f, textPaint)
-
-            val emrexploreBadge = Paint().apply {
-                color = Color.argb(200, 255, 255, 255)
-                textSize = 32f
-                isAntiAlias = true
-            }
-            canvas.drawText("emrexplore Gallery Sample", 70f, height - 35f, emrexploreBadge)
+            canvas.drawText(label, 70f, height - 50f, textPaint)
 
             FileOutputStream(file).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
@@ -1067,6 +1064,16 @@ class FileRepository(private val context: Context) {
                         favSet
                     )
                 )
+                val imgDirs = listOf(
+                    File(rootPath, "DCIM"),
+                    File(rootPath, "Pictures"),
+                    File(baseWorkingDir, "Camera"),
+                    File(baseWorkingDir, "Screenshots"),
+                    File(baseWorkingDir, "Pictures")
+                ).filter { it.exists() }
+                for (dir in imgDirs) {
+                    scanFilesRecursively(dir, CategoryType.IMAGES, result, maxDepth = 3, currentDepth = 0, favSet = favSet)
+                }
             }
             CategoryType.VIDEOS -> {
                 result.addAll(
@@ -1075,6 +1082,17 @@ class FileRepository(private val context: Context) {
                         favSet
                     )
                 )
+                val vidDirs = listOf(
+                    File(rootPath, "DCIM"),
+                    File(rootPath, "Movies"),
+                    File(rootPath, "Video"),
+                    File(rootPath, "Videos"),
+                    File(baseWorkingDir, "Movies"),
+                    File(baseWorkingDir, "Videos")
+                ).filter { it.exists() }
+                for (dir in vidDirs) {
+                    scanFilesRecursively(dir, CategoryType.VIDEOS, result, maxDepth = 3, currentDepth = 0, favSet = favSet)
+                }
             }
             CategoryType.AUDIO -> {
                 try {
@@ -1116,97 +1134,96 @@ class FileRepository(private val context: Context) {
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-                // Also scan audio in baseWorkingDir
-                val audioDir = File(baseWorkingDir, "Audio")
-                if (audioDir.exists()) {
-                    audioDir.listFiles()?.forEach { f ->
-                        if (f.isFile && f.extension.lowercase() in setOf("mp3", "wav", "m4a", "ogg")) {
-                            result.add(toFileItem(f, favSet))
-                        }
-                    }
+                val audioDirs = listOf(
+                    File(rootPath, "Music"),
+                    File(rootPath, "Audio"),
+                    File(rootPath, "Podcasts"),
+                    File(rootPath, "Ringtones"),
+                    File(baseWorkingDir, "Music"),
+                    File(baseWorkingDir, "Audio")
+                ).filter { it.exists() }
+                for (dir in audioDirs) {
+                    scanFilesRecursively(dir, CategoryType.AUDIO, result, maxDepth = 3, currentDepth = 0, favSet = favSet)
                 }
             }
             CategoryType.DOWNLOADS -> {
-                listOf(File(rootPath, "Download"), File(baseWorkingDir, "Download")).forEach { dir ->
-                    if (dir.exists()) {
-                        dir.listFiles()?.filter { !it.name.startsWith(".") }?.forEach { f ->
-                            result.add(toFileItem(f, favSet))
-                        }
+                val dlDirs = listOf(
+                    File(rootPath, "Download"),
+                    File(rootPath, "Downloads"),
+                    File(baseWorkingDir, "Download"),
+                    File(baseWorkingDir, "Downloads")
+                ).filter { it.exists() }
+                for (dir in dlDirs) {
+                    dir.listFiles()?.filter { !it.name.startsWith(".") && it.isFile }?.forEach { f ->
+                        result.add(toFileItem(f, favSet))
                     }
                 }
             }
-            CategoryType.DOCUMENTS, CategoryType.ARCHIVES, CategoryType.APKS -> {
-                val targets = listOf(
-                    baseWorkingDir,
+            CategoryType.DOCUMENTS -> {
+                val docDirs = listOf(
                     File(rootPath, "Documents"),
-                    File(rootPath, "Download")
+                    File(rootPath, "Download"),
+                    File(rootPath, "Downloads"),
+                    File(baseWorkingDir, "Documents"),
+                    File(baseWorkingDir, "Download"),
+                    File(baseWorkingDir, "Downloads"),
+                    baseWorkingDir
                 ).filter { it.exists() }
-                for (dir in targets) {
-                    scanFilesRecursively(dir, category, result, maxDepth = 2, currentDepth = 0, favSet = favSet)
+                for (dir in docDirs) {
+                    scanFilesRecursively(dir, CategoryType.DOCUMENTS, result, maxDepth = 3, currentDepth = 0, favSet = favSet)
+                }
+            }
+            CategoryType.ARCHIVES -> {
+                val archDirs = listOf(
+                    File(rootPath, "Download"),
+                    File(rootPath, "Downloads"),
+                    File(rootPath, "Documents"),
+                    File(baseWorkingDir, "Download"),
+                    File(baseWorkingDir, "Downloads"),
+                    baseWorkingDir
+                ).filter { it.exists() }
+                for (dir in archDirs) {
+                    scanFilesRecursively(dir, CategoryType.ARCHIVES, result, maxDepth = 3, currentDepth = 0, favSet = favSet)
+                }
+            }
+            CategoryType.APKS -> {
+                val apkDirs = listOf(
+                    File(rootPath, "Download"),
+                    File(rootPath, "Downloads"),
+                    File(rootPath, "Documents"),
+                    File(baseWorkingDir, "Download"),
+                    File(baseWorkingDir, "Downloads"),
+                    baseWorkingDir
+                ).filter { it.exists() }
+                for (dir in apkDirs) {
+                    scanFilesRecursively(dir, CategoryType.APKS, result, maxDepth = 3, currentDepth = 0, favSet = favSet)
                 }
             }
         }
 
-        result.distinctBy { it.path }.sortedByDescending { it.lastModified }
+        // Clean & Deduplicate: only keep existing non-directory files
+        result.filter { item ->
+            !item.isDirectory && !item.name.startsWith(".") && !item.path.contains("/.trash/") &&
+                    (item.uri != null || (item.path.isNotBlank() && File(item.path).exists()))
+        }.distinctBy {
+            if (it.path.isNotBlank()) it.path else it.uri?.toString() ?: it.name
+        }.sortedByDescending { it.lastModified }
     }
 
     suspend fun getCategoryCounts(): Map<CategoryType, Int> = withContext(Dispatchers.IO) {
-        val totalIndexed = try { fileIndexDao.getTotalCount() } catch (e: Exception) { 0 }
-        if (totalIndexed > 0) {
-            val stats = try { fileIndexDao.getCategoryStats() } catch (e: Exception) { emptyList() }
-            if (stats.isNotEmpty()) {
-                val statMap = stats.associate { it.category to it.count }
-                val counts = mutableMapOf<CategoryType, Int>()
-                CategoryType.entries.forEach { cat ->
-                    counts[cat] = statMap[cat.name] ?: 0
-                }
-                return@withContext counts
-            }
-        }
-
         val counts = mutableMapOf<CategoryType, Int>()
-        counts[CategoryType.IMAGES] = queryMediaStoreCount(MediaStore.Images.Media.EXTERNAL_CONTENT_URI) +
-                countFilesWithExtensions(baseWorkingDir, setOf("jpg", "jpeg", "png", "webp", "gif"))
-        counts[CategoryType.VIDEOS] = queryMediaStoreCount(MediaStore.Video.Media.EXTERNAL_CONTENT_URI) +
-                countFilesWithExtensions(baseWorkingDir, setOf("mp4", "mkv", "webm", "avi", "mov"))
-        counts[CategoryType.AUDIO] = queryMediaStoreCount(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI) +
-                countFilesWithExtensions(baseWorkingDir, setOf("mp3", "wav", "m4a", "ogg"))
-
-        val downloadDir = File(rootPath, "Download")
-        counts[CategoryType.DOWNLOADS] = (downloadDir.listFiles()?.count { !it.name.startsWith(".") } ?: 0) +
-                (File(baseWorkingDir, "Download").listFiles()?.count { !it.name.startsWith(".") } ?: 0)
-
-        val commonDirs = listOf(
-            File(baseWorkingDir, "Documents"),
-            File(rootPath, "Documents"),
-            downloadDir
-        ).filter { it.exists() }
-
-        var docCount = 0
-        var archCount = 0
-        var apkCount = 0
-        val docExts = setOf("pdf", "doc", "docx", "txt", "md", "json", "xml", "csv")
-        val archExts = setOf("zip", "rar", "7z", "tar", "gz")
-        val apkExts = setOf("apk", "xapk")
-
-        for (dir in commonDirs) {
-            dir.listFiles()?.forEach { f ->
-                if (f.isFile) {
-                    val ext = f.extension.lowercase()
-                    when {
-                        ext in docExts -> docCount++
-                        ext in archExts -> archCount++
-                        ext in apkExts -> apkCount++
-                    }
-                }
-            }
+        for (cat in CategoryType.entries) {
+            counts[cat] = getFilesByCategory(cat).size
         }
-
-        counts[CategoryType.DOCUMENTS] = docCount
-        counts[CategoryType.ARCHIVES] = archCount
-        counts[CategoryType.APKS] = apkCount
-
         counts
+    }
+
+    suspend fun getCategorySizes(): Map<CategoryType, Long> = withContext(Dispatchers.IO) {
+        val sizes = mutableMapOf<CategoryType, Long>()
+        for (cat in CategoryType.entries) {
+            sizes[cat] = getFilesByCategory(cat).sumOf { it.size }
+        }
+        sizes
     }
 
     suspend fun searchFiles(query: String, category: CategoryType? = null): List<FileItem> = withContext(Dispatchers.IO) {
@@ -1606,27 +1623,28 @@ class FileRepository(private val context: Context) {
         }
     }
 
-    // Storage Statistics (Fast calculation)
+    // Storage Statistics (Accurate device and category size calculation)
     suspend fun getStorageStats(): StorageStats = withContext(Dispatchers.IO) {
-        val stat = StatFs(Environment.getDataDirectory().path)
+        val external = Environment.getExternalStorageDirectory()
+        val targetPath = if (external != null && external.canRead()) external.path else context.filesDir.path
+        val stat = try { StatFs(targetPath) } catch (e: Exception) { StatFs(Environment.getDataDirectory().path) }
         val blockSize = stat.blockSizeLong
         val totalBlocks = stat.blockCountLong
         val availableBlocks = stat.availableBlocksLong
 
         val total = totalBlocks * blockSize
         val free = availableBlocks * blockSize
-        val used = total - free
+        val used = (total - free).coerceAtLeast(0L)
 
-        val imgBytes = queryMediaStoreSumSize(MediaStore.Images.Media.EXTERNAL_CONTENT_URI) +
-                sumFileSizeInDir(baseWorkingDir, setOf("jpg", "jpeg", "png", "webp", "gif"))
-        val vidBytes = queryMediaStoreSumSize(MediaStore.Video.Media.EXTERNAL_CONTENT_URI) +
-                sumFileSizeInDir(baseWorkingDir, setOf("mp4", "mkv", "avi", "mov"))
-        val audBytes = queryMediaStoreSumSize(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI) +
-                sumFileSizeInDir(baseWorkingDir, setOf("mp3", "wav", "m4a", "ogg"))
-        val docBytes = sumFileSizeInDir(File(baseWorkingDir, "Documents"), null) +
-                sumFileSizeInDir(File(rootPath, "Documents"), null)
+        val imgBytes = getFilesByCategory(CategoryType.IMAGES).sumOf { it.size }
+        val vidBytes = getFilesByCategory(CategoryType.VIDEOS).sumOf { it.size }
+        val audBytes = getFilesByCategory(CategoryType.AUDIO).sumOf { it.size }
+        val docBytes = getFilesByCategory(CategoryType.DOCUMENTS).sumOf { it.size }
+        val archBytes = getFilesByCategory(CategoryType.ARCHIVES).sumOf { it.size }
+        val apkBytes = getFilesByCategory(CategoryType.APKS).sumOf { it.size }
 
-        val other = (used - (imgBytes + vidBytes + audBytes + docBytes)).coerceAtLeast(0L)
+        val categorizedSum = imgBytes + vidBytes + audBytes + docBytes + archBytes + apkBytes
+        val other = (used - categorizedSum).coerceAtLeast(0L)
 
         StorageStats(
             totalBytes = total,
@@ -1636,6 +1654,8 @@ class FileRepository(private val context: Context) {
             videosBytes = vidBytes,
             audioBytes = audBytes,
             documentsBytes = docBytes,
+            archivesBytes = archBytes,
+            apksBytes = apkBytes,
             otherBytes = other
         )
     }

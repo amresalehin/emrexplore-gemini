@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -55,11 +56,14 @@ import com.example.ui.components.StoragePermissionBanner
 import com.example.ui.components.getRequiredStoragePermissions
 import com.example.ui.components.isAllFilesAccessGranted
 import com.example.ui.components.launchAllFilesAccessSettings
+import com.example.ui.screens.AiSettingsDialog
+import com.example.ui.screens.AiSettingsScreen
 import com.example.ui.screens.FileExplorerScreen
 import com.example.ui.screens.FilePropertiesDialog
 import com.example.ui.screens.FullscreenMediaViewer
 import com.example.ui.screens.GalleryScreen
 import com.example.ui.screens.HomeScreen
+import com.example.ui.screens.KnowledgeGraphScreen
 import com.example.ui.screens.TextEditorScreen
 import com.example.ui.screens.ZipViewerDialog
 import com.example.ui.theme.EmrExploreTheme
@@ -67,6 +71,7 @@ import com.example.ui.viewmodel.MainTab
 import com.example.ui.viewmodel.UnifiedViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import java.io.File
 
 class MainActivity : ComponentActivity() {
 
@@ -244,6 +249,13 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                         label = { Text("Gallery") },
                         modifier = Modifier.testTag("nav_item_gallery")
                     )
+                    NavigationBarItem(
+                        selected = uiState.currentTab == MainTab.BRAIN,
+                        onClick = { viewModel.setTab(MainTab.BRAIN) },
+                        icon = { Icon(Icons.Default.Psychology, contentDescription = "Brain & Graph") },
+                        label = { Text("Brain") },
+                        modifier = Modifier.testTag("nav_item_brain")
+                    )
                 }
             }
         }
@@ -295,6 +307,22 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                                 }
                             }
                         )
+                        MainTab.BRAIN -> KnowledgeGraphScreen(
+                            nodes = uiState.kgNodes,
+                            edges = uiState.kgEdges,
+                            aiConfig = uiState.aiConfig,
+                            isIndexing = uiState.isKgIndexing,
+                            indexingProgress = uiState.kgIndexingProgress,
+                            indexingStatus = uiState.kgIndexingStatus,
+                            ragAnswer = uiState.ragAnswer,
+                            isRagQuerying = uiState.isRagQuerying,
+                            smartSuggestions = uiState.kgSmartSuggestions,
+                            onQueryRag = { viewModel.queryRag(it) },
+                            onIndexAllFiles = { viewModel.indexAllFilesForKnowledgeGraph() },
+                            onOpenAiSettings = { viewModel.setShowAiSettings(true) },
+                            onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false)) },
+                            onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false, mimeType = "image/jpeg")) }
+                        )
                     }
                 }
             }
@@ -344,7 +372,10 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
     if (uiState.activeDetailItem != null) {
         FilePropertiesDialog(
             item = uiState.activeDetailItem!!,
-            onDismiss = { viewModel.closeProperties() }
+            connectedDots = uiState.activeFileConnectedDots,
+            onDismiss = { viewModel.closeProperties() },
+            onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false)) },
+            onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false, mimeType = "image/jpeg")) }
         )
     }
 
@@ -358,6 +389,33 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             onDismiss = {
                 showAllFilesDialog = false
             }
+        )
+    }
+
+    // 6. Dedicated AI & BYOK Provider Settings Screen
+    if (uiState.isAiSettingsScreenOpen) {
+        AiSettingsScreen(
+            currentConfig = uiState.aiConfig,
+            nodeCount = uiState.kgNodeCount,
+            edgeCount = uiState.kgEdgeCount,
+            chunkCount = uiState.kgChunkCount,
+            isTestingConnection = uiState.isTestingAiConnection,
+            testResult = uiState.aiTestResult,
+            onSaveConfig = { viewModel.saveAiConfig(it) },
+            onTestConnection = { viewModel.testAiConnection(it) },
+            onReindexAll = { viewModel.indexAllFilesForKnowledgeGraph() },
+            onClearGraph = { viewModel.clearKnowledgeGraph() },
+            onNavigateBack = { viewModel.setShowAiSettings(false) }
+        )
+    } else if (uiState.showAiSettingsDialog) {
+        AiSettingsDialog(
+            currentConfig = uiState.aiConfig,
+            isTestingConnection = uiState.isTestingAiConnection,
+            testResult = uiState.aiTestResult,
+            onSaveConfig = { viewModel.saveAiConfig(it) },
+            onTestConnection = { viewModel.testAiConnection(it) },
+            onClearGraph = { viewModel.clearKnowledgeGraph() },
+            onDismiss = { viewModel.setShowAiSettings(false) }
         )
     }
 }
