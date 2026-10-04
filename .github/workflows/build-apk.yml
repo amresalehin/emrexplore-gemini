@@ -3,11 +3,10 @@ name: Build APK
 on:
   push:
     branches:
-      - main
-      - brain-overhaul-20261004
+      - gemini
   pull_request:
     branches:
-      - main
+      - gemini
   workflow_dispatch:
 
 concurrency:
