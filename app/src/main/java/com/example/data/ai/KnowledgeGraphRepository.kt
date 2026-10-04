@@ -1015,15 +1015,33 @@ class KnowledgeGraphRepository(private val context: Context) {
             if (matchedChunks.isNotEmpty()) {
                 matchedChunks.forEachIndexed { index, chunk ->
                     append("=== SOURCE ${index + 1}: ${File(chunk.filePath).name} (${chunk.fileType}) ===\n")
-                    append(chunk.content).append("\n\n")
+                    val safeContent = if (allowSensitiveLocationInPrompt) {
+                        chunk.content
+                    } else {
+                        redactSensitiveLocationText(chunk.content)
+                    }
+                    append(safeContent).append("\n\n")
                 }
             } else if (allRelevantNodes.isNotEmpty()) {
                 append("=== RELEVANT MATCHED FILES & ENTITIES ===\n")
                 allRelevantNodes.forEach { node ->
-                    append("• [${node.nodeType}] ${node.label}: ${node.summary} (File: ${node.sourceFilePath.orEmpty()})\n")
+                    if (!allowSensitiveLocationInPrompt && node.nodeType == "LOCATION") {
+                        append("• [LOCATION] Private location (details withheld)\n")
+                    } else {
+                        val summary = if (allowSensitiveLocationInPrompt) node.summary else redactSensitiveLocationText(node.summary)
+                        append("• [${node.nodeType}] ${node.label}: $summary (File: ${node.sourceFilePath.orEmpty()})\n")
+                    }
                 }
                 append("\n")
             }
+        }
+
+        val allowSensitiveLocationInPrompt =
+            ProviderType.fromString(config.providerType) == ProviderType.OLLAMA
+        val safeEvidence = if (allowSensitiveLocationInPrompt) {
+            evidence
+        } else {
+            evidence.filterNot { it.contains("-LOCATED_AT->") }
         }
 
         val answer: String
@@ -1034,7 +1052,7 @@ class KnowledgeGraphRepository(private val context: Context) {
                     client.generateRagAnswer(
                         question = clean,
                         contextText = context,
-                        graphContext = evidence.joinToString("\n"),
+                        graphContext = safeEvidence.joinToString("\n") { redactSensitiveLocationText(it) },
                         chatHistory = chatHistory,
                         config = config
                     )
@@ -1062,6 +1080,15 @@ class KnowledgeGraphRepository(private val context: Context) {
         }
 
         RagAnswer(answer, matchedChunks, allRelevantNodes, successful, System.currentTimeMillis() - started)
+    }
+
+    private fun redactSensitiveLocationText(value: String): String {
+        return value
+            .replace(Regex("(?im)^\\s*(GPS|Location):.*(?:\\R|$)"), "")
+            .replace(
+                Regex("(?i)(geographic coordinates|coordinates?)\\s*[:=]?\\s*-?\\d+(?:\\.\\d+)?\\s*,\\s*-?\\d+(?:\\.\\d+)?"),
+                "$1: [redacted]"
+            )
     }
 
     private fun tokenizeQuestion(value: String): List<String> = value.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length > 1 }.distinct()
