@@ -134,9 +134,9 @@ import com.example.data.ai.AttachedAiFile
 import com.example.data.ai.BrainTopicFile
 import com.example.data.ai.RagAnswer
 import com.example.data.local.AiProviderConfigEntity
-import com.example.data.local.BrainTopicEntity
-import com.example.data.local.KgEdgeEntity
-import com.example.data.local.KgNodeEntity
+import com.example.data.brain.BrainTopicEntity
+import com.example.data.brain.BrainEdgeEntity
+import com.example.data.brain.BrainNodeEntity
 import com.example.ui.theme.ColorDocuments
 import com.example.ui.theme.ColorImages
 import java.io.File
@@ -156,8 +156,8 @@ enum class GraphScreenTab(val label: String, val icon: ImageVector) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KnowledgeGraphScreen(
-    nodes: List<KgNodeEntity>,
-    edges: List<KgEdgeEntity>,
+    nodes: List<BrainNodeEntity>,
+    edges: List<BrainEdgeEntity>,
     nodeCount: Int = nodes.size,
     edgeCount: Int = edges.size,
     aiConfig: AiProviderConfigEntity?,
@@ -176,7 +176,7 @@ fun KnowledgeGraphScreen(
     onQueryRag: (String) -> Unit,
     onIndexAllFiles: () -> Unit,
     onOpenAiSettings: () -> Unit,
-    onAskAiForFile: (KgNodeEntity) -> Unit,
+    onAskAiForFile: (BrainNodeEntity) -> Unit,
     brainTopics: List<BrainTopicEntity> = emptyList(),
     selectedBrainTopic: BrainTopicEntity? = null,
     brainTopicRelevantFiles: List<BrainTopicFile> = emptyList(),
@@ -190,7 +190,7 @@ fun KnowledgeGraphScreen(
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableStateOf(GraphScreenTab.ASK_AI) }
-    var selectedNode by remember { mutableStateOf<KgNodeEntity?>(null) }
+    var selectedNode by remember { mutableStateOf<BrainNodeEntity?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val syncRotation = if (isIndexing) {
@@ -458,7 +458,7 @@ fun DeclutteredAskAiView(
     onClearChat: () -> Unit,
     isQuerying: Boolean,
     smartSuggestions: List<String>,
-    availableNodes: List<KgNodeEntity>,
+    availableNodes: List<BrainNodeEntity>,
     onQuery: (String) -> Unit,
     onOpenFile: (File) -> Unit,
     onOpenImage: (File) -> Unit
@@ -1180,17 +1180,17 @@ private fun copyUriToTempFile(context: Context, uri: Uri): File? {
 
 @Composable
 fun DeclutteredCanvasView(
-    nodes: List<KgNodeEntity>,
-    edges: List<KgEdgeEntity>,
-    onNodeClick: (KgNodeEntity) -> Unit,
+    nodes: List<BrainNodeEntity>,
+    edges: List<BrainEdgeEntity>,
+    onNodeClick: (BrainNodeEntity) -> Unit,
     onOpenFile: (File) -> Unit,
     onOpenImage: (File) -> Unit,
     onIndexFiles: () -> Unit,
     isIndexing: Boolean,
-    onAskAiForFile: (KgNodeEntity) -> Unit
+    onAskAiForFile: (BrainNodeEntity) -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("ALL") }
-    var activeNode by remember { mutableStateOf<KgNodeEntity?>(null) }
+    var activeNode by remember { mutableStateOf<BrainNodeEntity?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchOpen by remember { mutableStateOf(false) }
     var layoutSeed by remember { mutableStateOf(42L) }
@@ -1400,7 +1400,7 @@ fun DeclutteredCanvasView(
                     detectTapGestures(
                         onTap = { tapOffset ->
                             val centerOffset = Offset(size.width / 2f, size.height / 2f)
-                            var closestNode: KgNodeEntity? = null
+                            var closestNode: BrainNodeEntity? = null
                             var closestDist = Float.MAX_VALUE
                             val minTouchTargetPx = 36f * density
 
@@ -1421,7 +1421,7 @@ fun DeclutteredCanvasView(
                         },
                         onDoubleTap = { tapOffset ->
                             val centerOffset = Offset(size.width / 2f, size.height / 2f)
-                            var closestNode: KgNodeEntity? = null
+                            var closestNode: BrainNodeEntity? = null
                             var closestDist = Float.MAX_VALUE
                             val minTouchTargetPx = 36f * density
 
@@ -1927,7 +1927,7 @@ fun DeclutteredTopicsView(
     onSelectTopic: (String) -> Unit,
     onSaveTopic: (String, String, String?) -> Unit,
     onDeleteTopic: (String) -> Unit,
-    onAskAiForFile: (KgNodeEntity) -> Unit,
+    onAskAiForFile: (BrainNodeEntity) -> Unit,
     onOpenFile: (File) -> Unit,
     onOpenImage: (File) -> Unit
 ) {
@@ -2289,9 +2289,9 @@ fun DeclutteredTopicsView(
 
 @Composable
 fun DeclutteredConnectionsView(
-    nodes: List<KgNodeEntity>,
-    edges: List<KgEdgeEntity>,
-    onNodeClick: (KgNodeEntity) -> Unit,
+    nodes: List<BrainNodeEntity>,
+    edges: List<BrainEdgeEntity>,
+    onNodeClick: (BrainNodeEntity) -> Unit,
     onOpenFile: (File) -> Unit,
     onOpenImage: (File) -> Unit,
     onIndexFiles: () -> Unit
@@ -2427,12 +2427,12 @@ fun DeclutteredConnectionsView(
 
 @Composable
 fun DeclutteredNodeSheet(
-    node: KgNodeEntity,
-    allEdges: List<KgEdgeEntity>,
-    allNodes: List<KgNodeEntity>,
+    node: BrainNodeEntity,
+    allEdges: List<BrainEdgeEntity>,
+    allNodes: List<BrainNodeEntity>,
     onOpenFile: (File) -> Unit,
     onOpenImage: (File) -> Unit,
-    onSelectRelatedNode: (KgNodeEntity) -> Unit,
+    onSelectRelatedNode: (BrainNodeEntity) -> Unit,
     onClose: () -> Unit
 ) {
     val nodeMap = remember(allNodes) { allNodes.associateBy { it.id } }
@@ -2650,8 +2650,8 @@ fun calculateFitScaleAndOffset(positions: Collection<Offset>): Pair<Float, Offse
 }
 
 fun computeOrganicGraphLayout(
-    nodes: List<KgNodeEntity>,
-    edges: List<KgEdgeEntity>,
+    nodes: List<BrainNodeEntity>,
+    edges: List<BrainEdgeEntity>,
     seed: Long = 42L
 ): Map<String, Offset> {
     if (nodes.isEmpty()) return emptyMap()
