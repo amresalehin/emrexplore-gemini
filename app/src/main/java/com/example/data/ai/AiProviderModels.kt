@@ -9,14 +9,16 @@ enum class ProviderType(
     val defaultBaseUrl: String,
     val defaultModel: String,
     val defaultVisionModel: String,
+    val defaultEmbeddingModel: String,
     val keyHint: String
 ) {
     GEMINI(
         displayName = "Google Gemini",
         description = "Direct REST with Gemini 3.5 Flash & native multimodal vision",
         defaultBaseUrl = "https://generativelanguage.googleapis.com/",
-        defaultModel = "gemini-3.5-flash",
-        defaultVisionModel = "gemini-3.5-flash",
+        defaultModel = "gemini-3.8-flash",
+        defaultVisionModel = "gemini-3.8-flash",
+        defaultEmbeddingModel = "gemini-embedding-2",
         keyHint = "AIzaSy..."
     ),
     OPENAI_COMPATIBLE(
@@ -25,6 +27,7 @@ enum class ProviderType(
         defaultBaseUrl = "https://api.openai.com/v1/",
         defaultModel = "gpt-4o-mini",
         defaultVisionModel = "gpt-4o-mini",
+        defaultEmbeddingModel = "text-embedding-3-small",
         keyHint = "sk-proj-..."
     ),
     OLLAMA(
@@ -33,6 +36,7 @@ enum class ProviderType(
         defaultBaseUrl = "http://10.0.2.2:11434/v1/",
         defaultModel = "llama3.2:latest",
         defaultVisionModel = "llama3.2-vision:latest",
+        defaultEmbeddingModel = "nomic-embed-text:latest",
         keyHint = "Optional (not required for local Ollama)"
     ),
     OPENROUTER(
@@ -41,14 +45,16 @@ enum class ProviderType(
         defaultBaseUrl = "https://openrouter.ai/api/v1/",
         defaultModel = "meta-llama/llama-3.2-11b-vision-instruct",
         defaultVisionModel = "meta-llama/llama-3.2-11b-vision-instruct",
+        defaultEmbeddingModel = "openai/text-embedding-3-small",
         keyHint = "sk-or-v1-..."
     ),
     GROQ(
         displayName = "Groq Cloud",
         description = "Ultra-fast LPUs for instant document extraction & indexing",
         defaultBaseUrl = "https://api.groq.com/openai/v1/",
-        defaultModel = "llama-3.2-11b-vision-preview",
-        defaultVisionModel = "llama-3.2-11b-vision-preview",
+        defaultModel = "openai/gpt-oss-120b",
+        defaultVisionModel = "openai/gpt-oss-120b",
+        defaultEmbeddingModel = "",
         keyHint = "gsk_..."
     );
 
@@ -98,4 +104,11 @@ data class ConnectedDotsItem(
     val relationship: String,
     val targetNode: KgNodeEntity,
     val snippet: String = ""
+)
+
+
+data class AvailableAiModel(
+    val id: String,
+    val supportsVision: Boolean = false,
+    val supportsEmbedding: Boolean = false
 )
