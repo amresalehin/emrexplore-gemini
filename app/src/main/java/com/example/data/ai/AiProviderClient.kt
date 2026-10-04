@@ -255,6 +255,7 @@ class AiProviderClient {
                 if (!generation && !name.contains("embedding", true)) return@mapNotNull null
                 AvailableAiModel(
                     id = name,
+                    supportsChat = generation,
                     supportsVision = generation && !name.contains("live", true) && !name.contains("tts", true) && !name.contains("transcribe", true),
                     supportsEmbedding = name.contains("embedding", true)
                 )
@@ -275,10 +276,14 @@ class AiProviderClient {
                 val details = item.optJSONObject("details")
                 val families = details?.optJSONArray("families")
                 val hasClipFamily = families != null && (0 until families.length()).any { families.optString(it).contains("clip", true) }
+                val embedding = name.contains("embed", true) || name.contains("bge", true) || name.contains("e5", true)
                 AvailableAiModel(
                     id = name,
-                    supportsVision = hasClipFamily || name.contains("vision", true) || name.contains("gemma3", true),
-                    supportsEmbedding = name.contains("embed", true) || name.contains("bge", true) || name.contains("e5", true)
+                    supportsChat = !embedding,
+                    supportsVision = !embedding && (hasClipFamily || name.contains("vision", true) || name.contains("gemma3", true)),
+                    supportsEmbedding = embedding,
+                    isFree = true,
+                    priceKnown = true
                 )
             }.sortedBy { it.id }
         }
@@ -302,10 +307,22 @@ class AiProviderClient {
                 val architecture = item.optJSONObject("architecture")
                 val inputs = architecture?.optJSONArray("input_modalities")
                 val hasImage = inputs != null && (0 until inputs.length()).any { inputs.optString(it).equals("image", true) }
+                val embedding = id.contains("embedding", true) || id.contains("embed", true)
+                val lowerId = id.lowercase()
+                val nonChat = listOf("embedding", "embed-", "rerank", "moderation", "transcri", "whisper", "tts", "speech", "image-generation", "text-to-image")
+                    .any { lowerId.contains(it) }
+                val pricing = item.optJSONObject("pricing")
+                val inputPrice = pricing?.optString("prompt")?.toDoubleOrNull()
+                val outputPrice = pricing?.optString("completion")?.toDoubleOrNull()
+                val priceKnown = inputPrice != null && outputPrice != null
+                val free = priceKnown && inputPrice <= 0.0 && outputPrice <= 0.0
                 AvailableAiModel(
                     id = id,
-                    supportsVision = hasImage || id.contains("vision", true) || id.contains("vl", true),
-                    supportsEmbedding = id.contains("embedding", true) || id.contains("embed", true)
+                    supportsChat = !embedding && !nonChat,
+                    supportsVision = !embedding && !nonChat && (hasImage || id.contains("vision", true) || id.contains("vl", true)),
+                    supportsEmbedding = embedding,
+                    isFree = free,
+                    priceKnown = priceKnown
                 )
             }.sortedBy { it.id }
         }
