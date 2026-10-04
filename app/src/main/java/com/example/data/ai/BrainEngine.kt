@@ -20,19 +20,44 @@ class BrainEngine(
                 lexical[chunk.chunkId] = maxOf(lexical[chunk.chunkId] ?: 0f, score)
             }
         }
-        val embedded = ragDao.getEmbeddedChunks()
-        val queryEmbedding = if (config.isEnabled && config.apiKey.isNotBlank()) client.embedTexts(listOf(question), config).firstOrNull() else null
+
+        val semanticAvailable = config.isEnabled &&
+            (ProviderType.fromString(config.providerType) == ProviderType.OLLAMA || config.apiKey.isNotBlank()) &&
+            config.embeddingModel.isNotBlank()
+        val queryEmbedding = if (semanticAvailable) client.embedTexts(listOf(question), config).firstOrNull() else null
         val candidates = linkedMapOf<String, Float>()
-        embedded.forEach { chunk ->
-            val semantic = queryEmbedding?.let { cosine(it, parseEmbedding(chunk.embeddingJson)) } ?: 0f
-            val lex = lexical[chunk.chunkId] ?: 0f
-            val score = 0.70f * semantic + 0.30f * lex
-            if (score > 0f) candidates[chunk.chunkId] = score
+        var offset = 0
+        val pageSize = 64
+
+        if (queryEmbedding != null) {
+            while (true) {
+                val page = ragDao.getEmbeddedChunksPage(config.embeddingModel, pageSize, offset)
+                if (page.isEmpty()) break
+                page.forEach { chunk ->
+                    val vector = parseEmbedding(chunk.embeddingJson)
+                    if (vector.isNotEmpty()) {
+                        val semantic = cosine(queryEmbedding, vector)
+                        val lex = lexical[chunk.chunkId] ?: 0f
+                        val score = 0.70f * semantic + 0.30f * lex
+                        if (score > 0f) candidates[chunk.chunkId] = score
+                    }
+                }
+                if (page.size < pageSize) break
+                offset += page.size
+            }
         }
+
         lexical.forEach { (id, score) -> candidates[id] = maxOf(candidates[id] ?: 0f, 0.30f * score) }
         if (candidates.isEmpty()) return@withContext emptyList()
-        val rows = ragDao.getChunksByIds(candidates.keys.toList())
-        rows.sortedByDescending { candidates[it.chunkId] ?: 0f }.take(limit).map { ScoredChunk(it, candidates[it.chunkId] ?: 0f) }
+
+        val topIds = candidates.entries
+            .sortedByDescending { it.value }
+            .take((limit * 4).coerceAtLeast(limit))
+            .map { it.key }
+        val rows = ragDao.getChunksByIds(topIds)
+        rows.sortedByDescending { candidates[it.chunkId] ?: 0f }
+            .take(limit)
+            .map { ScoredChunk(it, candidates[it.chunkId] ?: 0f) }
     }
 
     suspend fun graphContext(seedNodes: List<KgNodeEntity>, maxDepth: Int = 3, maxPerNode: Int = 8): Pair<List<KgNodeEntity>, List<String>> = withContext(Dispatchers.IO) {
