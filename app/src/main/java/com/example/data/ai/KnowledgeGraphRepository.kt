@@ -428,6 +428,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             )
         }
 
+        persistMemoryEvidence(filePath, file.name, hashKey("$filePath:0"), analysis, config, "MENTIONS")
         kgDao.insertNodes(nodesToInsert)
         kgDao.insertEdges(edgesToInsert)
         val evidence = edgesToInsert.mapNotNull { edge ->
@@ -586,6 +587,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             }
         }
 
+        persistMemoryEvidence(filePath, file.name, hashKey("img:$filePath:0:$chunkContent"), analysis, config, "DEPICTS")
         kgDao.insertNodes(nodesToInsert)
         kgDao.insertEdges(edgesToInsert)
         val evidence = edgesToInsert.mapNotNull { edge ->
@@ -653,6 +655,42 @@ class KnowledgeGraphRepository(private val context: Context) {
         } catch(_: Exception){ hashKey("${file.absolutePath}:${file.length()}:${file.lastModified()}") }
     }
 
+    private suspend fun persistMemoryEvidence(
+        filePath: String,
+        fileName: String,
+        chunkId: String,
+        analysis: AnalysisResult,
+        config: AiProviderConfigEntity,
+        predicate: String
+    ) {
+        val sourceType = if (isAiReady(config)) "AI" else "LOCAL"
+        val facts = analysis.entities.map { entity ->
+            MemoryFactEntity(
+                id = hashKey("fact:$filePath:$predicate:${normalize(entity.name)}"),
+                subject = fileName,
+                normalizedSubject = normalize(fileName),
+                predicate = predicate,
+                objectValue = entity.name.trim(),
+                normalizedObject = normalize(entity.name),
+                confidence = entity.confidence.coerceIn(0f, 1f),
+                sourceType = sourceType,
+                evidence = "Observed in $fileName",
+                sourceFilePath = filePath
+            )
+        }
+        facts.forEach { factDao.insert(it) }
+        val mentions = analysis.entities.map { entity ->
+            EntityMentionEntity(
+                entityId = "ent:${hashKey(normalize(entity.name))}",
+                sourceFilePath = filePath,
+                chunkId = chunkId,
+                mentionText = entity.name.trim(),
+                entityType = entity.type.ifBlank { "TOPIC" },
+                confidence = entity.confidence.coerceIn(0f, 1f)
+            )
+        }
+        if (mentions.isNotEmpty()) mentionDao.insertAll(mentions)
+    }
     private suspend fun replaceSourceData(filePath: String) {
         kgDao.deleteEdgeEvidenceBySource(filePath)
         kgDao.deleteSourcedEdgesWithoutEvidence()
