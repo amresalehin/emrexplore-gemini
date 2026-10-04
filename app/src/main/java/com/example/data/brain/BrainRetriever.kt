@@ -56,7 +56,7 @@ class BrainRetriever(
         val hits = PriorityQueue<BrainSearchHit>(limit * 2) { a, b ->
             a.score.compareTo(b.score)
         }
-        collectModelHits(OfflineEmbeddingEngine.MODEL_NAME, offlineQuery, hits, limit * 2)
+        collectOfflineHits(offlineQuery, hits, limit * 2)
 
         if (onlineQuery != null) {
             collectModelHits(onlineModel, onlineQuery, hits, limit * 2)
@@ -138,6 +138,31 @@ class BrainRetriever(
 
         val evidence = retrieval.evidence.joinToString("\n")
         return contextBuilder.toString().trim() to evidence
+    }
+
+    private suspend fun collectOfflineHits(
+        queryVector: FloatArray,
+        queue: PriorityQueue<BrainSearchHit>,
+        capacity: Int
+    ) {
+        if (queryVector.isEmpty()) return
+
+        var offset = 0
+        while (true) {
+            val page = chunkDao.getOfflinePage(PAGE_SIZE, offset)
+            if (page.isEmpty()) break
+
+            for (chunk in page) {
+                val vector = OfflineEmbeddingEngine.parseEmbedding(chunk.offlineEmbeddingJson)
+                if (vector.isEmpty() || vector.size != queryVector.size) continue
+                val score = OfflineEmbeddingEngine.cosine(queryVector, vector)
+                offer(queue, BrainSearchHit(chunk, score), capacity)
+            }
+
+            if (page.size < PAGE_SIZE) break
+            offset += page.size
+            if (offset >= MAX_SCAN_ROWS) break
+        }
     }
 
     private suspend fun collectModelHits(
