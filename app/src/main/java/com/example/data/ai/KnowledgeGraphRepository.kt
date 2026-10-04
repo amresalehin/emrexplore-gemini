@@ -211,18 +211,17 @@ class KnowledgeGraphRepository(private val context: Context) {
     /**
      * Analyzes and indexes a single document or image into the Knowledge Graph & RAG store.
      */
-    suspend fun indexFile(file: File, config: AiProviderConfigEntity) {
+    suspend fun indexFile(file: File, config: AiProviderConfigEntity): Boolean =
         indexFile(file, null, config)
-    }
 
-    suspend fun indexFile(file: File, uri: android.net.Uri?, config: AiProviderConfigEntity) = withContext(Dispatchers.IO) {
+    suspend fun indexFile(file: File, uri: android.net.Uri?, config: AiProviderConfigEntity): Boolean = withContext(Dispatchers.IO) {
         val canReadDirectly = file.exists() && file.isFile && file.canRead()
-        if (!canReadDirectly && uri == null) return@withContext
+        if (!canReadDirectly && uri == null) return@withContext false
         val ext = file.extension.lowercase()
 
         val isImage = ext in setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp")
         val isDoc = ext in setOf("txt", "md", "json", "csv", "xml", "html", "htm", "log", "kt", "java", "py", "js", "ts", "c", "cpp", "properties", "sql", "yaml", "yml", "pdf", "conf", "ini", "tsv", "gradle", "kts", "env")
-        if (!isImage && !isDoc) return@withContext
+        if (!isImage && !isDoc) return@withContext true
 
         val filePath = file.absolutePath
         val runId = UUID.randomUUID().toString()
@@ -238,7 +237,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             existing.modelVersion == modelVersion &&
             existing.embeddingModel == config.embeddingModel
         ) {
-            return@withContext
+            return@withContext true
         }
 
         val hash = computeFileHash(file, uri)
@@ -249,7 +248,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             existing.modelVersion == modelVersion &&
             existing.embeddingModel == config.embeddingModel
         ) {
-            return@withContext
+            return@withContext true
         }
 
         val result = try {
@@ -262,7 +261,7 @@ class KnowledgeGraphRepository(private val context: Context) {
         } catch (error: Exception) {
             Log.w("KGRepo", "Indexing failed; existing Brain data was preserved for $filePath: ${error.message}")
             modelRunDao.insert(ModelRunEntity(runId, filePath, "INDEX", config.chatModel.ifBlank { "local" }, false, error.message, runStartedAt, System.currentTimeMillis()))
-            return@withContext
+            return@withContext false
         }
 
         val chunkCount = ragDao.getChunkCountForFile(filePath)
@@ -274,9 +273,11 @@ class KnowledgeGraphRepository(private val context: Context) {
         if (indexed && embeddingsReady) {
             fingerprintDao.insert(IndexFingerprintEntity(filePath, file.length(), file.lastModified(), hash, modelVersion, config.embeddingModel))
             modelRunDao.insert(ModelRunEntity(runId, filePath, "INDEX", config.chatModel.ifBlank { "local" }, true, null, runStartedAt, System.currentTimeMillis()))
+            return@withContext true
         } else {
             fingerprintDao.delete(filePath)
             modelRunDao.insert(ModelRunEntity(runId, filePath, "INDEX", config.chatModel.ifBlank { "local" }, false, "Embeddings or indexed source incomplete", runStartedAt, System.currentTimeMillis()))
+            return@withContext false
         }
     }
 
