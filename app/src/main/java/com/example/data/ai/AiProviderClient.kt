@@ -118,6 +118,7 @@ class AiProviderClient {
                     .put("model", "models/$model")
                     .put("content", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", value.take(8000)))))
             )
+        }
         val request = Request.Builder().url(url)
             .post(JSONObject().put("requests", requests).toString().toRequestBody(jsonMediaType))
             .build()
