@@ -69,7 +69,8 @@ enum class ProviderType(
         defaultBaseUrl = "https://api.groq.com/openai/v1/",
         defaultModel = "qwen/qwen3.8-27b",
         defaultVisionModel = "qwen/qwen3.8-27b",
-        defaultEmbeddingModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
         keyHint = "gsk_..."
     );
 
