@@ -1536,6 +1536,7 @@ class FileRepository(private val context: Context) {
         destination.parentFile?.mkdirs()
         if (source.renameTo(destination)) return true
         return try {
+            val sourceSize = if (source.isFile) source.length() else -1L
             val copied = if (source.isDirectory) {
                 source.copyRecursively(destination, overwrite = false)
             } else {
@@ -1543,6 +1544,10 @@ class FileRepository(private val context: Context) {
                 true
             }
             if (!copied || !destination.exists()) return false
+            if (source.isFile && (destination.length() != sourceSize)) {
+                try { destination.delete() } catch (_: Exception) { }
+                return false
+            }
             val deleted = if (source.isDirectory) source.deleteRecursively() else source.delete()
             if (!deleted) {
                 if (destination.isDirectory) destination.deleteRecursively() else destination.delete()
