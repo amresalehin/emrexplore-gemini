@@ -79,7 +79,7 @@ fun ZipViewerDialog(
                         )
                     } else {
                         LazyColumn {
-                            items(entries) { entry ->
+                            items(items = entries, key = { it }) { entry ->
                                 Text(
                                     text = entry,
                                     style = MaterialTheme.typography.bodySmall,
