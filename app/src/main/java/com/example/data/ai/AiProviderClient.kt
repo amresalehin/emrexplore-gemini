@@ -110,7 +110,7 @@ class AiProviderClient {
                 }
             } catch (error: Exception) {
                 Log.w("AiProviderClient", "Embedding request failed: ${error.message}")
-                emptyList()
+                throw error
             }
         }
 
