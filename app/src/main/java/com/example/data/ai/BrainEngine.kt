@@ -30,8 +30,7 @@ class BrainEngine(
             if (score > 0f) candidates[chunk.chunkId] = score
         }
         lexical.forEach { (id, score) -> candidates[id] = maxOf(candidates[id] ?: 0f, 0.30f * score) }
-        val lookup = embedded.associateBy { it.chunkId }
-        candidates.entries.mapNotNull { (id, score) -> lookup[id]?.let { ScoredChunk(it, score) } }.sortedByDescending { it.score }.take(limit)
+        if (candidates.isEmpty()) return@withContext emptyList()\n        val rows = ragDao.getChunksByIds(candidates.keys.toList())\n        rows.sortedByDescending { candidates[it.chunkId] ?: 0f }.take(limit).map { ScoredChunk(it, candidates[it.chunkId] ?: 0f) }
     }
 
     suspend fun graphContext(seedNodes: List<KgNodeEntity>, maxDepth: Int = 3, maxPerNode: Int = 8): Pair<List<KgNodeEntity>, List<String>> = withContext(Dispatchers.IO) {
