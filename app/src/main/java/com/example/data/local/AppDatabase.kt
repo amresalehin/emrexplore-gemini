@@ -56,6 +56,7 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiCaption TEXT")
                 db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiTagsJson TEXT NOT NULL DEFAULT '[]'")
                 db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiEntitiesJson TEXT NOT NULL DEFAULT '[]'")
+                db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiRelationsJson TEXT NOT NULL DEFAULT '[]'")
                 db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiModel TEXT")
                 db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiFileLastModified INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiProcessedAt INTEGER NOT NULL DEFAULT 0")
