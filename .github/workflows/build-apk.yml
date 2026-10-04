@@ -3,7 +3,11 @@ name: Build APK
 on:
   push:
     branches:
-      - apk-build-20260928
+      - main
+      - brain-overhaul-20261004
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -51,6 +55,9 @@ jobs:
             -keysize 2048 \
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Run unit tests
+        run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
