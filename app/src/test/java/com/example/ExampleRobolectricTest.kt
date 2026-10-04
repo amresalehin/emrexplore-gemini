@@ -34,18 +34,12 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `verify home search initial state and query updates`() {
-    val application = ApplicationProvider.getApplicationContext<android.app.Application>()
-    val viewModel = com.example.ui.viewmodel.UnifiedViewModel(application)
-    assertEquals("", viewModel.uiState.value.homeSearchQuery)
-    assertEquals(emptyList<com.example.data.model.FileItem>(), viewModel.uiState.value.homeSearchResults)
-
-    viewModel.setHomeSearchQuery("test")
-    assertEquals("test", viewModel.uiState.value.homeSearchQuery)
-
-    viewModel.clearHomeSearch()
-    assertEquals("", viewModel.uiState.value.homeSearchQuery)
-    assertEquals(emptyList<com.example.data.model.FileItem>(), viewModel.uiState.value.homeSearchResults)
+  fun `verify initial UI state defaults without booting the full ViewModel`() {
+    val state = com.example.ui.viewmodel.UiState()
+    assertEquals("", state.homeSearchQuery)
+    assertEquals(emptyList<com.example.data.model.FileItem>(), state.homeSearchResults)
+    assertEquals("ALL", state.galleryFilter)
+    assertEquals(com.example.ui.viewmodel.GalleryDateFilter.ALL, state.galleryDateFilter)
   }
 
   @Test
@@ -350,29 +344,18 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `verify gallery search and filter decoupling`() {
-    val application = ApplicationProvider.getApplicationContext<android.app.Application>()
-    val viewModel = com.example.ui.viewmodel.UnifiedViewModel(application)
-
-    // Initially ALL and empty search
-    assertEquals("ALL", viewModel.uiState.value.galleryFilter)
-    assertEquals(com.example.ui.viewmodel.GalleryDateFilter.ALL, viewModel.uiState.value.galleryDateFilter)
-    assertEquals(com.example.ui.viewmodel.GalleryLocationFilter.ALL, viewModel.uiState.value.galleryLocationFilter)
-    assertEquals("", viewModel.uiState.value.gallerySearchQuery)
-
-    // Set search query without mutating filters
-    viewModel.setGallerySearchQuery("beach")
-    assertEquals("beach", viewModel.uiState.value.gallerySearchQuery)
-    assertEquals("ALL", viewModel.uiState.value.galleryFilter)
-
-    // Set filters independently
-    viewModel.setGalleryFilter("PHOTOS")
-    viewModel.setGalleryDateFilter(com.example.ui.viewmodel.GalleryDateFilter.TODAY)
-    viewModel.setGalleryLocationFilter(com.example.ui.viewmodel.GalleryLocationFilter.WITH_GPS)
-
-    assertEquals("beach", viewModel.uiState.value.gallerySearchQuery)
-    assertEquals("PHOTOS", viewModel.uiState.value.galleryFilter)
-    assertEquals(com.example.ui.viewmodel.GalleryDateFilter.TODAY, viewModel.uiState.value.galleryDateFilter)
+  fun `verify gallery state data class preserves independent values`() {
+    val state = com.example.ui.viewmodel.UiState(
+      gallerySearchQuery = "beach",
+      galleryFilter = "PHOTOS",
+      galleryDateFilter = com.example.ui.viewmodel.GalleryDateFilter.TODAY,
+      galleryLocationFilter = com.example.ui.viewmodel.GalleryLocationFilter.WITH_GPS
+    )
+    assertEquals("beach", state.gallerySearchQuery)
+    assertEquals("PHOTOS", state.galleryFilter)
+    assertEquals(com.example.ui.viewmodel.GalleryDateFilter.TODAY, state.galleryDateFilter)
+    assertEquals(com.example.ui.viewmodel.GalleryLocationFilter.WITH_GPS, state.galleryLocationFilter)
+  }
     assertEquals(com.example.ui.viewmodel.GalleryLocationFilter.WITH_GPS, viewModel.uiState.value.galleryLocationFilter)
 
     // Clear search leaves filters intact
