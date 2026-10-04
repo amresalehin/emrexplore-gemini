@@ -319,7 +319,11 @@ fun KnowledgeGraphScreen(
         }
 
         // --- 2. Clean Tab Content ---
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
             when (selectedTab) {
                 GraphScreenTab.CANVAS -> {
                     DeclutteredCanvasView(
@@ -607,7 +611,8 @@ fun DeclutteredCanvasView(
         // Interactive Graph Viewport
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface)
                 .pointerInput(Unit) {
                     detectTransformGestures { centroid, pan, zoom, _ ->
