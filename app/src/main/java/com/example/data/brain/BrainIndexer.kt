@@ -41,6 +41,8 @@ class BrainIndexer(
             return BrainIndexOutcome(true, skipped = true)
         }
 
+        val initialSize = file.length()
+        val initialModified = file.lastModified()
         val signature = modelSignature(config)
         val existing = documentDao.get(path)
         if (!force &&
@@ -196,6 +198,10 @@ class BrainIndexer(
 
             // Everything above is staged in memory. No existing Brain data is touched
             // until every chunk has a valid vector and a complete graph representation.
+            if (file.length() != initialSize || file.lastModified() != initialModified) {
+                return fail(path, "File changed during Brain indexing; retrying from a fresh snapshot", startedAt)
+            }
+
             val document = BrainDocumentEntity(
                 path = path,
                 name = file.name,
