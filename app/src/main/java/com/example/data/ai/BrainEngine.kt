@@ -23,68 +23,43 @@ class BrainEngine(
         private const val MAX_GRAPH_EVIDENCE = 24
     }
 
-    suspend fun search(question: String, config: AiProviderConfigEntity, limit: Int = 8): List<ScoredChunk> = withContext(Dispatchers.IO) {
-        val lexical = linkedMapOf<String, Float>()
-        tokenize(question).forEach { token ->
-            ragDao.searchChunks(token, LEXICAL_RESULTS_PER_TOKEN).forEachIndexed { index, chunk ->
-                val score = 1f / (index + 1)
-                lexical[chunk.chunkId] = maxOf(lexical[chunk.chunkId] ?: 0f, score)
-            }
+    suspend fun search(
+        question: String,
+        config: AiProviderConfigEntity,
+        limit: Int = 8
+    ): List<ScoredChunk> = withContext(Dispatchers.IO) {
+        if (!config.isEnabled || config.embeddingModel.isBlank()) {
+            throw IllegalStateException("Semantic retrieval requires an enabled AI provider and embedding model")
         }
 
-        val semanticAvailable = config.isEnabled &&
-            (ProviderType.fromString(config.providerType) in setOf(
-                ProviderType.OLLAMA,
-                ProviderType.OPENAI_COMPATIBLE,
-                ProviderType.CUSTOM
-            ) || config.apiKey.isNotBlank()) &&
-            config.embeddingModel.isNotBlank()
-
-        // Keep semantic retrieval active whenever embeddings are available. This is
-        // the high-value recall path for paraphrases and concepts that do not share
-        // exact words with the query. The scan itself remains bounded for resource use.
-        val queryEmbedding = if (semanticAvailable && question.isNotBlank()) {
-            try {
-                client.embedTexts(listOf(question), config).firstOrNull()
-            } catch (_: Exception) {
-                // Semantic retrieval is optional at query time. Fall back to lexical retrieval
-                // when the embedding provider is temporarily unavailable.
-                null
-            }
-        } else null
+        val queryEmbedding = client.embedTexts(listOf(question), config).firstOrNull()
+            ?: throw IllegalStateException("Embedding provider returned no query embedding")
 
         val candidates = linkedMapOf<String, Float>()
-        if (queryEmbedding != null) {
-            val startedAt = System.nanoTime()
-            var offset = 0
-            var scanned = 0
+        val startedAt = System.nanoTime()
+        var offset = 0
+        var scanned = 0
 
-            while (scanned < MAX_SEMANTIC_ROWS &&
-                (System.nanoTime() - startedAt) / 1_000_000L < SEMANTIC_TIME_BUDGET_MS
-            ) {
-                val pageLimit = minOf(SEMANTIC_PAGE_SIZE, MAX_SEMANTIC_ROWS - scanned)
-                val page = ragDao.getEmbeddedChunksPage(config.embeddingModel, pageLimit, offset)
-                if (page.isEmpty()) break
+        while (scanned < MAX_SEMANTIC_ROWS &&
+            (System.nanoTime() - startedAt) / 1_000_000L < SEMANTIC_TIME_BUDGET_MS
+        ) {
+            val pageLimit = minOf(SEMANTIC_PAGE_SIZE, MAX_SEMANTIC_ROWS - scanned)
+            val page = ragDao.getEmbeddedChunksPage(config.embeddingModel, pageLimit, offset)
+            if (page.isEmpty()) break
 
-                page.forEach { row ->
-                    val vector = parseEmbedding(row.embeddingJson)
-                    if (vector.isNotEmpty()) {
-                        val semantic = cosine(queryEmbedding, vector)
-                        val lex = lexical[row.chunkId] ?: 0f
-                        val score = 0.70f * semantic + 0.30f * lex
-                        if (score > 0f) candidates[row.chunkId] = score
-                    }
+            page.forEach { row ->
+                val vector = parseEmbedding(row.embeddingJson)
+                if (vector.isNotEmpty()) {
+                    val semantic = cosine(queryEmbedding, vector)
+                    if (semantic > 0f) candidates[row.chunkId] = semantic
                 }
-
-                scanned += page.size
-                offset += page.size
-                if (page.size < pageLimit) break
             }
+
+            scanned += page.size
+            offset += page.size
+            if (page.size < pageLimit) break
         }
 
-        lexical.forEach { (id, score) ->
-            candidates[id] = maxOf(candidates[id] ?: 0f, 0.30f * score)
-        }
         if (candidates.isEmpty()) return@withContext emptyList()
 
         val topIds = candidates.entries
