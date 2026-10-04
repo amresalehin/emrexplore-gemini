@@ -332,7 +332,7 @@ class AiProviderClient {
             }
             parseAnalysisJson(responseText, fileName)
         } catch (e: Exception) {
-            Log.e("AiProviderClient", "Image analysis failed: ${e.message}")
+            Log.e("AiProviderClient", "Image analysis failed: " + e.javaClass.simpleName)
             fallbackImageAnalysis(fileName, metadataSummary)
         }
     }
