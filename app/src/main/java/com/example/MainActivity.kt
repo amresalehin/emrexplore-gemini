@@ -405,7 +405,9 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             onClose = { viewModel.closeFullscreenMedia() },
             onIndexChange = { newIdx -> viewModel.moveFullscreenMedia(newIdx) },
             onToggleFavorite = { fileItem -> viewModel.toggleFavorite(fileItem) },
-            onInspectMetadata = { mediaItem -> viewModel.inspectMetadata(mediaItem) }
+            onInspectMetadata = { mediaItem -> viewModel.inspectMetadata(mediaItem) },
+            onLoadAiMetadata = { mediaItem -> viewModel.getAiMetadata(mediaItem) },
+            onReAnalyzeAi = { mediaItem -> viewModel.reAnalyzeGalleryImage(mediaItem) }
         )
     }
 
