@@ -98,7 +98,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "emrexplore.db"
                 ) .addMigrations(MIGRATION_4_6, MIGRATION_6_7)
-                 .fallbackToDestructiveMigration()
+                 .fallbackToDestructiveMigrationFrom(1, 2, 3)
                  .build()
                 INSTANCE = instance
                 instance
