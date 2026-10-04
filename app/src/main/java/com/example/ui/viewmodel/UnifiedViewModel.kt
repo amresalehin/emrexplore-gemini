@@ -34,8 +34,10 @@ import com.example.data.ai.ConnectedDotsItem
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.ai.RagAnswer
 import com.example.data.local.AiProviderConfigEntity
+import com.example.data.local.BrainTopicEntity
 import com.example.data.local.KgEdgeEntity
 import com.example.data.local.KgNodeEntity
+import com.example.data.ai.BrainTopicFile
 import com.example.data.model.ConflictResolution
 import com.example.data.model.FileOperationProgress
 import com.example.data.model.OperationStatus
@@ -246,6 +248,11 @@ data class UiState(
     val isRagQuerying: Boolean = false,
     val activeFileConnectedDots: List<ConnectedDotsItem> = emptyList(),
     val kgSmartSuggestions: List<String> = emptyList(),
+    val brainTopics: List<BrainTopicEntity> = emptyList(),
+    val selectedBrainTopicId: String? = null,
+    val brainTopicRelevantFiles: List<BrainTopicFile> = emptyList(),
+    val isBrainTopicLoading: Boolean = false,
+    val brainTopicStatus: String = "",
     val aiModels: List<AvailableAiModel> = emptyList(),
     val aiVisionModels: List<AvailableAiModel> = emptyList(),
     val aiEmbeddingModels: List<AvailableAiModel> = emptyList(),
@@ -519,6 +526,23 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.update { it.copy(kgEdges = edges) }
             }
         }
+        viewModelScope.launch {
+            kgRepository.brainTopicsFlow.collectLatest { topics ->
+                val previousId = _uiState.value.selectedBrainTopicId
+                val selectedId = previousId?.takeIf { id -> topics.any { it.id == id } }
+                    ?: topics.firstOrNull()?.id
+                _uiState.update {
+                    it.copy(
+                        brainTopics = topics,
+                        selectedBrainTopicId = selectedId
+                    )
+                }
+                if (selectedId != previousId) {
+                    refreshBrainTopicFiles(selectedId)
+                }
+            }
+        }
+
         viewModelScope.launch {
             kgRepository.aiConfigFlow.collectLatest { config ->
                 _uiState.update {
@@ -2135,6 +2159,103 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun selectBrainTopic(topicId: String) {
+        val exists = _uiState.value.brainTopics.any { it.id == topicId }
+        if (!exists) return
+        _uiState.update {
+            it.copy(
+                selectedBrainTopicId = topicId,
+                brainTopicRelevantFiles = emptyList(),
+                isBrainTopicLoading = true,
+                brainTopicStatus = "Finding relevant files..."
+            )
+        }
+        refreshBrainTopicFiles(topicId)
+    }
+
+    fun saveBrainTopic(heading: String, description: String, existingId: String?) {
+        viewModelScope.launch {
+            try {
+                val saved = kgRepository.saveBrainTopic(existingId, heading, description)
+                _uiState.update {
+                    it.copy(
+                        selectedBrainTopicId = saved.id,
+                        brainTopicStatus = "Topic saved"
+                    )
+                }
+                refreshBrainTopicFiles(saved.id)
+            } catch (error: Exception) {
+                _uiState.update { it.copy(brainTopicStatus = error.message ?: "Could not save topic") }
+            }
+        }
+    }
+
+    fun deleteBrainTopic(topicId: String) {
+        viewModelScope.launch {
+            kgRepository.deleteBrainTopic(topicId)
+            val remaining = _uiState.value.brainTopics.filterNot { it.id == topicId }
+            val nextId = remaining.firstOrNull()?.id
+            _uiState.update {
+                it.copy(
+                    selectedBrainTopicId = nextId,
+                    brainTopicRelevantFiles = emptyList(),
+                    brainTopicStatus = if (nextId == null) "" else "Finding relevant files...",
+                    isBrainTopicLoading = nextId != null
+                )
+            }
+            refreshBrainTopicFiles(nextId)
+        }
+    }
+
+    private fun refreshBrainTopicFiles(topicId: String?) {
+        if (topicId == null) {
+            _uiState.update {
+                it.copy(
+                    brainTopicRelevantFiles = emptyList(),
+                    isBrainTopicLoading = false,
+                    brainTopicStatus = ""
+                )
+            }
+            return
+        }
+        viewModelScope.launch {
+            val topic = _uiState.value.brainTopics.firstOrNull { it.id == topicId }
+            if (topic == null) {
+                _uiState.update { it.copy(brainTopicRelevantFiles = emptyList(), isBrainTopicLoading = false) }
+                return@launch
+            }
+            _uiState.update {
+                it.copy(
+                    selectedBrainTopicId = topicId,
+                    isBrainTopicLoading = true,
+                    brainTopicStatus = "Finding relevant files..."
+                )
+            }
+            try {
+                val files = kgRepository.getRelevantFilesForBrainTopic(topic, _uiState.value.aiConfig, 12)
+                val config = _uiState.value.aiConfig
+                _uiState.update {
+                    it.copy(
+                        brainTopicRelevantFiles = files,
+                        isBrainTopicLoading = false,
+                        brainTopicStatus = when {
+                            files.isNotEmpty() -> "${files.size} relevant files found"
+                            !config.isEnabled || config.embeddingModel.isBlank() -> "Set an enabled embedding model to find files semantically"
+                            else -> "No semantic matches found"
+                        }
+                    )
+                }
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        brainTopicRelevantFiles = emptyList(),
+                        isBrainTopicLoading = false,
+                        brainTopicStatus = "Semantic matching unavailable: ${error.message ?: "embedding failed"}"
+                    )
+                }
+            }
+        }
+    }
     fun loadConnectedDotsForFile(filePath: String) {
         viewModelScope.launch {
             val dots = kgRepository.getConnectedDotsForFile(filePath)
