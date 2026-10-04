@@ -353,6 +353,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         viewModelScope.launch {
+            // Remove any legacy demo files before the first real storage/count read.
+            repository.initializeSampleDataIfNeeded()
             val prefs = repository.getPreferences()
             val initialPath = if (prefs.rememberLastDirectory && prefs.lastDirectoryPath.isNotBlank() && File(prefs.lastDirectoryPath).exists()) {
                 prefs.lastDirectoryPath
@@ -374,9 +376,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             loadStorageStats()
             calculateCategoryCounts()
 
-            // Asynchronous sample seeding and indexing in background
+            // Continue indexing in the background without modifying the user's file library.
             launch(Dispatchers.IO) {
-                repository.initializeSampleDataIfNeeded()
                 if (prefs.autoIndexOnStart && repository.totalIndexedCount() == 0) {
                     repository.indexStorage(force = false)
                 }
