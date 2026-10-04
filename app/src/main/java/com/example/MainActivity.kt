@@ -312,6 +312,8 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                         MainTab.BRAIN -> KnowledgeGraphScreen(
                             nodes = uiState.kgNodes,
                             edges = uiState.kgEdges,
+                             nodeCount = uiState.kgNodeCount,
+                             edgeCount = uiState.kgEdgeCount,
                             aiConfig = uiState.aiConfig,
                             apiConfigured = uiState.aiConfig.isEnabled &&
                                 (com.example.data.ai.ProviderType.fromString(uiState.aiConfig.providerType) in setOf(
