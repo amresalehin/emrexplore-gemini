@@ -28,8 +28,11 @@ class AiProviderClient {
     private fun validateEndpoint(raw: String, provider: ProviderType): okhttp3.HttpUrl {
         val url = raw.toHttpUrlOrNull() ?: throw IllegalArgumentException("Invalid provider URL")
         val host = url.host.lowercase()
-        val localEndpoint = provider in setOf(ProviderType.OLLAMA, ProviderType.OPENAI_COMPATIBLE) &&
-            host in setOf("localhost", "127.0.0.1", "10.0.2.2")
+        val localEndpoint = provider in setOf(
+            ProviderType.OLLAMA,
+            ProviderType.OPENAI_COMPATIBLE,
+            ProviderType.CUSTOM
+        ) && host in setOf("localhost", "127.0.0.1", "10.0.2.2")
         if (url.scheme != "https" && !localEndpoint) throw IllegalArgumentException("Provider endpoint must use HTTPS")
         return url
     }
