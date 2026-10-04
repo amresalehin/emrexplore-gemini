@@ -63,23 +63,20 @@ class AiProviderClient {
                 null
             }
             if (!listedModels.isNullOrEmpty()) {
-                val textEmbedding = config.textEmbeddingModel.ifBlank { config.embeddingModel }
-                val multimodalEmbedding = config.multimodalEmbeddingModel.ifBlank { textEmbedding }
-                val requirements: List<Triple<String, String, (AvailableAiModel) -> Boolean>> = listOf(
-                    Triple("chat", config.chatModel, { model: AvailableAiModel -> model.supportsChat }),
-                    Triple("vision", config.visionModel, { model: AvailableAiModel -> model.supportsVision }),
-                    Triple("text embedding", textEmbedding, { model: AvailableAiModel -> model.supportsEmbedding }),
-                    Triple("multimodal embedding", multimodalEmbedding, { model: AvailableAiModel ->
-                        model.supportsMultimodalEmbedding ||
-                            (multimodalEmbedding == textEmbedding && model.supportsEmbedding)
-                    })
+                val selectedModels = listOf(
+                    "chat" to config.chatModel,
+                    "vision" to config.visionModel,
+                    "text embedding" to config.textEmbeddingModel.ifBlank { config.embeddingModel },
+                    "multimodal embedding" to config.multimodalEmbeddingModel.ifBlank {
+                        config.textEmbeddingModel.ifBlank { config.embeddingModel }
+                    }
                 )
-                for ((role, modelIdRaw, capability) in requirements) {
+                for ((role, modelIdRaw) in selectedModels) {
                     val modelId = modelIdRaw.trim()
-                    if (modelId.isNotBlank() && listedModels.none { it.id == modelId && capability(it) }) {
+                    if (modelId.isNotBlank() && listedModels.none { it.id == modelId }) {
                         return@withContext ConnectionTestResult(
                             false,
-                            "Selected $role model is not available: $modelId. Tap Fetch and choose a compatible model.",
+                            "Selected $role model is not available: $modelId. Tap Fetch and choose an available model.",
                             System.currentTimeMillis() - startTime
                         )
                     }
