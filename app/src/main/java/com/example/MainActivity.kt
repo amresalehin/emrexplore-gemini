@@ -78,31 +78,40 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: UnifiedViewModel by viewModels()
 
+    companion object {
+        private var coilConfigured = false
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Configure Coil ImageLoader for high-performance lazy loading without scroll stutter
-        val imageLoader = coil.ImageLoader.Builder(this)
-            .components {
-                add(coil.decode.VideoFrameDecoder.Factory())
-            }
-            .memoryCache {
-                coil.memory.MemoryCache.Builder(this)
-                    .maxSizePercent(0.30)
-                    .build()
-            }
-            .diskCache {
-                coil.disk.DiskCache.Builder()
-                    .directory(cacheDir.resolve("image_cache"))
-                    .maxSizePercent(0.05)
-                    .build()
-            }
-            .crossfade(false)
-            .allowHardware(true)
-            .respectCacheHeaders(false)
-            .build()
-        coil.Coil.setImageLoader(imageLoader)
+        // Configure the process-wide Coil loader only once. Use applicationContext so it
+        // never retains an Activity across rotation or process recreation.
+        if (!coilConfigured) {
+            val appContext = applicationContext
+            val imageLoader = coil.ImageLoader.Builder(appContext)
+                .components {
+                    add(coil.decode.VideoFrameDecoder.Factory())
+                }
+                .memoryCache {
+                    coil.memory.MemoryCache.Builder(appContext)
+                        .maxSizePercent(0.30)
+                        .build()
+                }
+                .diskCache {
+                    coil.disk.DiskCache.Builder()
+                        .directory(appContext.cacheDir.resolve("image_cache"))
+                        .maxSizePercent(0.05)
+                        .build()
+                }
+                .crossfade(false)
+                .allowHardware(true)
+                .respectCacheHeaders(false)
+                .build()
+            coil.Coil.setImageLoader(imageLoader)
+            coilConfigured = true
+        }
 
         setContent {
             EmrExploreTheme {
