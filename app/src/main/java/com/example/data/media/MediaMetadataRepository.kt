@@ -144,6 +144,61 @@ class MediaMetadataRepository(context: Context) {
         }
     }
 
+    suspend fun saveAiEnrichment(
+        item: MediaItem,
+        caption: String,
+        tagsJson: String,
+        entitiesJson: String,
+        model: String
+    ): MediaMetadataEntity = withContext(Dispatchers.IO) {
+        val existing = metadataDao.get(item.uri.toString()) ?: readExif(item, requireOriginalLocation = false)
+        val tags = try {
+            org.json.JSONArray(tagsJson).let { array ->
+                (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val searchable = listOf(
+            existing.searchableText,
+            caption,
+            tags.joinToString(" ")
+        ).filter { it.isNotBlank() }
+            .joinToString(" ")
+            .lowercase(Locale.US)
+
+        val updated = existing.copy(
+            path = item.path,
+            size = item.size,
+            dateAdded = item.dateAdded,
+            searchableText = searchable,
+            aiCaption = caption.trim().takeIf { it.isNotBlank() },
+            aiTagsJson = tagsJson,
+            aiEntitiesJson = entitiesJson,
+            aiModel = model,
+            aiFileLastModified = item.path.takeIf { it.isNotBlank() }?.let { java.io.File(it).lastModified() } ?: 0L,
+            aiProcessedAt = System.currentTimeMillis(),
+            indexedAt = System.currentTimeMillis()
+        )
+        metadataDao.insertOrUpdate(updated)
+        updated
+    }
+
+    suspend fun getFreshAiEnrichment(
+        path: String,
+        size: Long,
+        lastModified: Long,
+        model: String
+    ): MediaMetadataEntity? = withContext(Dispatchers.IO) {
+        val cached = metadataDao.getByPath(path) ?: return@withContext null
+        if (cached.aiProcessedAt > 0L &&
+            cached.aiModel == model &&
+            cached.size == size &&
+            cached.aiFileLastModified == lastModified &&
+            !cached.aiCaption.isNullOrBlank()
+        ) cached else null
+    }
+
     @Suppress("DEPRECATION")
     suspend fun resolvePlace(query: String): PlaceSearchCacheEntity? = withContext(Dispatchers.IO) {
         val normalized = query.trim().lowercase(Locale.US)
