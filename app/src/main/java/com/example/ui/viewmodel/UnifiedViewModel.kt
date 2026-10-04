@@ -2183,7 +2183,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                         brainTopicStatus = "Topic saved"
                     )
                 }
-                refreshBrainTopicFiles(saved.id)
+                refreshBrainTopicFiles(saved.id, saved)
             } catch (error: Exception) {
                 _uiState.update { it.copy(brainTopicStatus = error.message ?: "Could not save topic") }
             }
@@ -2207,7 +2207,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun refreshBrainTopicFiles(topicId: String?) {
+    private fun refreshBrainTopicFiles(topicId: String?, topicOverride: BrainTopicEntity? = null) {
         if (topicId == null) {
             _uiState.update {
                 it.copy(
@@ -2219,7 +2219,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         viewModelScope.launch {
-            val topic = _uiState.value.brainTopics.firstOrNull { it.id == topicId }
+            val topic = topicOverride ?: _uiState.value.brainTopics.firstOrNull { it.id == topicId }
             if (topic == null) {
                 _uiState.update { it.copy(brainTopicRelevantFiles = emptyList(), isBrainTopicLoading = false) }
                 return@launch
