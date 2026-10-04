@@ -29,7 +29,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         IndexFingerprintEntity::class,
         ModelRunEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -69,6 +69,13 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS brain_topics (id TEXT NOT NULL PRIMARY KEY, heading TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_brain_topics_updatedAt ON brain_topics(updatedAt)")
+            }
+        }
+
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE ai_provider_config ADD COLUMN textEmbeddingModel TEXT NOT NULL DEFAULT 'nvidia/nv-embedqa-e5-v5'")
+                db.execSQL("ALTER TABLE ai_provider_config ADD COLUMN multimodalEmbeddingModel TEXT NOT NULL DEFAULT 'nvidia/llama-nemotron-embed-vl-1b-v2'")
             }
         }
 
@@ -118,7 +125,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "emrexplore.db"
-                )  .addMigrations(MIGRATION_4_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                )  .addMigrations(MIGRATION_4_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                  .fallbackToDestructiveMigrationFrom(1, 2, 3)
                  .build()
                 INSTANCE = instance
