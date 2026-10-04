@@ -63,16 +63,8 @@ class KnowledgeGraphRepository(private val context: Context) {
 
     private val brainIndexVersion = "brain-v3"
 
-    private fun isLocalAiEndpoint(config: AiProviderConfigEntity): Boolean {
-        val provider = ProviderType.fromString(config.providerType)
-        if (provider == ProviderType.OLLAMA) return true
-        if (provider != ProviderType.OPENAI_COMPATIBLE) return false
-        val url = config.baseUrl.trim().lowercase()
-        return url.contains("localhost") || url.contains("127.0.0.1") || url.contains("10.0.2.2")
-    }
-
     private fun isAiReady(config: AiProviderConfigEntity): Boolean =
-        config.isEnabled && (isLocalAiEndpoint(config) || config.apiKey.isNotBlank())
+        config.isEnabled && (isKeylessAiConfig(config) || config.apiKey.isNotBlank())
 
     private fun textEmbeddingModel(config: AiProviderConfigEntity): String =
         config.textEmbeddingModel.ifBlank {
@@ -99,7 +91,9 @@ class KnowledgeGraphRepository(private val context: Context) {
     val nodeCountFlow: Flow<Int> = kgDao.getNodeCountFlow()
     val edgeCountFlow: Flow<Int> = kgDao.getEdgeCountFlow()
     val chunkCountFlow: Flow<Int> = ragDao.getChunkCountFlow()
-    val aiConfigFlow: Flow<AiProviderConfigEntity?> = aiConfigDao.getConfigFlow().map { it?.let(::decryptConfig) }
+    val aiConfigFlow: Flow<AiProviderConfigEntity?> = aiConfigDao.getConfigFlow().map {
+        it?.let(::decryptConfig)?.let(::normalizeAiConfig)
+    }
     val brainTopicsFlow: Flow<List<BrainTopicEntity>> = brainTopicDao.getAllFlow()
 
     private fun normalizeAiConfig(config: AiProviderConfigEntity): AiProviderConfigEntity {
