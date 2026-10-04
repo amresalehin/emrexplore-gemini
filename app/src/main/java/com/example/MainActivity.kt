@@ -489,6 +489,7 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             availableModels = uiState.aiModels,
             availableVisionModels = uiState.aiVisionModels,
             availableEmbeddingModels = uiState.aiEmbeddingModels,
+            availableMultimodalEmbeddingModels = uiState.aiMultimodalEmbeddingModels,
             isFetchingModels = uiState.isFetchingAiModels,
             modelFetchError = uiState.aiModelFetchError,
             onFetchModels = { viewModel.fetchAiModels(it) },
