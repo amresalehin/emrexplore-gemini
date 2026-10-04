@@ -185,6 +185,23 @@ data class KgEdgeEntity(
 )
 
 @Entity(
+    tableName = "kg_edge_evidence",
+    primaryKeys = ["sourceNodeId", "targetNodeId", "relation", "evidenceSource"],
+    indices = [
+        Index(value = ["evidenceSource"]),
+        Index(value = ["sourceNodeId", "targetNodeId", "relation"])
+    ]
+)
+data class KgEdgeEvidenceEntity(
+    val sourceNodeId: String,
+    val targetNodeId: String,
+    val relation: String,
+    val evidenceSource: String,
+    val evidenceSnippet: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
     tableName = "rag_chunks",
     indices = [
         Index(value = ["filePath"]),
