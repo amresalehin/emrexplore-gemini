@@ -170,8 +170,8 @@ class MediaMetadataRepository(context: Context) {
 
         val updated = existing.copy(
             path = item.path,
-            size = item.size,
-            dateAdded = item.dateAdded,
+            size = existing.size.takeIf { it > 0L } ?: item.size,
+            dateAdded = existing.dateAdded.takeIf { it > 0L } ?: item.dateAdded,
             searchableText = searchable,
             aiCaption = caption.trim().takeIf { it.isNotBlank() },
             aiTagsJson = tagsJson,
