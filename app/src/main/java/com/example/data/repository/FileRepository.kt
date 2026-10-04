@@ -238,6 +238,184 @@ class FileRepository(private val context: Context) {
         }
     }
 
+    suspend fun totalIndexedCount(): Int = withContext(Dispatchers.IO) {
+        fileIndexDao.getTotalCount()
+    }
+
+    suspend fun getAllNonDirectoryFiles(limit: Int = 300): List<IndexedFileEntity> = withContext(Dispatchers.IO) {
+        fileIndexDao.getAllNonDirectoryFiles(limit)
+    }
+
+    suspend fun indexStorage(force: Boolean = false): Int = withContext(Dispatchers.IO) {
+        indexingMutex.withLock {
+            val currentStatus = indexStatusDao.getStatus()
+            val currentCount = fileIndexDao.getTotalCount()
+            if (!force && currentStatus?.isIndexing == true) {
+                return@withContext currentCount
+            }
+            if (!force && currentCount > 0 && currentStatus != null && (System.currentTimeMillis() - currentStatus.lastIndexedTimestamp) < 300_000) {
+                return@withContext currentCount
+            }
+
+            indexStatusDao.updateStatus(
+                IndexStatusEntity(
+                    id = 1,
+                    isIndexing = true,
+                    lastIndexedTimestamp = currentStatus?.lastIndexedTimestamp ?: 0L,
+                    totalIndexedCount = currentCount,
+                    statusMessage = "Indexing storage..."
+                )
+            )
+
+            if (force) {
+                fileIndexDao.clearIndex()
+            }
+
+            val targets = listOf(
+                File(rootPath),
+                baseWorkingDir
+            ).distinctBy { it.absolutePath }
+
+            val batch = mutableListOf<IndexedFileEntity>()
+            var indexedTotal = 0
+
+            for (target in targets) {
+                scanDirForIndexing(target, batch, maxDepth = 4, currentDepth = 0) { count ->
+                    indexedTotal += count
+                    indexStatusDao.updateStatus(
+                        IndexStatusEntity(
+                            id = 1,
+                            isIndexing = true,
+                            lastIndexedTimestamp = 0L,
+                            totalIndexedCount = indexedTotal,
+                            statusMessage = "Indexing files ($indexedTotal)..."
+                        )
+                    )
+                }
+            }
+
+            if (batch.isNotEmpty()) {
+                fileIndexDao.insertAll(batch)
+                indexedTotal += batch.size
+                batch.clear()
+            }
+
+            val finalCount = fileIndexDao.getTotalCount()
+            indexStatusDao.updateStatus(
+                IndexStatusEntity(
+                    id = 1,
+                    isIndexing = false,
+                    lastIndexedTimestamp = System.currentTimeMillis(),
+                    totalIndexedCount = finalCount,
+                    statusMessage = "Indexed $finalCount files & folders"
+                )
+            )
+
+            finalCount
+        }
+    }
+
+    private suspend fun scanDirForIndexing(
+        dir: File,
+        batch: MutableList<IndexedFileEntity>,
+        maxDepth: Int,
+        currentDepth: Int,
+        onBatchFlushed: suspend (Int) -> Unit
+    ) {
+        if (!dir.exists() || !dir.isDirectory || currentDepth > maxDepth) return
+        IoPriorityCoordinator.yieldIfInteractive()
+        val children = dir.listFiles() ?: return
+
+        for (file in children) {
+            val name = file.name
+            if (name.startsWith(".") && name != ".trash") continue
+            if (name == "Android" || name == "cache") continue
+
+            val isDir = file.isDirectory
+            val ext = if (isDir) "" else file.extension.lowercase()
+            val mime = if (isDir) "inode/directory" else (MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: inferMime(ext))
+            val category = determineCategory(isDir, ext, file.parentFile?.name)
+            val childCount = if (isDir) fastChildCount(file) else 0
+
+            batch.add(
+                IndexedFileEntity(
+                    path = file.absolutePath,
+                    name = file.name,
+                    parentPath = file.parent ?: "",
+                    size = if (isDir) 0L else file.length(),
+                    lastModified = file.lastModified(),
+                    isDirectory = isDir,
+                    mimeType = mime,
+                    extension = ext,
+                    category = category.name,
+                    childCount = childCount,
+                    indexedTimestamp = System.currentTimeMillis()
+                )
+            )
+
+            if (batch.size >= 100) {
+                fileIndexDao.insertAll(batch)
+                val flushedSize = batch.size
+                batch.clear()
+                onBatchFlushed(flushedSize)
+                IoPriorityCoordinator.yieldIfInteractive()
+            }
+
+            if (isDir) {
+                scanDirForIndexing(file, batch, maxDepth, currentDepth + 1, onBatchFlushed)
+            }
+        }
+    }
+
+    fun determineCategory(isDirectory: Boolean, ext: String, parentName: String?): CategoryType {
+        if (isDirectory) return CategoryType.DOCUMENTS
+        val lowerExt = ext.lowercase()
+        return when {
+            lowerExt in listOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic") -> CategoryType.IMAGES
+            lowerExt in listOf("mp4", "mkv", "webm", "avi", "mov", "3gp") -> CategoryType.VIDEOS
+            lowerExt in listOf("mp3", "m4a", "wav", "ogg", "flac", "aac") -> CategoryType.AUDIO
+            lowerExt in listOf("zip", "rar", "7z", "tar", "gz", "bz2") -> CategoryType.ARCHIVES
+            lowerExt in listOf("apk", "xapk", "apks") -> CategoryType.APKS
+            parentName?.equals("Download", ignoreCase = true) == true || parentName?.equals("Downloads", ignoreCase = true) == true -> CategoryType.DOWNLOADS
+            lowerExt in listOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "xml", "html", "kt", "java", "py", "log") -> CategoryType.DOCUMENTS
+            else -> CategoryType.DOCUMENTS
+        }
+    }
+
+    suspend fun indexFileOrDir(file: File) = withContext(Dispatchers.IO) {
+        if (!file.exists()) return@withContext
+        val isDir = file.isDirectory
+        val ext = if (isDir) "" else file.extension.lowercase()
+        val mime = if (isDir) "inode/directory" else (MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: inferMime(ext))
+        val category = determineCategory(isDir, ext, file.parentFile?.name)
+        val childCount = if (isDir) fastChildCount(file) else 0
+
+        fileIndexDao.insertOrUpdate(
+            IndexedFileEntity(
+                path = file.absolutePath,
+                name = file.name,
+                parentPath = file.parent ?: "",
+                size = if (isDir) 0L else file.length(),
+                lastModified = file.lastModified(),
+                isDirectory = isDir,
+                mimeType = mime,
+                extension = ext,
+                category = category.name,
+                childCount = childCount,
+                indexedTimestamp = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun removeIndexedPath(path: String, isDirectory: Boolean) = withContext(Dispatchers.IO) {
+        if (isDirectory) {
+            fileIndexDao.deleteByPathTree(path, path)
+        } else {
+            fileIndexDao.deleteByPath(path)
+        }
+    }
+
+
     suspend fun getCachedFiles(dirPath: String, showHidden: Boolean): List<FileItem>? = withContext(Dispatchers.IO) {
         val inMemory = folderCache[dirPath]
         if (inMemory != null) {
