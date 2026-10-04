@@ -291,6 +291,9 @@ interface KgDao {
     @Query("SELECT * FROM kg_nodes WHERE sourceFilePath = :path LIMIT 1")
     suspend fun getNodeByFilePath(path: String): KgNodeEntity?
 
+    @Query("SELECT * FROM kg_nodes WHERE sourceFilePath IN (:paths)")
+    suspend fun getNodesByFilePaths(paths: List<String>): List<KgNodeEntity>
+
     @Query("SELECT * FROM kg_nodes WHERE id IN (:ids)")
     suspend fun getNodes(ids: List<String>): List<KgNodeEntity>
 
