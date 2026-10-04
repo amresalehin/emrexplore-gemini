@@ -44,6 +44,7 @@ import com.example.data.model.OperationStatus
 import com.example.data.performance.PerformanceMetrics
 import com.example.data.performance.PerformanceMonitor
 import com.example.data.repository.FileRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -2130,6 +2131,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isFetchingAiModels = false, aiModelFetchError = e.message ?: "Could not fetch models") }
             }
         }
@@ -2199,6 +2201,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 }
                 refreshBrainTopicFiles(saved.id, saved)
             } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 _uiState.update { it.copy(brainTopicStatus = error.message ?: "Could not save topic") }
             }
         }
@@ -2260,6 +2263,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
             } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 _uiState.update {
                     it.copy(
                         brainTopicRelevantFiles = emptyList(),
