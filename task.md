@@ -226,5 +226,5 @@ Target branch: `gemini` (repository default branch)
 - [x] Remove provider-gating from offline Brain indexing.
 - [x] Add pure Brain-core unit tests and database-surface assertions.
 - [ ] Finish UI naming cleanup from remaining historical `kg` identifiers.
-- [ ] Add paged candidate enumeration for very large libraries.
+- [x] Add paged candidate enumeration for very large libraries.
 - [ ] Add migration-specific instrumentation and performance benchmarks.
