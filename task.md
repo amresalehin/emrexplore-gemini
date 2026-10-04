@@ -4,11 +4,11 @@ Target branch: `gemini` (repository default branch)
 
 ## P0 — Fix immediately
 
-- [ ] **Align GitHub Actions with the default branch**
-  - Update `.github/workflows/build-apk.yml` push and pull-request branch filters from `main` to `gemini`.
-  - Keep `workflow_dispatch`.
-  - Verify that a push to `gemini` starts the APK workflow.
-  - Verify that pull requests targeting `gemini` run unit tests, lint, and debug APK build.
+- [x] **Align GitHub Actions with the default branch**
+  - Updated `.github/workflows/build-apk.yml` push and pull-request branch filters to `gemini`.
+  - Kept `workflow_dispatch`.
+  - CI trigger execution still needs verification on GitHub Actions.
+
 
 - [ ] **Establish a reliable default-branch build gate**
   - Require the CI workflow to pass before merging changes into `gemini`.
@@ -169,3 +169,41 @@ Target branch: `gemini` (repository default branch)
 - [ ] Brain and Gallery AI processing remain bounded in memory on large libraries.
 - [ ] Critical security/privacy paths have explicit tests and documentation.
 - [ ] Release signing and package identity are production-ready.
+
+
+## Logic Audit — Agent Hardening (2026-10-04)
+
+### Completed in `agent/logic-hardening`
+
+- [x] Fix Favorites-only gallery search SQL argument ordering.
+- [x] Preserve the selected Gallery sort in search results.
+- [x] Preserve the selected Gallery sort in album paging and fullscreen navigation.
+- [x] Make Favorites a media-only, globally sorted gallery and ignore stale/non-media favorite rows.
+- [x] Reject copy/move destinations that are the source or descendants of a source directory.
+- [x] Reject same-file streaming copies before opening the destination.
+- [x] Validate create/rename child names against absolute paths and path separators.
+- [x] Stop reporting physical trash deletion as successful when recursive deletion fails.
+- [x] Reject ZIP output paths that target a source file or source subtree.
+- [x] Bound direct text-file chat and document indexing reads without materializing the whole file.
+- [x] Carry RAG conversation history into retrieval-backed generation.
+- [x] Scope file-chat history to the currently attached file.
+- [x] Mark RAG/file-chat service fallbacks as unsuccessful so the UI can distinguish fallback from provider success.
+- [x] Redact GPS/location metadata from cloud direct-file prompts.
+- [x] Prevent new exact-GPS graph evidence from being created for cloud providers.
+- [x] Add query-time redaction for legacy exact-location data before cloud RAG prompts.
+
+### Still open from the audit
+
+- [ ] Reconcile stale Room indexed-file rows after external delete/move/rename.
+- [ ] Synchronize KG/RAG/favorites/bookmarks/recents after filesystem mutations and restore.
+- [ ] Reindex Brain/KG/RAG after text-editor saves.
+- [ ] Exclude `.trash` content from all Brain indexing paths.
+- [ ] Fix startup indexing/permission sequencing.
+- [ ] Fix explorer SUBFOLDERS scope and empty-query descendant handling.
+- [ ] Filter stale/nonexistent Room results before presenting fast search results.
+- [ ] Fix Brain file-type filtering before top-k truncation.
+- [ ] Resolve provider normalization/embedding-default mismatch.
+- [ ] Fix transactional validation so failed remote embeddings cannot leave destructive partial Brain replacements.
+- [ ] Version AI enrichment cache by provider/prompt/schema/privacy policy.
+- [ ] Add symlink/visited-set protections to all recursive filesystem paths.
+- [ ] Expand automated regression coverage for the above invariants.
