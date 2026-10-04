@@ -1,7 +1,7 @@
 package com.example.data.ai
 
-import com.example.data.local.KgNodeEntity
-import com.example.data.local.RagChunkEntity
+import com.example.data.brain.BrainNodeEntity
+import com.example.data.brain.BrainChunkEntity
 
 enum class ProviderType(
     val displayName: String,
@@ -109,16 +109,16 @@ data class ConnectionTestResult(
 
 data class RagAnswer(
     val answer: String,
-    val sourceChunks: List<RagChunkEntity> = emptyList(),
-    val connectedNodes: List<KgNodeEntity> = emptyList(),
+    val sourceChunks: List<BrainChunkEntity> = emptyList(),
+    val connectedNodes: List<BrainNodeEntity> = emptyList(),
     val isSuccessful: Boolean = true,
     val latencyMs: Long = 0L
 )
 
 data class ConnectedDotsItem(
-    val fileNode: KgNodeEntity,
+    val fileNode: BrainNodeEntity,
     val relationship: String,
-    val targetNode: KgNodeEntity,
+    val targetNode: BrainNodeEntity,
     val snippet: String = ""
 )
 
