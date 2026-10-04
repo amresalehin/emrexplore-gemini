@@ -221,8 +221,9 @@ class FileRepository(private val context: Context) {
         legacyFiles.forEach { file ->
             try {
                 if (file.isFile) file.delete()
-                // Keep Room from resurrecting a file that has been removed from disk.
+                // Remove legacy artifacts from every derived store as well.
                 fileIndexDao.deleteByPath(file.absolutePath)
+                recentDao.removeRecent(file.absolutePath)
             } catch (_: Exception) { }
         }
         listOf(
