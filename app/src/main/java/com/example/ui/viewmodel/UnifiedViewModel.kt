@@ -422,6 +422,37 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
+        // Brain indexing is WorkManager-backed. Reattach the UI to the durable
+        // unique work after process recreation instead of relying on ViewModel state.
+        viewModelScope.launch {
+            WorkManager.getInstance(getApplication<Application>())
+                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
+                .collectLatest { works ->
+                    val work = works.firstOrNull() ?: return@collectLatest
+                    val progress = work.progress
+                    val total = progress.getInt("total", 0)
+                    val current = progress.getInt("current", 0)
+                    val path = progress.getString("path").orEmpty()
+                    when (work.state) {
+                        androidx.work.WorkInfo.State.RUNNING -> _uiState.update {
+                            it.copy(
+                                isKgIndexing = true,
+                                kgIndexingProgress = if (total > 0) current.toFloat() / total else 0f,
+                                kgIndexingStatus = if (path.isBlank()) "Indexing Brain..." else "Indexing " + File(path).name + " ($current/$total)"
+                            )
+                        }
+                        androidx.work.WorkInfo.State.ENQUEUED -> _uiState.update {
+                            it.copy(isKgIndexing = true, kgIndexingStatus = "Brain indexing queued...")
+                        }
+                        else -> _uiState.update {
+                            it.copy(
+                                isKgIndexing = false,
+                                kgIndexingProgress = if (work.state == androidx.work.WorkInfo.State.SUCCEEDED) 1f else it.kgIndexingProgress
+                            )
+                        }
+                    }
+                }
+        }
         viewModelScope.launch {
             repository.favoritesFlow.collectLatest { favs ->
                 _uiState.update { it.copy(favoritesList = favs) }
