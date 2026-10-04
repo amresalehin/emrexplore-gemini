@@ -289,6 +289,7 @@ abstract class AppDatabase : RoomDatabase() {
                         `content` TEXT NOT NULL,
                         `embeddingJson` TEXT NOT NULL,
                         `embeddingModel` TEXT NOT NULL,
+                        `offlineEmbeddingJson` TEXT NOT NULL,
                         `locator` TEXT NOT NULL,
                         `pageNumber` INTEGER,
                         `indexedAt` INTEGER NOT NULL,
