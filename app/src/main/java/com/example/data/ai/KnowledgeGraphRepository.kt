@@ -94,12 +94,6 @@ class KnowledgeGraphRepository(private val context: Context) {
         isAiReady(config) &&
             (textEmbeddingModel(config).isNotBlank() || multimodalEmbeddingModel(config).isNotBlank())
 
-    private fun isAiReady(config: AiProviderConfigEntity): Boolean =
-        config.isEnabled && (ProviderType.fromString(config.providerType) in setOf(ProviderType.OLLAMA, ProviderType.OPENAI_COMPATIBLE, ProviderType.CUSTOM) || config.apiKey.isNotBlank())
-
-    private fun requiresEmbeddings(config: AiProviderConfigEntity): Boolean =
-        isAiReady(config) && config.embeddingModel.isNotBlank()
-
     val allNodesFlow: Flow<List<KgNodeEntity>> = kgDao.getAllNodesFlow()
     val allEdgesFlow: Flow<List<KgEdgeEntity>> = kgDao.getAllEdgesFlow()
     val nodeCountFlow: Flow<Int> = kgDao.getNodeCountFlow()
