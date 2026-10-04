@@ -28,7 +28,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         IndexFingerprintEntity::class,
         ModelRunEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -98,6 +98,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "emrexplore.db"
                 ) .addMigrations(MIGRATION_4_6, MIGRATION_6_7)
+                 .fallbackToDestructiveMigration()
                  .build()
                 INSTANCE = instance
                 instance
