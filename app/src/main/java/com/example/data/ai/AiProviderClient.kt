@@ -145,7 +145,7 @@ class AiProviderClient {
     suspend fun embedMultimodalQuery(
         text: String,
         config: AiProviderConfigEntity
-    ): FloatArray? = embedText(listOf(text), config, config.multimodalEmbeddingModel, "query").firstOrNull()
+    ): FloatArray? = embedText(listOf(text), config, config.multimodalEmbeddingModel.ifBlank { config.textEmbeddingModel.ifBlank { config.embeddingModel } }, "query").firstOrNull()
 
     suspend fun embedMultimodalDocument(
         base64Jpeg: String?,
@@ -153,6 +153,7 @@ class AiProviderClient {
         config: AiProviderConfigEntity
     ): FloatArray? = withContext(Dispatchers.IO) {
         val model = config.multimodalEmbeddingModel.trim()
+            .ifBlank { config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() } }
         if (model.isBlank() || base64Jpeg.isNullOrBlank()) return@withContext null
         when (ProviderType.fromString(config.providerType)) {
             ProviderType.GEMINI, ProviderType.OLLAMA ->
