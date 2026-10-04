@@ -149,6 +149,7 @@ class MediaMetadataRepository(context: Context) {
         caption: String,
         tagsJson: String,
         entitiesJson: String,
+        relationsJson: String,
         model: String
     ): MediaMetadataEntity = withContext(Dispatchers.IO) {
         val existing = metadataDao.get(item.uri.toString()) ?: readExif(item, requireOriginalLocation = false)
@@ -175,6 +176,7 @@ class MediaMetadataRepository(context: Context) {
             aiCaption = caption.trim().takeIf { it.isNotBlank() },
             aiTagsJson = tagsJson,
             aiEntitiesJson = entitiesJson,
+            aiRelationsJson = relationsJson,
             aiModel = model,
             aiFileLastModified = item.path.takeIf { it.isNotBlank() }?.let { java.io.File(it).lastModified() } ?: 0L,
             aiProcessedAt = System.currentTimeMillis(),
