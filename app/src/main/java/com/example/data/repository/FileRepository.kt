@@ -419,7 +419,14 @@ class FileRepository(private val context: Context) {
     suspend fun getCachedFiles(dirPath: String, showHidden: Boolean): List<FileItem>? = withContext(Dispatchers.IO) {
         val inMemory = folderCache[dirPath]
         if (inMemory != null) {
-            return@withContext if (showHidden) inMemory else inMemory.filter { !it.name.startsWith(".") }
+            val valid = inMemory.filter { item ->
+                val file = File(item.path)
+                file.exists() && (!item.isDirectory || file.isDirectory)
+            }
+            if (valid.size != inMemory.size) {
+                folderCache[dirPath] = valid
+            }
+            return@withContext if (showHidden) valid else valid.filter { !it.name.startsWith(".") }
         }
 
         try {
@@ -504,9 +511,18 @@ class FileRepository(private val context: Context) {
             // 2. Check Room DB if fully indexed
             try {
                 val roomCount = fileIndexDao.getCountByParent(dirPath)
-                val dirFileCount = dir.list()?.size ?: 0
-                if (roomCount > 0 && roomCount == dirFileCount) {
-                    val entities = fileIndexDao.getFilesByParentPaged(dirPath, limit = pageSize, offset = page * pageSize)
+                val actualChildPaths = dir.list()
+                    ?.map { File(dir, it).absolutePath }
+                    ?.toSet()
+                    ?: emptySet()
+                if (roomCount > 0 && roomCount == actualChildPaths.size) {
+                    val entities = fileIndexDao.getFilesByParent(dirPath, limit = pageSize, offset = page * pageSize)
+                    val entityCountMatchesFilesystem = entities.all { entity ->
+                        entity.path in actualChildPaths && File(entity.path).exists()
+                    }
+                    if (!entityCountMatchesFilesystem) {
+                        // Stale Room index: fall through to the direct filesystem path.
+                    } else {
                     val favSet = try { favoriteDao.getAllFavoritePathsSync().toHashSet() } catch (e: Exception) { emptySet() }
                     val items = entities
                         .filter { showHidden || !it.name.startsWith(".") }
@@ -536,6 +552,7 @@ class FileRepository(private val context: Context) {
                         pageSize = pageSize,
                         hasMore = (offset + pageSize) < roomCount
                     )
+                    }
                 }
             } catch (e: Exception) {
                 // fallback to disk
