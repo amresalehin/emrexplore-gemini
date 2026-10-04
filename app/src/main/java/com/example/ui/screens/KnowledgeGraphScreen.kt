@@ -143,7 +143,8 @@ fun KnowledgeGraphScreen(
     onOpenImage: (File) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedTab by remember { mutableStateOf(GraphScreenTab.CANVAS) }
+    // Brain opens as an AI chat/search surface so the primary interaction is immediately useful.
+    var selectedTab by remember { mutableStateOf(GraphScreenTab.ASK_AI) }
     var selectedNode by remember { mutableStateOf<KgNodeEntity?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
