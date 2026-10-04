@@ -117,6 +117,18 @@ fun FullscreenMediaViewer(
         }
     }
 
+    if (currentItem == null) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            IconButton(onClick = onClose) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close viewer", tint = Color.White)
+            }
+        }
+        return
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -347,8 +359,8 @@ fun FullscreenMediaViewer(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    itemsIndexed(mediaList) { idx, item ->
-                        val isSelected = idx == currentIndex
+                    itemsIndexed(mediaList, key = { _, item -> item.uri ?: item.path }) { idx, item ->
+                        val isSelected = idx == localIndex
                         Box(
                             modifier = Modifier
                                 .size(54.dp)
