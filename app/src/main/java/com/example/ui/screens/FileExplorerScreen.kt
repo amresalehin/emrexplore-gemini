@@ -192,7 +192,7 @@ fun FileExplorerScreen(
     }
 
     // Intercept hardware back button when inside a subfolder
-    BackHandler(enabled = uiState.currentPath != "/" && !uiState.isSelectionMode && !uiState.explorerSearchActive && uiState.searchQuery.isEmpty() && !hasActiveFilters) {
+    BackHandler(enabled = viewModel.canNavigateUp() && !uiState.isSelectionMode && !uiState.explorerSearchActive && uiState.searchQuery.isEmpty() && !hasActiveFilters) {
         val navigated = viewModel.navigateUp()
         if (!navigated) {
             // Let default handler run
