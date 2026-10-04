@@ -96,11 +96,17 @@ class AiProviderClient {
     suspend fun embedTexts(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> =
         withContext(Dispatchers.IO) {
             if (texts.isEmpty() || config.embeddingModel.isBlank()) return@withContext emptyList()
+
+            // Bound request size so long documents do not create a large JSON body or
+            // a large simultaneous provider response on memory-constrained devices.
+            val batches = texts.chunked(16)
             try {
-                when (ProviderType.fromString(config.providerType)) {
-                    ProviderType.GEMINI -> embedGemini(texts, config)
-                    ProviderType.OLLAMA -> embedOllama(texts, config)
-                    else -> embedOpenAi(texts, config)
+                batches.flatMap { batch ->
+                    when (ProviderType.fromString(config.providerType)) {
+                        ProviderType.GEMINI -> embedGemini(batch, config)
+                        ProviderType.OLLAMA -> embedOllama(batch, config)
+                        else -> embedOpenAi(batch, config)
+                    }
                 }
             } catch (error: Exception) {
                 Log.w("AiProviderClient", "Embedding request failed: ${error.message}")
