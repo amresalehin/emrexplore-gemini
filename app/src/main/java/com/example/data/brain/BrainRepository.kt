@@ -124,37 +124,59 @@ class BrainRepository(private val context: Context) {
         fileRepository.indexStorage(force = true)
 
         val config = getAiConfig()
-        val candidates = fileIndexDao.getAllIndexedFilesForBrain()
-            .filter { it.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS }
-            .filterNot { it.name.startsWith(".") }
-            .filterNot { it.path.split(File.separatorChar).any { segment -> segment == ".trash" } }
-
-        val candidatePaths = candidates.map { it.path }.toHashSet()
+        val extensions = BrainContentReader.SUPPORTED_EXTENSIONS.map { it.lowercase(Locale.US) }
+        val total = fileIndexDao.getBrainCandidateCount(extensions)
+        val candidatePaths = HashSet<String>(total)
         val existingBrainPaths = brainDocumentDao.getAllPaths()
-        for (stalePath in existingBrainPaths.filterNot { it in candidatePaths }) {
-            removeIndexedSource(stalePath)
-        }
 
         var indexed = 0
         var skipped = 0
         var failed = 0
+        var processed = 0
+        val pageSize = 256
 
-        for ((index, candidate) in candidates.withIndex()) {
-            if (!File(candidate.path).isFile || !File(candidate.path).canRead()) {
-                fileIndexDao.deleteByPath(candidate.path)
-                val outcome = BrainIndexOutcome(false, error = "File is no longer readable")
-                failed++
-                onProgress(index + 1, candidates.size, candidate.path, outcome)
-                continue
+        while (processed < total) {
+            val candidates = fileIndexDao.getBrainCandidatesPage(extensions, pageSize, processed)
+            if (candidates.isEmpty()) break
+
+            for (candidate in candidates) {
+                candidatePaths += candidate.path
+                if (candidate.name.startsWith(".") ||
+                    candidate.path.split(File.separatorChar).any { segment -> segment == ".trash" }
+                ) {
+                    processed++
+                    continue
+                }
+
+                val file = File(candidate.path)
+                if (!file.isFile || !file.canRead()) {
+                    fileIndexDao.deleteByPath(candidate.path)
+                    failed++
+                    onProgress(
+                        processed + 1,
+                        total,
+                        candidate.path,
+                        BrainIndexOutcome(false, error = "File is no longer readable")
+                    )
+                    processed++
+                    continue
+                }
+
+                val outcome = indexer.index(file, config, force)
+                when {
+                    outcome.success && outcome.skipped -> skipped++
+                    outcome.success -> indexed++
+                    else -> failed++
+                }
+                processed++
+                onProgress(processed, total, candidate.path, outcome)
             }
 
-            val outcome = indexer.index(File(candidate.path), config, force)
-            when {
-                outcome.success && outcome.skipped -> skipped++
-                outcome.success -> indexed++
-                else -> failed++
-            }
-            onProgress(index + 1, candidates.size, candidate.path, outcome)
+            if (candidates.size < pageSize) break
+        }
+
+        for (stalePath in existingBrainPaths.filterNot { it in candidatePaths }) {
+            removeIndexedSource(stalePath)
         }
 
         brainNodeDao.deleteOrphans()
