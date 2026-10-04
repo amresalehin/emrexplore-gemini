@@ -12,6 +12,7 @@ import com.example.data.model.MediaItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import java.io.File
 
 class MediaMetadataRepository(context: Context) {
     private val appContext = context.applicationContext
@@ -23,12 +24,38 @@ class MediaMetadataRepository(context: Context) {
         withContext(Dispatchers.IO) {
             val key = item.uri.toString()
             val cached = metadataDao.get(key)
-            if (cached != null && cached.size == item.size && cached.dateAdded == item.dateAdded) {
+            val currentMtime = item.path.takeIf { it.isNotBlank() }?.let { File(it).lastModified() } ?: 0L
+            if (cached != null &&
+                cached.size == item.size &&
+                cached.dateAdded == item.dateAdded &&
+                (cached.aiProcessedAt == 0L || cached.aiFileLastModified == 0L || cached.aiFileLastModified == currentMtime)
+            ) {
                 return@withContext cached
             }
             val extracted = readExif(item, requireOriginalLocation)
-            metadataDao.insertOrUpdate(extracted)
-            extracted
+            val merged = if (
+                cached != null &&
+                cached.aiProcessedAt > 0L &&
+                cached.aiFileLastModified > 0L &&
+                cached.aiFileLastModified == currentMtime
+            ) {
+                extracted.copy(
+                    aiCaption = cached.aiCaption,
+                    aiTagsJson = cached.aiTagsJson,
+                    aiEntitiesJson = cached.aiEntitiesJson,
+                    aiRelationsJson = cached.aiRelationsJson,
+                    aiModel = cached.aiModel,
+                    aiFileLastModified = cached.aiFileLastModified,
+                    aiProcessedAt = cached.aiProcessedAt,
+                    searchableText = listOf(extracted.searchableText, cached.aiCaption, cached.aiTagsJson)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" ")
+                )
+            } else {
+                extracted
+            }
+            metadataDao.insertOrUpdate(merged)
+            merged
         }
 
     private fun readExif(item: MediaItem, requireOriginalLocation: Boolean): MediaMetadataEntity {
