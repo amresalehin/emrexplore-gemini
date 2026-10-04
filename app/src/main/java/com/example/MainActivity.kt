@@ -38,6 +38,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -128,6 +129,21 @@ class MainActivity : ComponentActivity() {
 fun MainAppRoot(viewModel: UnifiedViewModel) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val aiSettingsVisible = uiState.isAiSettingsScreenOpen || uiState.showAiSettingsDialog
+    val activityContext = LocalContext.current
+
+    DisposableEffect(aiSettingsVisible) {
+        val activity = activityContext as? android.app.Activity
+        if (aiSettingsVisible) {
+            activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        }
+        onDispose {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
     val snackbarHostState = remember { SnackbarHostState() }
 
     var allFilesAccessGranted by remember { mutableStateOf(isAllFilesAccessGranted()) }
