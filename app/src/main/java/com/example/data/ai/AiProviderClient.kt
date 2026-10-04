@@ -453,7 +453,8 @@ class AiProviderClient {
         modelOverride: String = ""
     ): String {
         val rawBase = if (config.baseUrl.isNotBlank()) config.baseUrl.trimEnd('/') else "https://api.openai.com/v1"
-        val url = if (rawBase.endsWith("/chat/completions")) rawBase else "$rawBase/chat/completions"
+        val baseUrl = validateEndpoint(rawBase, ProviderType.fromString(config.providerType)).toString().trimEnd('/')
+        val url = if (baseUrl.endsWith("/chat/completions")) baseUrl else "$baseUrl/chat/completions"
         val model = modelOverride.ifBlank { config.chatModel.ifBlank { "gpt-4o-mini" } }
         val apiKey = config.apiKey.trim()
 
