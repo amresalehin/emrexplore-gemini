@@ -428,6 +428,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             )
         }
 
+        ensureRelationNodes(nodesToInsert, analysis.relations, file.name)
         persistMemoryEvidence(filePath, file.name, hashKey("$filePath:0"), analysis, config, "MENTIONS")
         kgDao.insertNodes(nodesToInsert)
         kgDao.insertEdges(edgesToInsert)
@@ -655,6 +656,29 @@ class KnowledgeGraphRepository(private val context: Context) {
         } catch(_: Exception){ hashKey("${file.absolutePath}:${file.length()}:${file.lastModified()}") }
     }
 
+    private fun ensureRelationNodes(
+        nodes: MutableList<KgNodeEntity>,
+        relations: List<ExtractedRelation>,
+        fileName: String
+    ) {
+        val existing = nodes.mapTo(mutableSetOf()) { it.id }
+        relations.forEach { relation ->
+            listOf(relation.source, relation.target).forEach { name ->
+                val normalized = normalize(name)
+                if (normalized.isBlank() || normalized == normalize(fileName)) return@forEach
+                val id = "ent:${hashKey(normalized)}"
+                if (existing.add(id)) {
+                    nodes += KgNodeEntity(
+                        id = id,
+                        label = name.trim(),
+                        nodeType = "TOPIC",
+                        summary = "Referenced by ${fileName}",
+                        confidence = 0.5f
+                    )
+                }
+            }
+        }
+    }
     private suspend fun persistMemoryEvidence(
         filePath: String,
         fileName: String,
