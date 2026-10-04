@@ -49,6 +49,8 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Image
@@ -110,8 +112,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.ai.RagAnswer
 import com.example.data.local.AiProviderConfigEntity
+import com.example.data.local.BrainTopicEntity
 import com.example.data.local.KgEdgeEntity
 import com.example.data.local.KgNodeEntity
+import com.example.data.ai.BrainTopicFile
 import com.example.ui.theme.ColorDocuments
 import com.example.ui.theme.ColorImages
 import java.io.File
@@ -142,6 +146,15 @@ fun KnowledgeGraphScreen(
     onQueryRag: (String) -> Unit,
     onIndexAllFiles: () -> Unit,
     onOpenAiSettings: () -> Unit,
+    onAskAiForFile: (KgNodeEntity) -> Unit,
+    brainTopics: List<BrainTopicEntity> = emptyList(),
+    selectedBrainTopic: BrainTopicEntity? = null,
+    brainTopicRelevantFiles: List<BrainTopicFile> = emptyList(),
+    isBrainTopicLoading: Boolean = false,
+    brainTopicStatus: String = "",
+    onSelectBrainTopic: (String) -> Unit = {},
+    onSaveBrainTopic: (String, String, String?) -> Unit = { _, _, _ -> },
+    onDeleteBrainTopic: (String) -> Unit = {},
     onOpenFile: (File) -> Unit,
     onOpenImage: (File) -> Unit,
     modifier: Modifier = Modifier
@@ -315,7 +328,19 @@ fun KnowledgeGraphScreen(
                         onNodeClick = { selectedNode = it },
                         onOpenFile = onOpenFile,
                         onOpenImage = onOpenImage,
-                        onIndexFiles = onIndexAllFiles
+                        onIndexFiles = onIndexAllFiles,
+                        brainTopics = brainTopics,
+                        selectedBrainTopic = selectedBrainTopic,
+                        brainTopicRelevantFiles = brainTopicRelevantFiles,
+                        isBrainTopicLoading = isBrainTopicLoading,
+                        brainTopicStatus = brainTopicStatus,
+                        onSelectBrainTopic = onSelectBrainTopic,
+                        onSaveBrainTopic = onSaveBrainTopic,
+                        onDeleteBrainTopic = onDeleteBrainTopic,
+                        onAskAiForFile = { node ->
+                            selectedTab = GraphScreenTab.ASK_AI
+                            onAskAiForFile(node)
+                        }
                     )
                 }
                 GraphScreenTab.ASK_AI -> {
@@ -425,7 +450,16 @@ fun DeclutteredCanvasView(
     onNodeClick: (KgNodeEntity) -> Unit,
     onOpenFile: (File) -> Unit,
     onOpenImage: (File) -> Unit,
-    onIndexFiles: () -> Unit
+    onIndexFiles: () -> Unit,
+    brainTopics: List<BrainTopicEntity>,
+    selectedBrainTopic: BrainTopicEntity?,
+    brainTopicRelevantFiles: List<BrainTopicFile>,
+    isBrainTopicLoading: Boolean,
+    brainTopicStatus: String,
+    onSelectBrainTopic: (String) -> Unit,
+    onSaveBrainTopic: (String, String, String?) -> Unit,
+    onDeleteBrainTopic: (String) -> Unit,
+    onAskAiForFile: (KgNodeEntity) -> Unit
 ) {
     if (nodes.isEmpty()) {
         DeclutteredEmptyState(
@@ -641,6 +675,20 @@ fun DeclutteredCanvasView(
                 }
             }
         }
+
+        BrainTopicWorkspace(
+            topics = brainTopics,
+            selectedTopic = selectedBrainTopic,
+            relevantFiles = brainTopicRelevantFiles,
+            isLoading = isBrainTopicLoading,
+            status = brainTopicStatus,
+            onSelectTopic = onSelectBrainTopic,
+            onSaveTopic = onSaveBrainTopic,
+            onDeleteTopic = onDeleteBrainTopic,
+            onAskAiForFile = onAskAiForFile,
+            onOpenFile = onOpenFile,
+            onOpenImage = onOpenImage
+        )
 
         HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
@@ -1225,6 +1273,325 @@ fun DeclutteredCanvasView(
         }
     }
 }
+}
+
+@Composable
+private fun BrainTopicWorkspace(
+    topics: List<BrainTopicEntity>,
+    selectedTopic: BrainTopicEntity?,
+    relevantFiles: List<BrainTopicFile>,
+    isLoading: Boolean,
+    status: String,
+    onSelectTopic: (String) -> Unit,
+    onSaveTopic: (String, String, String?) -> Unit,
+    onDeleteTopic: (String) -> Unit,
+    onAskAiForFile: (KgNodeEntity) -> Unit,
+    onOpenFile: (File) -> Unit,
+    onOpenImage: (File) -> Unit
+) {
+    var isEditorOpen by remember { mutableStateOf(false) }
+    var editingTopicId by remember { mutableStateOf<String?>(null) }
+    var heading by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Topics", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Define a context and let Brain find related files semantically.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                FilledTonalButton(
+                    onClick = {
+                        editingTopicId = null
+                        heading = ""
+                        description = ""
+                        isEditorOpen = true
+                    },
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.height(34.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Add topic", fontSize = 12.sp)
+                }
+            }
+
+            if (topics.isNotEmpty()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(topics, key = { it.id }) { topic ->
+                        FilterChip(
+                            selected = selectedTopic?.id == topic.id,
+                            onClick = { onSelectTopic(topic.id) },
+                            label = {
+                                Text(
+                                    topic.heading,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 11.sp
+                                )
+                            },
+                            modifier = Modifier.height(32.dp)
+                        )
+                    }
+                }
+            }
+
+            if (isEditorOpen) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            if (editingTopicId == null) "New topic" else "Edit topic",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        OutlinedTextField(
+                            value = heading,
+                            onValueChange = { heading = it },
+                            singleLine = true,
+                            label = { Text("Heading") },
+                            placeholder = { Text("e.g. Medical studies") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = description,
+                            onValueChange = { description = it },
+                            minLines = 2,
+                            maxLines = 4,
+                            label = { Text("Description") },
+                            placeholder = { Text("What should Brain look for in this topic?") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (editingTopicId != null) {
+                                IconButton(
+                                    onClick = {
+                                        onDeleteTopic(editingTopicId!!)
+                                        isEditorOpen = false
+                                    }
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Delete topic",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            FilledTonalButton(onClick = { isEditorOpen = false }) {
+                                Text("Cancel")
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Button(
+                                onClick = {
+                                    if (heading.isNotBlank()) {
+                                        onSaveTopic(heading.trim(), description.trim(), editingTopicId)
+                                        isEditorOpen = false
+                                    }
+                                },
+                                enabled = heading.isNotBlank()
+                            ) {
+                                Text("Save")
+                            }
+                        }
+                    }
+                }
+            }
+
+            selectedTopic?.let { topic ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Hub,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                topic.heading,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = {
+                                    editingTopicId = topic.id
+                                    heading = topic.heading
+                                    description = topic.description
+                                    isEditorOpen = true
+                                },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(Icons.Default.Edit, contentDescription = "Edit topic", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        if (topic.description.isNotBlank()) {
+                            Text(
+                                topic.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "Relevant files",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                status,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (isLoading) {
+                            LinearProgressIndicator(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(2.dp)
+                            )
+                        } else if (relevantFiles.isNotEmpty()) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(relevantFiles, key = { it.node.id }) { match ->
+                                    val node = match.node
+                                    val file = node.sourceFilePath?.let(::File)
+                                    Card(
+                                        modifier = Modifier.width(230.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    if (node.nodeType == "IMAGE") Icons.Default.Image else Icons.Default.Description,
+                                                    contentDescription = null,
+                                                    tint = if (node.nodeType == "IMAGE") ColorImages else ColorDocuments,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    node.label,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                            if (node.summary.isNotBlank()) {
+                                                Text(
+                                                    node.summary,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                if (file != null) {
+                                                    FilledTonalButton(
+                                                        onClick = {
+                                                            if (node.nodeType == "IMAGE") onOpenImage(file) else onOpenFile(file)
+                                                        },
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                                                        modifier = Modifier
+                                                            .height(30.dp)
+                                                            .weight(1f)
+                                                    ) {
+                                                        Icon(
+                                                            Icons.AutoMirrored.Filled.OpenInNew,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(3.dp))
+                                                        Text("Open", fontSize = 11.sp)
+                                                    }
+                                                }
+                                                Button(
+                                                    onClick = { onAskAiForFile(node) },
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                                                    modifier = Modifier
+                                                        .height(30.dp)
+                                                        .weight(1f)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.AutoAwesome,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    Text("Ask AI", fontSize = 11.sp)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (status.isNotBlank()) {
+                            Text(
+                                "Brain has not found semantically relevant files yet.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 // -------------------------------------------------------------
