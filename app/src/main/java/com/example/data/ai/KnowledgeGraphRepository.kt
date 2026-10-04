@@ -280,10 +280,7 @@ class KnowledgeGraphRepository(private val context: Context) {
         }.toString()
 
         MetadataWriter.writeAiMetadata(file, analysis.summary.trim(), tags)
-        val persistedItem = item.copy(
-            size = file.length(),
-            dateAdded = file.lastModified()
-        )
+        val persistedItem = item.copy(size = file.length())
         mediaMetadataRepository.getOrRead(persistedItem, requireOriginalLocation = false)
         mediaMetadataRepository.saveAiEnrichment(
             item = persistedItem,
