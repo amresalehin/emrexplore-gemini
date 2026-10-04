@@ -177,7 +177,7 @@ class BrainRepository(private val context: Context) {
         indexer.index(file, normalizeAiConfig(config), force).success
     }
 
-    suspend fun indexPath(path: File, config: AiProviderConfigEntity = getAiConfig()) = withContext(Dispatchers.IO) {
+    suspend fun indexPath(path: File, config: AiProviderConfigEntity) = withContext(Dispatchers.IO) {
         if (!path.exists()) return@withContext
         if (path.isFile) {
             indexFile(path, null, config, force = true)
@@ -205,6 +205,8 @@ class BrainRepository(private val context: Context) {
         }
         brainNodeDao.recomputeDegrees()
     }
+
+    suspend fun indexPath(path: File) = indexPath(path, getAiConfig())
 
     suspend fun onFileRenamed(oldPath: String, newPath: String) = withContext(Dispatchers.IO) {
         removeIndexedSource(oldPath)
