@@ -122,7 +122,7 @@ class AiProviderClient {
                     }
                 }
             } catch (error: Exception) {
-                Log.w("AiProviderClient", "Embedding request failed: ${error.message}")
+                Log.w("AiProviderClient", "Embedding request failed: " + error.javaClass.simpleName)
                 throw error
             }
         }
