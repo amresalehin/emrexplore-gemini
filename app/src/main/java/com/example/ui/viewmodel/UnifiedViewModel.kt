@@ -1207,6 +1207,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val ok = repository.renameFile(oldPath, newName.trim())
             if (ok) {
+                kgRepository.removeIndexedSource(oldPath)
                 showMessage("Renamed to '$newName'")
                 loadFiles()
                 refreshGallery()
@@ -1220,6 +1221,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val ok = repository.deleteFile(path, toTrash)
             if (ok) {
+                kgRepository.removeIndexedSource(path)
                 showMessage(if (toTrash) "Moved to Recycle Bin" else "Permanently deleted")
                 loadFiles()
                 refreshGallery()
@@ -1235,7 +1237,10 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             var count = 0
             for (p in selected) {
-                if (repository.deleteFile(p, toTrash)) count++
+                if (repository.deleteFile(p, toTrash)) {
+                    kgRepository.removeIndexedSource(p)
+                    count++
+                }
             }
             clearSelection()
             showMessage(if (toTrash) "Moved $count items to Recycle Bin" else "Deleted $count items")
@@ -2010,6 +2015,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     }
                     kgRepository.indexFile(candidate.file, candidate.uri, config)
                 }
+                kgRepository.recomputeGraphDegrees()
 
                 val suggestions = try { kgRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
                 _uiState.update {
