@@ -515,7 +515,11 @@ class KnowledgeGraphRepository(private val context: Context) {
             if (file.extension.equals("pdf", ignoreCase = true)) {
                 extractPdfText(file, uri)
             } else if (file.exists() && file.canRead()) {
-                file.inputStream().bufferedReader().use { it.readText().take(50000) }
+                file.inputStream().bufferedReader().use { reader ->
+                    val buffer = CharArray(50000)
+                    val count = reader.read(buffer)
+                    if (count <= 0) "" else String(buffer, 0, count)
+                }
             } else ""
         } catch (e: Exception) {
             Log.w("KGRepo", "Could not read doc text: ${e.message}")
@@ -800,28 +804,30 @@ class KnowledgeGraphRepository(private val context: Context) {
             )
         }
 
-        // Add GPS Location node if available
-        metadataReport?.summary?.let { s ->
-            if (s.latitude != null && s.longitude != null) {
-                val locLabel = if (!s.city.isNullOrBlank()) "${s.city}, ${s.country.orEmpty()}".trim() else "Geo (${String.format("%.3f", s.latitude)}, ${String.format("%.3f", s.longitude)})"
-                val locId = "loc:${s.latitude}:${s.longitude}"
-                nodesToInsert.add(
-                    KgNodeEntity(
-                        id = locId,
-                        label = locLabel,
-                        nodeType = "LOCATION",
-                        summary = "Geographic coordinates: ${s.latitude}, ${s.longitude}"
+        // Exact GPS graph nodes/evidence stay on-device for Ollama only.
+        if (allowSensitiveLocation) {
+            metadataReport?.summary?.let { s ->
+                if (s.latitude != null && s.longitude != null) {
+                    val locLabel = if (!s.city.isNullOrBlank()) "${s.city}, ${s.country.orEmpty()}".trim() else "Geo (${String.format("%.3f", s.latitude)}, ${String.format("%.3f", s.longitude)})"
+                    val locId = "loc:${s.latitude}:${s.longitude}"
+                    nodesToInsert.add(
+                        KgNodeEntity(
+                            id = locId,
+                            label = locLabel,
+                            nodeType = "LOCATION",
+                            summary = "Geographic coordinates: ${s.latitude}, ${s.longitude}"
+                        )
                     )
-                )
-                edgesToInsert.add(
-                    KgEdgeEntity(
-                        sourceNodeId = imgNodeId,
-                        targetNodeId = locId,
-                        relation = "LOCATED_AT",
-                        evidenceSnippet = "Taken at coordinates ${s.latitude}, ${s.longitude}",
-                        evidenceSource = filePath
+                    edgesToInsert.add(
+                        KgEdgeEntity(
+                            sourceNodeId = imgNodeId,
+                            targetNodeId = locId,
+                            relation = "LOCATED_AT",
+                            evidenceSnippet = "Taken at coordinates ${s.latitude}, ${s.longitude}",
+                            evidenceSource = filePath
+                        )
                     )
-                )
+                }
             }
         }
 
@@ -872,6 +878,7 @@ class KnowledgeGraphRepository(private val context: Context) {
         var base64Jpeg: String? = null
 
         val report = try { metadataExtractor.extract(file) } catch (_: Exception) { null }
+        val allowSensitiveLocation = ProviderType.fromString(config.providerType) == ProviderType.OLLAMA
         val metadataSummary = buildString {
             append("File Name: ${file.name}\n")
             append("Size: ${android.text.format.Formatter.formatFileSize(context, file.length())}\n")
@@ -882,8 +889,12 @@ class KnowledgeGraphRepository(private val context: Context) {
                 if (meta.imageWidth > 0 && meta.imageHeight > 0) append("Resolution: ${meta.imageWidth}x${meta.imageHeight}\n")
                 if (!meta.make.isNullOrBlank()) append("Camera: ${meta.make} ${meta.model.orEmpty()}\n")
                 if (!meta.dateTimeOriginal.isNullOrBlank()) append("Date Shot: ${meta.dateTimeOriginal}\n")
-                if (!meta.city.isNullOrBlank()) append("Location: ${meta.city}, ${meta.country.orEmpty()}\n")
-                if (meta.latitude != null && meta.longitude != null) append("GPS: ${meta.latitude}, ${meta.longitude}\n")
+                if (allowSensitiveLocation && !meta.city.isNullOrBlank()) {
+                    append("Location: ${meta.city}, ${meta.country.orEmpty()}\n")
+                }
+                if (allowSensitiveLocation && meta.latitude != null && meta.longitude != null) {
+                    append("GPS: ${meta.latitude}, ${meta.longitude}\n")
+                }
             }
         }
 
@@ -893,7 +904,11 @@ class KnowledgeGraphRepository(private val context: Context) {
             fileContent = extractPdfText(file, null)
         } else if (isText) {
             fileContent = try {
-                file.inputStream().bufferedReader().use { it.readText().take(60000) }
+                file.inputStream().bufferedReader().use { reader ->
+                    val buffer = CharArray(60000)
+                    val count = reader.read(buffer)
+                    if (count <= 0) "" else String(buffer, 0, count)
+                }
             } catch (e: Exception) {
                 "Error reading text: ${e.message}"
             }
@@ -1011,29 +1026,42 @@ class KnowledgeGraphRepository(private val context: Context) {
             }
         }
 
-        val answer = if (isAiReady(config)) {
+        val answer: String
+        var successful: Boolean
+        if (isAiReady(config)) {
             try {
-                if (context.isNotBlank()) {
-                    client.generateRagAnswer(clean, context, evidence.joinToString("\n"), config)
+                answer = if (context.isNotBlank()) {
+                    client.generateRagAnswer(
+                        question = clean,
+                        contextText = context,
+                        graphContext = evidence.joinToString("\n"),
+                        chatHistory = chatHistory,
+                        config = config
+                    )
                 } else {
                     client.chatGeneral(clean, null, chatHistory, config)
                 }
+                successful = true
             } catch (error: Exception) {
                 if (allRelevantNodes.isNotEmpty() || matchedChunks.isNotEmpty()) {
-                    synthesizeRealOfflineAnswer(clean, matchedChunks, seedNodes, graphNodes, evidence)
+                    answer = synthesizeRealOfflineAnswer(clean, matchedChunks, seedNodes, graphNodes, evidence)
+                    successful = false
                 } else {
-                    "I searched your files and knowledge graph but couldn't find a direct match for \"$clean\". You can attach a specific file using the clip button to talk about it directly, or configure an AI provider in Settings."
+                    answer = "I searched your files and knowledge graph but couldn't find a direct match for \"$clean\". You can attach a specific file using the clip button to talk about it directly, or configure an AI provider in Settings."
+                    successful = false
                 }
             }
         } else {
             if (allRelevantNodes.isNotEmpty() || matchedChunks.isNotEmpty()) {
-                synthesizeRealOfflineAnswer(clean, matchedChunks, seedNodes, graphNodes, evidence)
+                answer = synthesizeRealOfflineAnswer(clean, matchedChunks, seedNodes, graphNodes, evidence)
+                successful = true
             } else {
-                "No indexed files matched \"$clean\". You can attach a specific file using the clip icon below to talk about it directly, or tap Sync to index your storage."
+                answer = "No indexed files matched \"$clean\". You can attach a specific file using the clip icon below to talk about it directly, or tap Sync to index your storage."
+                successful = false
             }
         }
 
-        RagAnswer(answer, matchedChunks, allRelevantNodes, true, System.currentTimeMillis() - started)
+        RagAnswer(answer, matchedChunks, allRelevantNodes, successful, System.currentTimeMillis() - started)
     }
 
     private fun tokenizeQuestion(value: String): List<String> = value.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length > 1 }.distinct()
