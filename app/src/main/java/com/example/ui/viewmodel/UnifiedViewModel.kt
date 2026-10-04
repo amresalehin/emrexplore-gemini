@@ -32,11 +32,11 @@ import com.example.data.media.MediaMetadataRepository
 import com.example.data.ai.GalleryAiOperationStore
 import com.example.data.brain.BrainRepository
 import com.example.data.ai.AvailableAiModel
-import com.example.data.ai.ConnectedDotsItem
+import com.example.data.brain.ConnectedDotsItem
 import com.example.data.ai.ConnectionTestResult
-import com.example.data.ai.RagAnswer
-import com.example.data.ai.AttachedAiFile
-import com.example.data.ai.AskAiChatMessage
+import com.example.data.brain.RagAnswer
+import com.example.data.brain.AttachedAiFile
+import com.example.data.brain.AskAiChatMessage
 import com.example.data.local.AiProviderConfigEntity
 import com.example.data.brain.BrainTopicEntity
 import com.example.data.brain.BrainEdgeEntity
