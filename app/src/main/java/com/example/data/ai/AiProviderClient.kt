@@ -381,7 +381,14 @@ class AiProviderClient {
                 val inputPrice = pricing?.optString("prompt")?.toDoubleOrNull()
                 val outputPrice = pricing?.optString("completion")?.toDoubleOrNull()
                 val priceKnown = inputPrice != null && outputPrice != null
-                val free = priceKnown && inputPrice <= 0.0 && outputPrice <= 0.0
+                val nvidiaHostedFree = raw.contains("integrate.api.nvidia.com", ignoreCase = true) &&
+                    id.lowercase() in setOf(
+                        "nvidia/nemotron-3-super-120b-a12b",
+                        "meta/llama-3.2-11b-vision-instruct",
+                        "nvidia/llama-nemotron-embed-vl-1b-v2",
+                        "nvidia/nv-embedqa-e5-v5"
+                    )
+                val free = nvidiaHostedFree || (priceKnown && inputPrice <= 0.0 && outputPrice <= 0.0)
                 AvailableAiModel(
                     id = id,
                     supportsChat = !embedding && !nonChat,
