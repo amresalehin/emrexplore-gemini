@@ -508,6 +508,87 @@ class AiProviderClient {
         executePrompt(prompt = prompt, config = config)
     }
 
+    suspend fun chatAboutFile(
+        question: String,
+        fileName: String,
+        fileContent: String?,
+        base64Jpeg: String?,
+        metadataSummary: String?,
+        chatHistory: List<Pair<String, String>> = emptyList(),
+        config: AiProviderConfigEntity
+    ): String = withContext(Dispatchers.IO) {
+        val historyText = if (chatHistory.isNotEmpty()) {
+            buildString {
+                append("=== RECENT CONVERSATION TURNS ===\n")
+                chatHistory.takeLast(6).forEach { (userQ, aiA) ->
+                    append("User: $userQ\nAssistant: $aiA\n\n")
+                }
+            }
+        } else ""
+
+        val prompt = buildString {
+            append("You are an intelligent, helpful AI file assistant in a personal file explorer app.\n")
+            append("CRITICAL: The user has attached ONLY this specific file: \"$fileName\".\n")
+            append("You must focus exclusively on this attached file. Answer questions, describe its contents, explain details, summarize, and converse about it directly.\n\n")
+            if (!metadataSummary.isNullOrBlank()) {
+                append("=== ATTACHED FILE METADATA ===\n")
+                append(metadataSummary)
+                append("\n\n")
+            }
+            if (!fileContent.isNullOrBlank()) {
+                append("=== ATTACHED FILE CONTENT ($fileName) ===\n")
+                append(fileContent.take(65000))
+                append("\n=== END OF ATTACHED FILE CONTENT ===\n\n")
+            }
+            if (historyText.isNotBlank()) {
+                append(historyText)
+                append("\n")
+            }
+            append("=== USER QUESTION ===\n")
+            append(question)
+        }.trimIndent()
+
+        if (base64Jpeg != null && base64Jpeg.isNotBlank()) {
+            executeMultimodalPrompt(prompt, base64Jpeg, config)
+        } else {
+            executePrompt(prompt, config)
+        }
+    }
+
+    suspend fun chatGeneral(
+        question: String,
+        knowledgeContext: String? = null,
+        chatHistory: List<Pair<String, String>> = emptyList(),
+        config: AiProviderConfigEntity
+    ): String = withContext(Dispatchers.IO) {
+        val historyText = if (chatHistory.isNotEmpty()) {
+            buildString {
+                append("=== RECENT CONVERSATION TURNS ===\n")
+                chatHistory.takeLast(6).forEach { (userQ, aiA) ->
+                    append("User: $userQ\nAssistant: $aiA\n\n")
+                }
+            }
+        } else ""
+
+        val prompt = buildString {
+            append("You are a helpful AI assistant in a local file explorer and media app.\n")
+            if (!knowledgeContext.isNullOrBlank()) {
+                append("=== RETRIEVED RELEVANT FILE CONTEXT ===\n")
+                append(knowledgeContext)
+                append("\n\n")
+            }
+            if (historyText.isNotBlank()) {
+                append(historyText)
+                append("\n")
+            }
+            append("=== USER QUESTION ===\n")
+            append(question)
+            append("\n\nProvide a clear, helpful, and direct answer.")
+        }.trimIndent()
+
+        executePrompt(prompt, config)
+    }
+
     private suspend fun executePrompt(
         prompt: String,
         config: AiProviderConfigEntity,

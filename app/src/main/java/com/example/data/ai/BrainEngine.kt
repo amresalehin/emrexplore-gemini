@@ -26,58 +26,91 @@ class BrainEngine(
         config: AiProviderConfigEntity,
         limit: Int = 8
     ): List<ScoredChunk> = withContext(Dispatchers.IO) {
-        if (!config.isEnabled) {
-            throw IllegalStateException("Semantic retrieval requires an enabled AI provider")
-        }
-
-        val textModel = config.textEmbeddingModel.ifBlank { config.embeddingModel }
-        val multimodalModel = config.multimodalEmbeddingModel.ifBlank { textModel }
-        if (textModel.isBlank() && multimodalModel.isBlank()) {
-            throw IllegalStateException("Semantic retrieval requires at least one embedding model")
-        }
-
         val perModelLimit = (limit * 3).coerceAtLeast(8)
-        val textEmbedding = if (textModel.isNotBlank()) {
-            runCatching { client.embedTextQuery(question, config) }.getOrNull()
-        } else null
 
-        val textResults = if (textEmbedding != null && textModel.isNotBlank()) {
-            retrieveByModel(textEmbedding, textModel, setOf("DOCUMENT"), perModelLimit)
-        } else emptyList()
+        // 1. Try online embeddings if enabled
+        val (textResults, multimodalResults) = if (config.isEnabled) {
+            val textModel = config.textEmbeddingModel.ifBlank { config.embeddingModel }
+            val multimodalModel = config.multimodalEmbeddingModel.ifBlank { textModel }
 
-        val multimodalEmbedding = when {
-            multimodalModel.isBlank() -> null
-            multimodalModel == textModel && textEmbedding != null -> textEmbedding
-            else -> runCatching { client.embedMultimodalQuery(question, config) }.getOrNull()
+            val textEmbedding = if (textModel.isNotBlank()) {
+                runCatching { client.embedTextQuery(question, config) }.getOrNull()
+            } else null
+
+            val tResults = if (textEmbedding != null && textModel.isNotBlank()) {
+                retrieveByModel(textEmbedding, textModel, setOf("DOCUMENT"), perModelLimit)
+            } else emptyList()
+
+            val multimodalEmbedding = when {
+                multimodalModel.isBlank() -> null
+                multimodalModel == textModel && textEmbedding != null -> textEmbedding
+                else -> runCatching { client.embedMultimodalQuery(question, config) }.getOrNull()
+            }
+
+            val mResults = if (multimodalEmbedding != null && multimodalModel.isNotBlank()) {
+                retrieveByModel(multimodalEmbedding, multimodalModel, setOf("IMAGE"), perModelLimit)
+            } else emptyList()
+
+            tResults to mResults
+        } else {
+            emptyList<ScoredChunk>() to emptyList()
         }
 
-        val multimodalResults = if (multimodalEmbedding != null && multimodalModel.isNotBlank()) {
-            retrieveByModel(multimodalEmbedding, multimodalModel, setOf("IMAGE"), perModelLimit)
-        } else emptyList()
+        // If online search returned valid matches, fuse and return
+        if (textResults.isNotEmpty() || multimodalResults.isNotEmpty()) {
+            val fused = linkedMapOf<String, Float>()
+            fun addResults(results: List<ScoredChunk>, weight: Float) {
+                results.forEachIndexed { rank, result ->
+                    val rrf = weight / (60f + rank + 1f)
+                    fused[result.chunk.chunkId] = (fused[result.chunk.chunkId] ?: 0f) + rrf
+                }
+            }
+            addResults(textResults, 0.55f)
+            addResults(multimodalResults, 0.45f)
 
-        if (textResults.isEmpty() && multimodalResults.isEmpty()) {
-            throw IllegalStateException("No semantic matches found in the Brain index")
-        }
+            val ids = fused.entries
+                .sortedByDescending { it.value }
+                .take((limit * 4).coerceAtLeast(limit))
+                .map { it.key }
 
-        val fused = linkedMapOf<String, Float>()
-        fun addResults(results: List<ScoredChunk>, weight: Float) {
-            results.forEachIndexed { rank, result ->
-                val rrf = weight / (60f + rank + 1f)
-                fused[result.chunk.chunkId] = (fused[result.chunk.chunkId] ?: 0f) + rrf
+            val onlineChunks = ragDao.getChunksByIds(ids)
+                .sortedByDescending { fused[it.chunkId] ?: 0f }
+                .take(limit)
+                .map { ScoredChunk(it, fused[it.chunkId] ?: 0f) }
+
+            if (onlineChunks.isNotEmpty()) {
+                return@withContext onlineChunks
             }
         }
-        addResults(textResults, 0.55f)
-        addResults(multimodalResults, 0.45f)
 
-        val ids = fused.entries
-            .sortedByDescending { it.value }
-            .take((limit * 4).coerceAtLeast(limit))
-            .map { it.key }
+        // -------------------------------------------------------------
+        // 2. OFFLINE EMBEDDING MODEL FALLBACK
+        // -------------------------------------------------------------
+        val offlineQueryVector = OfflineEmbeddingEngine.embedText(question)
+        val offlineMatches = retrieveByModel(
+            offlineQueryVector,
+            OfflineEmbeddingEngine.MODEL_NAME,
+            setOf("DOCUMENT", "IMAGE"),
+            limit
+        )
 
-        ragDao.getChunksByIds(ids)
-            .sortedByDescending { fused[it.chunkId] ?: 0f }
-            .take(limit)
-            .map { ScoredChunk(it, fused[it.chunkId] ?: 0f) }
+        if (offlineMatches.isNotEmpty()) {
+            return@withContext offlineMatches
+        }
+
+        // 3. Fallback: Search text chunks and score via offline embedding
+        val keywordCandidates = ragDao.searchChunks(question, limit * 3)
+        if (keywordCandidates.isNotEmpty()) {
+            return@withContext keywordCandidates.map { chunk ->
+                val chunkVector = parseEmbedding(chunk.embeddingJson).let { vec ->
+                    if (vec.isNotEmpty()) vec else OfflineEmbeddingEngine.embedText(chunk.content)
+                }
+                val score = OfflineEmbeddingEngine.cosine(offlineQueryVector, chunkVector)
+                ScoredChunk(chunk, score)
+            }.sortedByDescending { it.score }.take(limit)
+        }
+
+        emptyList()
     }
 
     private suspend fun retrieveByModel(

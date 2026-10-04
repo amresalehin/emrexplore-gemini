@@ -34,4 +34,28 @@ class ExampleUnitTest {
         assertTrue(document.isDocument)
         assertTrue(document.isTextEditable)
     }
+
+    @Test
+    fun offlineEmbeddingEngine_producesNormalizedVector() {
+        val text = "Invoice payment receipt for software subscription"
+        val vec = com.example.data.ai.OfflineEmbeddingEngine.embedText(text)
+
+        assertEquals(com.example.data.ai.OfflineEmbeddingEngine.EMBEDDING_DIM, vec.size)
+        var normSq = 0.0
+        for (v in vec) normSq += v * v
+        val norm = kotlin.math.sqrt(normSq)
+        assertTrue("Norm should be approximately 1.0, was $norm", norm > 0.98 && norm < 1.02)
+    }
+
+    @Test
+    fun offlineEmbeddingEngine_computesHigherSimilarityForRelatedContent() {
+        val finance1 = com.example.data.ai.OfflineEmbeddingEngine.embedText("Monthly cloud billing invoice receipt payment")
+        val finance2 = com.example.data.ai.OfflineEmbeddingEngine.embedText("Annual server expense invoice statement amount")
+        val travel = com.example.data.ai.OfflineEmbeddingEngine.embedText("Summer vacation beach hotel flight travel trip")
+
+        val simRelated = com.example.data.ai.OfflineEmbeddingEngine.cosine(finance1, finance2)
+        val simUnrelated = com.example.data.ai.OfflineEmbeddingEngine.cosine(finance1, travel)
+
+        assertTrue("Related finance documents ($simRelated) should be more similar than travel ($simUnrelated)", simRelated > simUnrelated)
+    }
 }

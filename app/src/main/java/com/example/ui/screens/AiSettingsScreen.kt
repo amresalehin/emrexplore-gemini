@@ -335,12 +335,37 @@ fun AiSettingsScreen(
                 ModelPicker("Text embeddings", firstUsable(embeddings, embeddingModel), { showEmbeddingPicker = true }, "ai_text_embedding_model_field", embeddings)
                 ModelPicker("Image + text semantic search", firstUsable(multimodalEmbeddings, multimodalEmbeddingModel), { showMultimodalEmbeddingPicker = true }, "ai_multimodal_embedding_model_field", multimodalEmbeddings)
 
-                if (embeddings.isEmpty() || multimodalEmbeddings.isEmpty()) {
-                    Text(
-                        "Fetch the provider models and choose both embedding roles for full Brain search.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
+                // Offline Fallback Information Banner
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                "Offline Embedding Fallback: Active",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "On-device 256-D semantic embedding model acts as automatic fallback when offline or if provider embeddings are not configured.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
 
                 SectionTitle("CHECK")

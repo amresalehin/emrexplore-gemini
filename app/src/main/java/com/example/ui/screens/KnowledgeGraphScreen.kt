@@ -3,7 +3,13 @@ package com.example.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.text.format.Formatter
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -32,31 +38,36 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterCenterFocus
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.LinearScale
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Psychology
@@ -64,6 +75,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -83,6 +95,7 @@ import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -103,6 +116,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -111,25 +125,32 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.ai.AskAiChatMessage
+import com.example.data.ai.AttachedAiFile
+import com.example.data.ai.BrainTopicFile
 import com.example.data.ai.RagAnswer
 import com.example.data.local.AiProviderConfigEntity
 import com.example.data.local.BrainTopicEntity
 import com.example.data.local.KgEdgeEntity
 import com.example.data.local.KgNodeEntity
-import com.example.data.ai.BrainTopicFile
 import com.example.ui.theme.ColorDocuments
 import com.example.ui.theme.ColorImages
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
-enum class GraphScreenTab(val label: String) {
-    ASK_AI("Ask AI"),
-    CANVAS("Network"),
-    DOTS("Connections")
+enum class GraphScreenTab(val label: String, val icon: ImageVector) {
+    ASK_AI("Ask AI", Icons.Default.AutoAwesome),
+    CANVAS("Graph", Icons.Default.Hub),
+    TOPICS("Topics", Icons.Default.Category),
+    DOTS("Links", Icons.Default.LinearScale)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -146,6 +167,11 @@ fun KnowledgeGraphScreen(
     ragAnswer: RagAnswer?,
     isRagQuerying: Boolean,
     smartSuggestions: List<String> = emptyList(),
+    askAiMessages: List<AskAiChatMessage> = emptyList(),
+    attachedAiFile: AttachedAiFile? = null,
+    onAttachFile: (File) -> Unit = {},
+    onDetachFile: () -> Unit = {},
+    onClearChat: () -> Unit = {},
     apiConfigured: Boolean = false,
     onQueryRag: (String) -> Unit,
     onIndexAllFiles: () -> Unit,
@@ -163,7 +189,6 @@ fun KnowledgeGraphScreen(
     onOpenImage: (File) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Brain opens as an AI chat/search surface so the primary interaction is immediately useful.
     var selectedTab by remember { mutableStateOf(GraphScreenTab.ASK_AI) }
     var selectedNode by remember { mutableStateOf<KgNodeEntity?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -186,7 +211,7 @@ fun KnowledgeGraphScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // --- 1. Decluttered Top Header ---
+        // --- 1. Clean, Streamlined Top Header ---
         Surface(
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 1.dp,
@@ -196,7 +221,7 @@ fun KnowledgeGraphScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -207,7 +232,7 @@ fun KnowledgeGraphScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(38.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.primaryContainer),
                             contentAlignment = Alignment.Center
@@ -216,10 +241,10 @@ fun KnowledgeGraphScreen(
                                 imageVector = Icons.Default.Psychology,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
                                 text = "Brain",
@@ -227,29 +252,34 @@ fun KnowledgeGraphScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = if (nodes.isEmpty()) {
-                                    if (isIndexing) "Connecting storage..." else "Not connected to storage"
+                                text = if (isIndexing) {
+                                    "Indexing storage (${(indexingProgress * 100).toInt()}%)…"
+                                } else if (nodes.isEmpty()) {
+                                    "Ready to scan files"
                                 } else {
-                                    "${nodeCount} nodes • ${edgeCount} connections"
+                                    "$nodeCount entities • $edgeCount links"
                                 },
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (isIndexing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
 
-                    // Action buttons
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Header Action Buttons
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         IconButton(
                             onClick = onIndexAllFiles,
                             enabled = !isIndexing,
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(38.dp)
                                 .testTag("kg_sync_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
-                                contentDescription = "Sync",
+                                contentDescription = "Sync Brain",
                                 tint = if (isIndexing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = if (isIndexing) Modifier.rotate(syncRotation) else Modifier.size(20.dp)
                             )
@@ -257,12 +287,12 @@ fun KnowledgeGraphScreen(
                         IconButton(
                             onClick = onOpenAiSettings,
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(38.dp)
                                 .testTag("kg_settings_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Settings,
-                                contentDescription = "Settings",
+                                contentDescription = "AI Settings",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -294,7 +324,7 @@ fun KnowledgeGraphScreen(
                     }
                 }
 
-                // Minimal M3 Tab Row
+                // Modern 4-Tab Bar
                 PrimaryTabRow(
                     selectedTabIndex = selectedTab.ordinal,
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -305,10 +335,17 @@ fun KnowledgeGraphScreen(
                         Tab(
                             selected = selectedTab == tab,
                             onClick = { selectedTab = tab },
+                            icon = {
+                                Icon(
+                                    imageVector = tab.icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
                             text = {
                                 Text(
                                     text = tab.label,
-                                    fontSize = 13.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = if (selectedTab == tab) FontWeight.Bold else FontWeight.Normal
                                 )
                             }
@@ -318,13 +355,30 @@ fun KnowledgeGraphScreen(
             }
         }
 
-        // --- 2. Clean Tab Content ---
+        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+        // --- 2. Decluttered Main View Area ---
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
         ) {
             when (selectedTab) {
+                GraphScreenTab.ASK_AI -> {
+                    DeclutteredAskAiView(
+                        messages = askAiMessages,
+                        attachedFile = attachedAiFile,
+                        onAttachFile = onAttachFile,
+                        onDetachFile = onDetachFile,
+                        onClearChat = onClearChat,
+                        isQuerying = isRagQuerying,
+                        smartSuggestions = smartSuggestions,
+                        availableNodes = nodes,
+                        onQuery = onQueryRag,
+                        onOpenFile = onOpenFile,
+                        onOpenImage = onOpenImage
+                    )
+                }
                 GraphScreenTab.CANVAS -> {
                     DeclutteredCanvasView(
                         nodes = nodes,
@@ -334,28 +388,26 @@ fun KnowledgeGraphScreen(
                         onOpenImage = onOpenImage,
                         onIndexFiles = onIndexAllFiles,
                         isIndexing = isIndexing,
-                        brainTopics = brainTopics,
-                        selectedBrainTopic = selectedBrainTopic,
-                        brainTopicRelevantFiles = brainTopicRelevantFiles,
-                        isBrainTopicLoading = isBrainTopicLoading,
-                        brainTopicStatus = brainTopicStatus,
-                        onSelectBrainTopic = onSelectBrainTopic,
-                        onSaveBrainTopic = onSaveBrainTopic,
-                        onDeleteBrainTopic = onDeleteBrainTopic,
                         onAskAiForFile = { node ->
                             selectedTab = GraphScreenTab.ASK_AI
                             onAskAiForFile(node)
                         }
                     )
                 }
-                GraphScreenTab.ASK_AI -> {
-                    DeclutteredAskAiView(
-                        ragAnswer = ragAnswer,
-                        isQuerying = isRagQuerying,
-                        smartSuggestions = smartSuggestions,
-                        apiConfigured = apiConfigured,
-                        onOpenAiSettings = onOpenAiSettings,
-                        onQuery = onQueryRag,
+                GraphScreenTab.TOPICS -> {
+                    DeclutteredTopicsView(
+                        topics = brainTopics,
+                        selectedTopic = selectedBrainTopic,
+                        relevantFiles = brainTopicRelevantFiles,
+                        isLoading = isBrainTopicLoading,
+                        status = brainTopicStatus,
+                        onSelectTopic = onSelectBrainTopic,
+                        onSaveTopic = onSaveBrainTopic,
+                        onDeleteTopic = onDeleteBrainTopic,
+                        onAskAiForFile = { node ->
+                            selectedTab = GraphScreenTab.ASK_AI
+                            onAskAiForFile(node)
+                        },
                         onOpenFile = onOpenFile,
                         onOpenImage = onOpenImage
                     )
@@ -393,59 +445,737 @@ fun KnowledgeGraphScreen(
     }
 }
 
+// -------------------------------------------------------------
+// TAB 1: REIMAGINED CONVERSATIONAL ASK AI WITH FILE ATTACHMENT
+// -------------------------------------------------------------
+
 @Composable
-private fun AiSetupRequiredState(
-    onOpenAiSettings: () -> Unit
+fun DeclutteredAskAiView(
+    messages: List<AskAiChatMessage>,
+    attachedFile: AttachedAiFile?,
+    onAttachFile: (File) -> Unit,
+    onDetachFile: () -> Unit,
+    onClearChat: () -> Unit,
+    isQuerying: Boolean,
+    smartSuggestions: List<String>,
+    availableNodes: List<KgNodeEntity>,
+    onQuery: (String) -> Unit,
+    onOpenFile: (File) -> Unit,
+    onOpenImage: (File) -> Unit
 ) {
-    Box(
+    var queryText by remember { mutableStateOf("") }
+    var showAttachmentDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val listState = rememberLazyListState()
+
+    // Auto-scroll to bottom of chat when new message arrives or when querying
+    LaunchedEffect(messages.size, isQuerying) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size)
+        }
+    }
+
+    // System pickers
+    val documentPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val file = copyUriToTempFile(context, uri)
+            if (file != null) {
+                onAttachFile(file)
+            }
+        }
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val file = copyUriToTempFile(context, uri)
+            if (file != null) {
+                onAttachFile(file)
+            }
+        }
+    }
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        contentAlignment = Alignment.Center
+            .background(MaterialTheme.colorScheme.background)
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-            )
+        // Chat Header Status & Actions
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Default.AutoAwesome,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(16.dp)
                 )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Set up AI to use Brain",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    text = if (attachedFile != null) "Focused on attached file" else "Ask AI Chat",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
                 )
-                Text(
-                    text = "AI chat needs an enabled provider. Your persisted Brain graph remains available.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Button(
-                    onClick = onOpenAiSettings,
-                    modifier = Modifier.testTag("brain_setup_ai_button")
+            }
+
+            if (messages.isNotEmpty()) {
+                IconButton(
+                    onClick = onClearChat,
+                    modifier = Modifier.size(28.dp)
                 ) {
-                    Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Open AI Settings")
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = "Clear conversation",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+
+        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+        // Main Chat Messages Stream
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
+            if (messages.isEmpty()) {
+                // Welcoming Empty Chat State
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    item {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
+
+                    item {
+                        Text(
+                            text = "Ask Brain AI",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Have a question about your files? Attach any document or photo using the clip icon, and the AI will analyze that file only and talk about it.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    if (attachedFile == null) {
+                        item {
+                            FilledTonalButton(
+                                onClick = { showAttachmentDialog = true },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.padding(top = 8.dp)
+                            ) {
+                                Icon(Icons.Default.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Attach a file to discuss")
+                            }
+                        }
+                    }
+
+                    // Starter Prompts
+                    item {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = if (attachedFile != null) "Suggestions for attached file" else "Try asking",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    val starterPrompts = if (attachedFile != null) {
+                        if (attachedFile.isImage) {
+                            listOf("What is depicted in this photo?", "Explain details and visible text", "Where and when was this taken?")
+                        } else {
+                            listOf("Summarize this document", "What are the main key points?", "Explain the conclusion of this file")
+                        }
+                    } else if (smartSuggestions.isNotEmpty()) {
+                        smartSuggestions.take(4)
+                    } else {
+                        listOf("Find recent PDF receipts", "Find camera photos with location", "Summarize my stored documents")
+                    }
+
+                    items(starterPrompts) { prompt ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onQuery(prompt)
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = prompt,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(messages, key = { it.id }) { msg ->
+                        if (msg.isUser) {
+                            // User Message Bubble
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 4.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.widthIn(max = 320.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        // Attached File Badge inside User Bubble
+                                        msg.attachedFile?.let { att ->
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(bottom = 6.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    val icon = if (att.isImage) Icons.Default.Image else Icons.Default.Description
+                                                    val tint = if (att.isImage) ColorImages else ColorDocuments
+                                                    Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = att.name,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Text(
+                                            text = msg.text,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            // Assistant Message Bubble
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Start
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp),
+                                    color = if (msg.isError) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                    modifier = Modifier.widthIn(max = 340.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.AutoAwesome,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Brain AI",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                    clipboard.setPrimaryClip(ClipData.newPlainText("AI Response", msg.text))
+                                                    Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        Text(
+                                            text = msg.text,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            lineHeight = 20.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+
+                                        // Referenced File Citations
+                                        if (msg.referencedNodes.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = "Referenced files:",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            msg.referencedNodes.take(3).forEach { node ->
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(vertical = 2.dp)
+                                                        .clickable {
+                                                            node.sourceFilePath?.let { path ->
+                                                                val f = File(path)
+                                                                if (node.nodeType == "IMAGE") onOpenImage(f) else onOpenFile(f)
+                                                            }
+                                                        }
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        val icon = if (node.nodeType == "IMAGE") Icons.Default.Image else Icons.Default.Description
+                                                        Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = node.label,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open", modifier = Modifier.size(12.dp))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Thinking Bubble during querying
+                    if (isQuerying) {
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                modifier = Modifier.widthIn(max = 280.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = if (attachedFile != null) "Analyzing ${attachedFile.name}…" else "Thinking…",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Active File Attachment Card (Directly above input) ---
+        AnimatedVisibility(visible = attachedFile != null) {
+            attachedFile?.let { file ->
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                    tonalElevation = 2.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primaryContainer),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    val icon = if (file.isImage) Icons.Default.Image else Icons.Default.Description
+                                    val tint = if (file.isImage) ColorImages else ColorDocuments
+                                    Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = file.name,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "${Formatter.formatFileSize(context, file.size)} • AI will receive this file only",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = onDetachFile,
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Detach file", modifier = Modifier.size(16.dp))
+                            }
+                        }
+
+                        // Quick action suggestion chips for attached file
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            val chips = if (file.isImage) {
+                                listOf("Describe image", "Read visible text", "Key visual details")
+                            } else {
+                                listOf("Summarize", "Key points", "What is inside?")
+                            }
+                            items(chips) { prompt ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    modifier = Modifier.clickable {
+                                        onQuery(prompt)
+                                    }
+                                ) {
+                                    Text(
+                                        text = prompt,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+        // --- Bottom Message & Attachment Input Row ---
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Attach File Button
+                IconButton(
+                    onClick = { showAttachmentDialog = true },
+                    modifier = Modifier
+                        .size(38.dp)
+                        .testTag("attach_file_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AttachFile,
+                        contentDescription = "Attach file",
+                        tint = if (attachedFile != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                // Text Input Field
+                OutlinedTextField(
+                    value = queryText,
+                    onValueChange = { queryText = it },
+                    placeholder = {
+                        Text(
+                            text = if (attachedFile != null) "Ask about ${attachedFile.name}…" else "Ask Brain a question…",
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    singleLine = false,
+                    maxLines = 3,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = {
+                            if (queryText.isNotBlank() && !isQuerying) {
+                                val q = queryText.trim()
+                                queryText = ""
+                                onQuery(q)
+                            }
+                        }
+                    ),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent
+                    ),
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 4.dp)
+                        .testTag("rag_query_input")
+                )
+
+                // Send Button
+                IconButton(
+                    onClick = {
+                        if (queryText.isNotBlank() && !isQuerying) {
+                            val q = queryText.trim()
+                            queryText = ""
+                            onQuery(q)
+                        } else if (queryText.isBlank() && attachedFile != null && !isQuerying) {
+                            onQuery("Tell me about this file: ${attachedFile.name}")
+                        }
+                    },
+                    enabled = !isQuerying && (queryText.isNotBlank() || attachedFile != null),
+                    modifier = Modifier
+                        .size(38.dp)
+                        .testTag("rag_submit_query_btn")
+                ) {
+                    if (isQuerying) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        val active = queryText.isNotBlank() || attachedFile != null
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send",
+                            tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
     }
+
+    // Modal Sheet / Dialog to Pick a File to Attach
+    if (showAttachmentDialog) {
+        AlertDialog(
+            onDismissRequest = { showAttachmentDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AttachFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Attach File for AI")
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "The AI will receive this file only and answer questions specifically about it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Option 1: System Document Picker
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showAttachmentDialog = false
+                                documentPickerLauncher.launch(arrayOf("*/*"))
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Description, contentDescription = null, tint = ColorDocuments, modifier = Modifier.size(22.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Browse Documents & Files", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                Text("PDFs, text files, code, docs", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+
+                    // Option 2: System Photo Picker
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showAttachmentDialog = false
+                                photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Image, contentDescription = null, tint = ColorImages, modifier = Modifier.size(22.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Choose Photo from Gallery", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                Text("Images and photos for visual AI analysis", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+
+                    // Option 3: Pick from App Knowledge Graph Files
+                    val localFiles = remember(availableNodes) {
+                        availableNodes
+                            .mapNotNull { it.sourceFilePath?.let(::File) }
+                            .filter { it.exists() && it.isFile }
+                            .distinctBy { it.absolutePath }
+                            .take(6)
+                    }
+
+                    if (localFiles.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Recently scanned files:",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        localFiles.forEach { file ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showAttachmentDialog = false
+                                        onAttachFile(file)
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val isImg = file.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp")
+                                    Icon(if (isImg) Icons.Default.Image else Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(file.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showAttachmentDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+private fun copyUriToTempFile(context: Context, uri: Uri): File? {
+    return try {
+        val resolver = context.contentResolver
+        var displayName = "attached_file"
+        resolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIndex != -1 && cursor.moveToFirst()) {
+                displayName = cursor.getString(nameIndex) ?: displayName
+            }
+        }
+        val safeName = displayName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        val destFile = File(context.cacheDir, "ai_${System.currentTimeMillis()}_$safeName")
+        resolver.openInputStream(uri)?.use { input ->
+            destFile.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+        if (destFile.exists() && destFile.length() > 0) destFile else null
+    } catch (_: Exception) {
+        null
+    }
 }
 
 // -------------------------------------------------------------
-// TAB 1: POLISHED FORCE-DIRECTED NETWORK VIEW
+// TAB 2: DECLUTTERED FULL-BLEED NETWORK GRAPH VIEW
 // -------------------------------------------------------------
 
 @Composable
@@ -457,14 +1187,6 @@ fun DeclutteredCanvasView(
     onOpenImage: (File) -> Unit,
     onIndexFiles: () -> Unit,
     isIndexing: Boolean,
-    brainTopics: List<BrainTopicEntity>,
-    selectedBrainTopic: BrainTopicEntity?,
-    brainTopicRelevantFiles: List<BrainTopicFile>,
-    isBrainTopicLoading: Boolean,
-    brainTopicStatus: String,
-    onSelectBrainTopic: (String) -> Unit,
-    onSaveBrainTopic: (String, String, String?) -> Unit,
-    onDeleteBrainTopic: (String) -> Unit,
     onAskAiForFile: (KgNodeEntity) -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("ALL") }
@@ -492,7 +1214,6 @@ fun DeclutteredCanvasView(
         edges.filter { it.sourceNodeId in filteredIds && it.targetNodeId in filteredIds }
     }
 
-    // Node connection degree map
     val degreeMap = remember(filteredNodes, filteredEdges) {
         val map = mutableMapOf<String, Int>()
         filteredEdges.forEach { edge ->
@@ -502,7 +1223,6 @@ fun DeclutteredCanvasView(
         map
     }
 
-    // Set of neighbors connected to the active node
     val activeNeighbors = remember(activeNode, filteredEdges) {
         if (activeNode == null) emptySet<String>()
         else {
@@ -515,7 +1235,6 @@ fun DeclutteredCanvasView(
         }
     }
 
-    // Organic Force-Directed Layout Simulation
     val nodePositions = remember(filteredNodes, filteredEdges, layoutSeed) {
         val map = mutableStateMapOf<String, Offset>()
         val computed = computeOrganicGraphLayout(filteredNodes, filteredEdges, layoutSeed)
@@ -523,7 +1242,6 @@ fun DeclutteredCanvasView(
         map
     }
 
-    // Auto-fit network graph to viewport on layout settle or category filter change
     LaunchedEffect(filteredNodes.size, layoutSeed) {
         if (nodePositions.isNotEmpty()) {
             val fit = calculateFitScaleAndOffset(nodePositions.values)
@@ -532,7 +1250,6 @@ fun DeclutteredCanvasView(
         }
     }
 
-    // Search matches
     val searchMatches = remember(searchQuery, filteredNodes) {
         if (searchQuery.isBlank()) emptySet<String>()
         else {
@@ -542,7 +1259,6 @@ fun DeclutteredCanvasView(
         }
     }
 
-    // Avoid a frame-driven animation loop while the graph is idle.
     val animateGraph = activeNode != null || searchMatches.isNotEmpty()
     val pulsePhase = if (animateGraph) {
         val transition = rememberInfiniteTransition(label = "graph_energy")
@@ -576,128 +1292,105 @@ fun DeclutteredCanvasView(
     val outlineColor = MaterialTheme.colorScheme.outlineVariant
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Integrated top control & filter bar
+        // Minimal horizontal category filters
         Surface(
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 1.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (isSearchOpen) {
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            placeholder = { Text("Filter network nodes...", fontSize = 12.sp) },
-                            singleLine = true,
-                            leadingIcon = {
-                                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
-                            },
-                            trailingIcon = {
-                                IconButton(
-                                    onClick = {
-                                        if (searchQuery.isNotEmpty()) {
-                                            searchQuery = ""
-                                        } else {
-                                            isSearchOpen = false
-                                        }
-                                    },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(14.dp))
-                                }
-                            },
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(38.dp)
-                        )
-                    } else {
-                        LazyRow(
-                            modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val filters = listOf(
-                                "ALL" to ("All (" + nodes.size + ")") to primaryColor,
-                                "PHOTOS" to ("Photos (" + nodes.count { it.nodeType == "IMAGE" } + ")") to Color(0xFF00BFA5),
-                                "DOCS" to ("Docs (" + nodes.count { it.nodeType == "DOCUMENT" } + ")") to Color(0xFF2979FF),
-                                "PLACES" to ("Places (" + nodes.count { it.nodeType == "LOCATION" } + ")") to Color(0xFFFF9100),
-                                "DEVICES" to ("Devices (" + nodes.count { it.nodeType == "DEVICE" } + ")") to Color(0xFFAB47BC),
-                                "TOPICS" to "Topics" to Color(0xFFFFD600)
-                            )
-                            items(filters) { item ->
-                                val key = item.first.first
-                                val label = item.first.second
-                                val dotColor = item.second
-                                FilterChip(
-                                    selected = selectedFilter == key,
-                                    onClick = {
-                                        selectedFilter = key
-                                        activeNode = null
-                                    },
-                                    leadingIcon = {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(8.dp)
-                                                .clip(CircleShape)
-                                                .background(dotColor)
-                                        )
-                                    },
-                                    label = { Text(label, fontSize = 11.sp, fontWeight = if (selectedFilter == key) FontWeight.Bold else FontWeight.Normal) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                    ),
-                                    modifier = Modifier.height(30.dp)
-                                )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isSearchOpen) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Filter graph nodes…", fontSize = 12.sp) },
+                        singleLine = true,
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = {
+                                    if (searchQuery.isNotEmpty()) searchQuery = "" else isSearchOpen = false
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(14.dp))
                             }
-                        }
-
-                        IconButton(
-                            onClick = { isSearchOpen = true },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search nodes",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
+                        },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                    )
+                } else {
+                    LazyRow(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val filters = listOf(
+                            "ALL" to ("All (" + nodes.size + ")") to primaryColor,
+                            "PHOTOS" to ("Photos (" + nodes.count { it.nodeType == "IMAGE" } + ")") to Color(0xFF00BFA5),
+                            "DOCS" to ("Docs (" + nodes.count { it.nodeType == "DOCUMENT" } + ")") to Color(0xFF2979FF),
+                            "PLACES" to ("Places (" + nodes.count { it.nodeType == "LOCATION" } + ")") to Color(0xFFFF9100),
+                            "DEVICES" to ("Devices (" + nodes.count { it.nodeType == "DEVICE" } + ")") to Color(0xFFAB47BC)
+                        )
+                        items(filters) { item ->
+                            val key = item.first.first
+                            val label = item.first.second
+                            val dotColor = item.second
+                            FilterChip(
+                                selected = selectedFilter == key,
+                                onClick = {
+                                    selectedFilter = key
+                                    activeNode = null
+                                },
+                                leadingIcon = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .clip(CircleShape)
+                                            .background(dotColor)
+                                    )
+                                },
+                                label = { Text(label, fontSize = 11.sp, fontWeight = if (selectedFilter == key) FontWeight.Bold else FontWeight.Normal) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                modifier = Modifier.height(30.dp)
                             )
                         }
+                    }
+
+                    IconButton(
+                        onClick = { isSearchOpen = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search nodes",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }
         }
 
-        BrainTopicWorkspace(
-            topics = brainTopics,
-            selectedTopic = selectedBrainTopic,
-            relevantFiles = brainTopicRelevantFiles,
-            isLoading = isBrainTopicLoading,
-            status = brainTopicStatus,
-            onSelectTopic = onSelectBrainTopic,
-            onSaveTopic = onSaveBrainTopic,
-            onDeleteTopic = onDeleteBrainTopic,
-            onAskAiForFile = onAskAiForFile,
-            onOpenFile = onOpenFile,
-            onOpenImage = onOpenImage
-        )
-
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-        // Interactive Graph Viewport
+        // Dedicated Full-Bleed Graph Viewport
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -781,15 +1474,15 @@ fun DeclutteredCanvasView(
                             Icons.Default.Psychology,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(32.dp)
                         )
                         Text(
-                            "No indexed files yet",
+                            "No indexed entities found",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            "Sync Brain to populate the network. Your topics can still be created above.",
+                            "Tap Sync to scan and index storage entities into your graph.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -810,12 +1503,12 @@ fun DeclutteredCanvasView(
                 val gridSpacing = 44f * scale
                 val startX = (offset.x + centerOffset.x) % gridSpacing
                 val startY = (offset.y + centerOffset.y) % gridSpacing
-                val dotColor = outlineColor.copy(alpha = 0.16f)
+                val dotColor = outlineColor.copy(alpha = 0.12f)
                 var gx = startX - gridSpacing
                 while (gx < size.width + gridSpacing) {
                     var gy = startY - gridSpacing
                     while (gy < size.height + gridSpacing) {
-                        drawCircle(color = dotColor, radius = 1.3f, center = Offset(gx, gy))
+                        drawCircle(color = dotColor, radius = 1.2f, center = Offset(gx, gy))
                         gy += gridSpacing
                     }
                     gx += gridSpacing
@@ -835,12 +1528,12 @@ fun DeclutteredCanvasView(
                     val edgeColor = if (isConnectedToActive) {
                         primaryColor
                     } else if (isDimmed) {
-                        outlineColor.copy(alpha = 0.10f)
+                        outlineColor.copy(alpha = 0.08f)
                     } else {
-                        outlineColor.copy(alpha = 0.35f)
+                        outlineColor.copy(alpha = 0.28f)
                     }
 
-                    val strokeWidth = if (isConnectedToActive) 2.8f * scale else 1.2f * scale
+                    val strokeWidth = if (isConnectedToActive) 2.6f * scale else 1.0f * scale
 
                     drawLine(
                         color = edgeColor,
@@ -856,51 +1549,14 @@ fun DeclutteredCanvasView(
                         val particlePos = startScreen + (endScreen - startScreen) * travel
                         drawCircle(
                             color = primaryColor,
-                            radius = 3.5f * scale,
+                            radius = 3.2f * scale,
                             center = particlePos
                         )
                         drawCircle(
                             color = Color.White,
-                            radius = 1.8f * scale,
+                            radius = 1.6f * scale,
                             center = particlePos
                         )
-
-                        // Relation label at midpoint when zoomed in
-                        if (scale >= 0.75f && edge.relation.isNotBlank()) {
-                            val mid = (startScreen + endScreen) / 2f
-                            val relText = edge.relation.lowercase()
-                            val textLayout = textMeasurer.measure(
-                                text = relText,
-                                style = TextStyle(
-                                    fontSize = (9 * scale).coerceIn(8f, 11f).sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = primaryColor
-                                )
-                            )
-                            val padH = 4f * scale
-                            val padV = 2f * scale
-                            val bgWidth = textLayout.size.width + padH * 2
-                            val bgHeight = textLayout.size.height + padV * 2
-                            val bgTopLeft = Offset(mid.x - bgWidth / 2f, mid.y - bgHeight / 2f)
-
-                            drawRoundRect(
-                                color = surfaceColor.copy(alpha = 0.92f),
-                                topLeft = bgTopLeft,
-                                size = Size(bgWidth, bgHeight),
-                                cornerRadius = CornerRadius(4f * scale, 4f * scale)
-                            )
-                            drawRoundRect(
-                                color = primaryColor.copy(alpha = 0.5f),
-                                topLeft = bgTopLeft,
-                                size = Size(bgWidth, bgHeight),
-                                cornerRadius = CornerRadius(4f * scale, 4f * scale),
-                                style = Stroke(width = 0.8f * scale)
-                            )
-                            drawText(
-                                textLayoutResult = textLayout,
-                                topLeft = Offset(bgTopLeft.x + padH, bgTopLeft.y + padV)
-                            )
-                        }
                     }
                 }
 
@@ -953,7 +1609,7 @@ fun DeclutteredCanvasView(
                     }
 
                     // Node Body Fill
-                    val bodyColor = if (isDimmed) nodeColor.copy(alpha = 0.25f) else nodeColor
+                    val bodyColor = if (isDimmed) nodeColor.copy(alpha = 0.20f) else nodeColor
                     drawCircle(
                         color = bodyColor,
                         radius = radius,
@@ -964,7 +1620,7 @@ fun DeclutteredCanvasView(
                     val borderColor = if (isSelected) {
                         primaryColor
                     } else if (isDimmed) {
-                        surfaceColor.copy(alpha = 0.3f)
+                        surfaceColor.copy(alpha = 0.25f)
                     } else {
                         surfaceColor
                     }
@@ -972,126 +1628,47 @@ fun DeclutteredCanvasView(
                         color = borderColor,
                         radius = radius,
                         center = screenPos,
-                        style = Stroke(width = if (isSelected) 2.5f * scale else 1.4f * scale)
+                        style = Stroke(width = if (isSelected) 2.4f * scale else 1.2f * scale)
                     )
 
-                    // Center Glyph / Icon representation for larger nodes
-                    if (radius >= 11f && isHighlighted) {
-                        val glyphColor = Color.White
-                        val glyphSize = radius * 0.55f
-                        when (node.nodeType) {
-                            "IMAGE" -> {
-                                // Sun dot + mountain ridge
-                                drawCircle(color = glyphColor, radius = glyphSize * 0.25f, center = Offset(screenPos.x, screenPos.y - glyphSize * 0.35f))
-                                drawLine(
-                                    color = glyphColor,
-                                    start = Offset(screenPos.x - glyphSize * 0.6f, screenPos.y + glyphSize * 0.35f),
-                                    end = Offset(screenPos.x, screenPos.y),
-                                    strokeWidth = 1.3f * scale,
-                                    cap = StrokeCap.Round
-                                )
-                                drawLine(
-                                    color = glyphColor,
-                                    start = Offset(screenPos.x, screenPos.y),
-                                    end = Offset(screenPos.x + glyphSize * 0.6f, screenPos.y + glyphSize * 0.35f),
-                                    strokeWidth = 1.3f * scale,
-                                    cap = StrokeCap.Round
-                                )
-                            }
-                            "DOCUMENT" -> {
-                                // Clean document rectangle
-                                drawRoundRect(
-                                    color = glyphColor,
-                                    topLeft = Offset(screenPos.x - glyphSize * 0.35f, screenPos.y - glyphSize * 0.45f),
-                                    size = Size(glyphSize * 0.7f, glyphSize * 0.9f),
-                                    cornerRadius = CornerRadius(1.5f * scale, 1.5f * scale),
-                                    style = Stroke(width = 1.2f * scale)
-                                )
-                            }
-                            "LOCATION" -> {
-                                // Pin ring + dot
-                                drawCircle(
-                                    color = glyphColor,
-                                    radius = glyphSize * 0.45f,
-                                    center = screenPos,
-                                    style = Stroke(width = 1.2f * scale)
-                                )
-                                drawCircle(
-                                    color = glyphColor,
-                                    radius = glyphSize * 0.18f,
-                                    center = screenPos
-                                )
-                            }
-                            "DEVICE" -> {
-                                // Phone outline
-                                drawRoundRect(
-                                    color = glyphColor,
-                                    topLeft = Offset(screenPos.x - glyphSize * 0.3f, screenPos.y - glyphSize * 0.5f),
-                                    size = Size(glyphSize * 0.6f, glyphSize),
-                                    cornerRadius = CornerRadius(2f * scale, 2f * scale),
-                                    style = Stroke(width = 1.2f * scale)
-                                )
-                            }
-                            else -> {
-                                // Center neural dot
-                                drawCircle(
-                                    color = glyphColor,
-                                    radius = glyphSize * 0.35f,
-                                    center = screenPos
-                                )
-                            }
-                        }
-                    }
-
-                    // Node Label with Crisp Pill Container
-                    val shouldShowLabel = isSelected || isNeighbor || isSearchMatch || (scale >= 0.65f && (!isDimmed || deg >= 2))
+                    // Node Label - Only show for selected, neighbor, or search matches to avoid visual clutter
+                    val shouldShowLabel = isSelected || isNeighbor || isSearchMatch || (scale >= 1.0f && deg >= 2)
                     if (shouldShowLabel) {
-                        val maxChars = if (isSelected) 22 else 14
+                        val maxChars = if (isSelected) 22 else 12
                         val displayText = if (node.label.length > maxChars) node.label.take(maxChars) + "…" else node.label
-                        val labelSizeSp = (10 * scale).coerceIn(8f, 13f).sp
+                        val labelSizeSp = (10 * scale).coerceIn(8f, 12f).sp
                         val textLayout = textMeasurer.measure(
                             text = displayText,
                             style = TextStyle(
                                 fontSize = labelSizeSp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isDimmed) onSurfaceColor.copy(alpha = 0.4f) else onSurfaceColor
+                                color = if (isDimmed) onSurfaceColor.copy(alpha = 0.35f) else onSurfaceColor
                             )
                         )
 
-                        val padH = 6f * scale
-                        val padV = 2.5f * scale
+                        val padH = 5f * scale
+                        val padV = 2f * scale
                         val pillWidth = textLayout.size.width + padH * 2
                         val pillHeight = textLayout.size.height + padV * 2
                         val pillTopLeft = Offset(screenPos.x - (pillWidth / 2f), screenPos.y + radius + 4f * scale)
 
-                        // Pill background
                         drawRoundRect(
-                            color = surfaceColor.copy(alpha = if (isDimmed) 0.5f else 0.90f),
+                            color = surfaceColor.copy(alpha = if (isDimmed) 0.4f else 0.90f),
                             topLeft = pillTopLeft,
                             size = Size(pillWidth, pillHeight),
-                            cornerRadius = CornerRadius(5f * scale, 5f * scale)
+                            cornerRadius = CornerRadius(4f * scale, 4f * scale)
                         )
 
-                        // Pill border
                         if (isSelected) {
                             drawRoundRect(
                                 color = primaryColor,
                                 topLeft = pillTopLeft,
                                 size = Size(pillWidth, pillHeight),
-                                cornerRadius = CornerRadius(5f * scale, 5f * scale),
-                                style = Stroke(width = 1.2f * scale)
-                            )
-                        } else if (!isDimmed) {
-                            drawRoundRect(
-                                color = outlineColor.copy(alpha = 0.35f),
-                                topLeft = pillTopLeft,
-                                size = Size(pillWidth, pillHeight),
-                                cornerRadius = CornerRadius(5f * scale, 5f * scale),
-                                style = Stroke(width = 0.6f * scale)
+                                cornerRadius = CornerRadius(4f * scale, 4f * scale),
+                                style = Stroke(width = 1.0f * scale)
                             )
                         }
 
-                        // Pill text
                         drawText(
                             textLayoutResult = textLayout,
                             topLeft = Offset(pillTopLeft.x + padH, pillTopLeft.y + padV)
@@ -1100,22 +1677,22 @@ fun DeclutteredCanvasView(
                 }
             }
 
-            // Top-Start Stats Pill
+            // Top-Start Discreet Stats Pill
             Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
                 tonalElevation = 2.dp,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(start = 12.dp, top = 12.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(7.dp)
+                            .size(6.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF00E676))
                     )
@@ -1124,53 +1701,36 @@ fun DeclutteredCanvasView(
                         text = "${filteredNodes.size} Nodes • ${filteredEdges.size} Links",
                         style = MaterialTheme.typography.labelSmall,
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    if (searchMatches.isNotEmpty()) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer
-                        ) {
-                            Text(
-                                text = "${searchMatches.size} found",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                            )
-                        }
-                    }
                 }
             }
 
-            // Bottom-End Floating Action HUD
+            // Decluttered Bottom-End Floating Action Island
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                tonalElevation = 4.dp,
+                tonalElevation = 3.dp,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 12.dp, bottom = if (activeNode != null) 180.dp else 16.dp)
+                    .padding(end = 12.dp, bottom = if (activeNode != null) 160.dp else 16.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(4.dp),
+                    modifier = Modifier.padding(3.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     IconButton(
                         onClick = { scale = (scale * 1.25f).coerceAtMost(3.5f) },
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(32.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Zoom In", modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Add, contentDescription = "Zoom In", modifier = Modifier.size(16.dp))
                     }
                     IconButton(
                         onClick = { scale = (scale * 0.8f).coerceAtLeast(0.35f) },
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(32.dp)
                     ) {
-                        Icon(Icons.Default.Remove, contentDescription = "Zoom Out", modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Remove, contentDescription = "Zoom Out", modifier = Modifier.size(16.dp))
                     }
                     IconButton(
                         onClick = {
@@ -1178,9 +1738,9 @@ fun DeclutteredCanvasView(
                             scale = fit.first
                             offset = fit.second
                         },
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(32.dp)
                     ) {
-                        Icon(Icons.Default.CenterFocusStrong, contentDescription = "Recenter", modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.CenterFocusStrong, contentDescription = "Recenter", modifier = Modifier.size(16.dp))
                     }
                     if (activeNode != null) {
                         IconButton(
@@ -1190,33 +1750,20 @@ fun DeclutteredCanvasView(
                                     offset = -p * scale
                                 }
                             },
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
                                 Icons.Default.FilterCenterFocus,
-                                contentDescription = "Focus on Node",
+                                contentDescription = "Focus",
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
-                    }
-                    IconButton(
-                        onClick = {
-                            layoutSeed = System.currentTimeMillis()
-                        },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.AutoAwesome,
-                            contentDescription = "Settle Physics",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
                     }
                 }
             }
 
-            // Bottom Floating Node Quick Info Card (Shows without obscuring full graph)
+            // Sleek Bottom Floating Node Quick Info Card
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1230,88 +1777,70 @@ fun DeclutteredCanvasView(
                 ) {
                     activeNode?.let { node ->
                         Card(
-                            shape = RoundedCornerShape(18.dp),
+                            shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
                                 Row(
+                                    modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f)
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    val nColor = getNodeColor(node.nodeType, primaryColor)
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = nColor.copy(alpha = 0.16f),
-                                        modifier = Modifier.size(34.dp)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
                                     ) {
-                                        Box(contentAlignment = Alignment.Center) {
+                                        val nColor = getNodeColor(node.nodeType, primaryColor)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(CircleShape)
+                                                .background(nColor.copy(alpha = 0.16f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
                                             Icon(
                                                 imageVector = getNodeIcon(node.nodeType),
                                                 contentDescription = null,
                                                 tint = nColor,
-                                                modifier = Modifier.size(18.dp)
+                                                modifier = Modifier.size(16.dp)
                                             )
                                         }
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = nColor.copy(alpha = 0.15f)
-                                            ) {
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = nColor.copy(alpha = 0.15f)
+                                                ) {
+                                                    Text(
+                                                        text = node.nodeType,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = nColor,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                val connCount = degreeMap[node.id] ?: 0
                                                 Text(
-                                                    text = node.nodeType,
+                                                    text = "$connCount link${if (connCount == 1) "" else "s"}",
                                                     style = MaterialTheme.typography.labelSmall,
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = nColor,
-                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            val connCount = degreeMap[node.id] ?: 0
                                             Text(
-                                                text = "$connCount connection${if (connCount == 1) "" else "s"}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                text = node.label,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = node.label,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
                                     }
-                                }
 
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(
-                                        onClick = {
-                                            val p = nodePositions[node.id]
-                                            if (p != null) {
-                                                offset = -p * scale
-                                            }
-                                        },
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.FilterCenterFocus,
-                                            contentDescription = "Center on node",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
                                     IconButton(
                                         onClick = { activeNode = null },
                                         modifier = Modifier.size(28.dp)
@@ -1319,61 +1848,61 @@ fun DeclutteredCanvasView(
                                         Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(16.dp))
                                     }
                                 }
-                            }
 
-                            if (node.summary.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = node.summary,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                                if (node.summary.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = node.summary,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
 
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                node.sourceFilePath?.let { path ->
-                                    val f = File(path)
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    node.sourceFilePath?.let { path ->
+                                        val f = File(path)
+                                        FilledTonalButton(
+                                            onClick = {
+                                                if (node.nodeType == "IMAGE") onOpenImage(f) else onOpenFile(f)
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Open", fontSize = 12.sp)
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                    }
+
                                     FilledTonalButton(
-                                        onClick = {
-                                            if (node.nodeType == "IMAGE") onOpenImage(f) else onOpenFile(f)
-                                        },
+                                        onClick = { onAskAiForFile(node) },
                                         shape = RoundedCornerShape(10.dp),
                                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                        modifier = Modifier.height(34.dp)
+                                        modifier = Modifier.height(32.dp)
                                     ) {
-                                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Open", fontSize = 12.sp)
+                                        Text("Ask AI", fontSize = 12.sp)
                                     }
                                     Spacer(modifier = Modifier.width(6.dp))
-                                }
 
-                                FilledTonalButton(
-                                    onClick = { onAskAiForFile(node) },
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(34.dp)
-                                ) {
-                                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Ask AI", fontSize = 12.sp)
-                                }
-                                Spacer(modifier = Modifier.width(6.dp))
-
-                                Button(
-                                    onClick = { onNodeClick(node) },
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(34.dp)
-                                ) {
-                                    Text("Explore", fontSize = 12.sp)
+                                    Button(
+                                        onClick = { onNodeClick(node) },
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Text("Inspect", fontSize = 12.sp)
+                                    }
                                 }
                             }
                         }
@@ -1383,10 +1912,13 @@ fun DeclutteredCanvasView(
         }
     }
 }
-}
+
+// -------------------------------------------------------------
+// TAB 3: DEDICATED DECLUTTERED TOPICS VIEW
+// -------------------------------------------------------------
 
 @Composable
-private fun BrainTopicWorkspace(
+fun DeclutteredTopicsView(
     topics: List<BrainTopicEntity>,
     selectedTopic: BrainTopicEntity?,
     relevantFiles: List<BrainTopicFile>,
@@ -1399,339 +1931,673 @@ private fun BrainTopicWorkspace(
     onOpenFile: (File) -> Unit,
     onOpenImage: (File) -> Unit
 ) {
-    var isEditorOpen by remember { mutableStateOf(false) }
+    var isDialogOpen by remember { mutableStateOf(false) }
     var editingTopicId by remember { mutableStateOf<String?>(null) }
     var heading by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var isExpanded by remember { mutableStateOf(selectedTopic != null) }
 
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
-        modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+        // Topics Header & Add Action
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            Column {
+                Text(
+                    text = "Smart Topics",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Semantic subject clusters across your files",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            FilledTonalButton(
+                onClick = {
+                    editingTopicId = null
+                    heading = ""
+                    description = ""
+                    isDialogOpen = true
+                },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.height(36.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { isExpanded = !isExpanded }
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("New Topic", fontSize = 12.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (topics.isEmpty()) {
+            // Friendly Empty State
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(
-                        imageVector = if (isExpanded || isEditorOpen) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (isExpanded) "Collapse" else "Expand",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Category,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    Text(
+                        "No topics created yet",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Column {
-                        Text(
-                            text = if (topics.isEmpty()) "Topics" else "Topics (${topics.size})",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        if (!isExpanded && !isEditorOpen) {
-                            Text(
-                                text = if (selectedTopic != null) "Active: ${selectedTopic.heading}" else "Tap to expand context topics",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        } else {
-                            Text(
-                                "Define a context and let Brain find related files semantically.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                    Text(
+                        "Create topics like 'Work Receipts', 'Travel Hawaii', or 'Tax Records' to let Brain automatically group relevant files semantically.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 24.dp)
+                    )
+                    Button(
+                        onClick = {
+                            editingTopicId = null
+                            heading = ""
+                            description = ""
+                            isDialogOpen = true
                         }
-                    }
-                }
-                FilledTonalButton(
-                    onClick = {
-                        editingTopicId = null
-                        heading = ""
-                        description = ""
-                        isEditorOpen = true
-                        isExpanded = true
-                    },
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier.height(32.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add", fontSize = 12.sp)
-                }
-            }
-
-            if (isExpanded || isEditorOpen) {
-
-            if (topics.isNotEmpty()) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(topics, key = { it.id }) { topic ->
-                        FilterChip(
-                            selected = selectedTopic?.id == topic.id,
-                            onClick = { onSelectTopic(topic.id) },
-                            label = {
-                                Text(
-                                    topic.heading,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    fontSize = 11.sp
-                                )
-                            },
-                            modifier = Modifier.height(32.dp)
-                        )
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Create First Topic")
                     }
                 }
             }
+        } else {
+            // Horizontal topic selectors
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(topics, key = { it.id }) { topic ->
+                    FilterChip(
+                        selected = selectedTopic?.id == topic.id,
+                        onClick = { onSelectTopic(topic.id) },
+                        label = {
+                            Text(
+                                topic.heading,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = 12.sp,
+                                fontWeight = if (selectedTopic?.id == topic.id) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ),
+                        modifier = Modifier.height(34.dp)
+                    )
+                }
+            }
 
-            if (isEditorOpen) {
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Active Topic Details
+            selectedTopic?.let { topic ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            if (editingTopicId == null) "New topic" else "Edit topic",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        OutlinedTextField(
-                            value = heading,
-                            onValueChange = { heading = it },
-                            singleLine = true,
-                            label = { Text("Heading") },
-                            placeholder = { Text("e.g. Medical studies") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        OutlinedTextField(
-                            value = description,
-                            onValueChange = { description = it },
-                            minLines = 2,
-                            maxLines = 4,
-                            label = { Text("Description") },
-                            placeholder = { Text("What should Brain look for in this topic?") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            if (editingTopicId != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Icon(
+                                    Icons.Default.Hub,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    topic.heading,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Row {
                                 IconButton(
                                     onClick = {
-                                        onDeleteTopic(editingTopicId!!)
-                                        isEditorOpen = false
-                                    }
+                                        editingTopicId = topic.id
+                                        heading = topic.heading
+                                        description = topic.description
+                                        isDialogOpen = true
+                                    },
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit topic", modifier = Modifier.size(16.dp))
+                                }
+                                IconButton(
+                                    onClick = { onDeleteTopic(topic.id) },
+                                    modifier = Modifier.size(30.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.Delete,
                                         contentDescription = "Delete topic",
-                                        tint = MaterialTheme.colorScheme.error
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
-                                Spacer(modifier = Modifier.width(4.dp))
-                            }
-                            FilledTonalButton(onClick = { isEditorOpen = false }) {
-                                Text("Cancel")
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Button(
-                                onClick = {
-                                    if (heading.isNotBlank()) {
-                                        onSaveTopic(heading.trim(), description.trim(), editingTopicId)
-                                        isEditorOpen = false
-                                    }
-                                },
-                                enabled = heading.isNotBlank()
-                            ) {
-                                Text("Save")
                             }
                         }
-                    }
-                }
-            }
 
-            selectedTopic?.let { topic ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Hub,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                topic.heading,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f)
-                            )
-                            IconButton(
-                                onClick = {
-                                    editingTopicId = topic.id
-                                    heading = topic.heading
-                                    description = topic.description
-                                    isEditorOpen = true
-                                },
-                                modifier = Modifier.size(30.dp)
-                            ) {
-                                Icon(Icons.Default.Edit, contentDescription = "Edit topic", modifier = Modifier.size(16.dp))
-                            }
-                        }
                         if (topic.description.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 topic.description,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                "Relevant files",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
+
+                        if (status.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 status,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
-                        if (isLoading) {
-                            LinearProgressIndicator(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(2.dp)
-                            )
-                        } else if (relevantFiles.isNotEmpty()) {
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(relevantFiles, key = { it.node.id }) { match ->
-                                    val node = match.node
-                                    val file = node.sourceFilePath?.let(::File)
-                                    Card(
-                                        modifier = Modifier.width(230.dp),
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Matched Files Section
+                Text(
+                    text = "Matched Files (${relevantFiles.size})",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (isLoading) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                    )
+                } else if (relevantFiles.isEmpty()) {
+                    Text(
+                        "No semantically matched files yet. Brain will link files as they are scanned.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(relevantFiles, key = { it.node.id }) { match ->
+                            val node = match.node
+                            val file = node.sourceFilePath?.let(::File)
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val icon = if (node.nodeType == "IMAGE") Icons.Default.Image else Icons.Default.Description
+                                    val tint = if (node.nodeType == "IMAGE") ColorImages else ColorDocuments
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .clip(CircleShape)
+                                            .background(tint.copy(alpha = 0.15f)),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Column(
-                                            modifier = Modifier.padding(10.dp),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(
-                                                    if (node.nodeType == "IMAGE") Icons.Default.Image else Icons.Default.Description,
-                                                    contentDescription = null,
-                                                    tint = if (node.nodeType == "IMAGE") ColorImages else ColorDocuments,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    node.label,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier = Modifier.weight(1f)
-                                                )
-                                            }
-                                            if (node.summary.isNotBlank()) {
-                                                Text(
-                                                    node.summary,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                if (file != null) {
-                                                    FilledTonalButton(
-                                                        onClick = {
-                                                            if (node.nodeType == "IMAGE") onOpenImage(file) else onOpenFile(file)
-                                                        },
-                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                                                        modifier = Modifier
-                                                            .height(30.dp)
-                                                            .weight(1f)
-                                                    ) {
-                                                        Icon(
-                                                            Icons.AutoMirrored.Filled.OpenInNew,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
-                                                        Spacer(modifier = Modifier.width(3.dp))
-                                                        Text("Open", fontSize = 11.sp)
-                                                    }
-                                                }
-                                                Button(
-                                                    onClick = { onAskAiForFile(node) },
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                                                    modifier = Modifier
-                                                        .height(30.dp)
-                                                        .weight(1f)
-                                                ) {
-                                                    Icon(
-                                                        Icons.Default.AutoAwesome,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(3.dp))
-                                                    Text("Ask AI", fontSize = 11.sp)
-                                                }
-                                            }
+                                        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(node.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                        if (node.summary.isNotBlank()) {
+                                            Text(node.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                         }
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    if (file != null) {
+                                        IconButton(
+                                            onClick = {
+                                                if (node.nodeType == "IMAGE") onOpenImage(file) else onOpenFile(file)
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.AutoMirrored.Filled.OpenInNew,
+                                                contentDescription = "Open",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = { onAskAiForFile(node) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.AutoAwesome,
+                                            contentDescription = "Ask AI",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
                                     }
                                 }
                             }
-                        } else if (status.isNotBlank()) {
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Clean Modal Dialog for Creating/Editing Topics
+    if (isDialogOpen) {
+        AlertDialog(
+            onDismissRequest = { isDialogOpen = false },
+            title = {
+                Text(if (editingTopicId == null) "New Smart Topic" else "Edit Topic")
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = heading,
+                        onValueChange = { heading = it },
+                        singleLine = true,
+                        label = { Text("Topic Name") },
+                        placeholder = { Text("e.g. Travel receipts, Medical") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        minLines = 2,
+                        maxLines = 4,
+                        label = { Text("Semantic Criteria") },
+                        placeholder = { Text("What should Brain look for in files?") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (heading.isNotBlank()) {
+                            onSaveTopic(heading.trim(), description.trim(), editingTopicId)
+                            isDialogOpen = false
+                        }
+                    },
+                    enabled = heading.isNotBlank()
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { isDialogOpen = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+// -------------------------------------------------------------
+// TAB 4: DECLUTTERED CONNECTIONS VIEW
+// -------------------------------------------------------------
+
+@Composable
+fun DeclutteredConnectionsView(
+    nodes: List<KgNodeEntity>,
+    edges: List<KgEdgeEntity>,
+    onNodeClick: (KgNodeEntity) -> Unit,
+    onOpenFile: (File) -> Unit,
+    onOpenImage: (File) -> Unit,
+    onIndexFiles: () -> Unit
+) {
+    if (edges.isEmpty()) {
+        DeclutteredEmptyState(
+            title = "No Connections Discovered",
+            message = "Scan your device storage to link camera photos with documents and discover shared locations.",
+            actionLabel = "Scan Storage",
+            onAction = onIndexFiles
+        )
+        return
+    }
+
+    val nodeMap = remember(nodes) { nodes.associateBy { it.id } }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(items = edges, key = { edge -> "${edge.sourceNodeId}|${edge.relation}|${edge.targetNodeId}|${edge.evidenceSource.orEmpty()}" }) { edge ->
+            val source = nodeMap[edge.sourceNodeId]
+            val target = nodeMap[edge.targetNodeId]
+
+            if (source != null && target != null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Source Node Pill
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        source.sourceFilePath?.let {
+                                            val f = File(it)
+                                            if (source.nodeType == "IMAGE") onOpenImage(f) else onOpenFile(f)
+                                        } ?: onNodeClick(source)
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val icon = getNodeIcon(source.nodeType)
+                                    Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(source.label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                }
+                            }
+
+                            // Clean Relation Arrow
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 6.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                ) {
+                                    Text(
+                                        text = edge.relation.lowercase(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 9.sp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+
+                            // Target Node Pill
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        target.sourceFilePath?.let {
+                                            val f = File(it)
+                                            if (target.nodeType == "IMAGE") onOpenImage(f) else onOpenFile(f)
+                                        } ?: onNodeClick(target)
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val icon = getNodeIcon(target.nodeType)
+                                    Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(target.label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                }
+                            }
+                        }
+
+                        if (edge.evidenceSnippet.isNotBlank()) {
                             Text(
-                                "Brain has not found semantically relevant files yet.",
+                                text = edge.evidenceSnippet,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 6.dp)
                             )
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+// -------------------------------------------------------------
+// NODE DETAIL BOTTOM SHEET
+// -------------------------------------------------------------
+
+@Composable
+fun DeclutteredNodeSheet(
+    node: KgNodeEntity,
+    allEdges: List<KgEdgeEntity>,
+    allNodes: List<KgNodeEntity>,
+    onOpenFile: (File) -> Unit,
+    onOpenImage: (File) -> Unit,
+    onSelectRelatedNode: (KgNodeEntity) -> Unit,
+    onClose: () -> Unit
+) {
+    val nodeMap = remember(allNodes) { allNodes.associateBy { it.id } }
+    val connectedEdges = remember(node, allEdges) {
+        allEdges.filter { it.sourceNodeId == node.id || it.targetNodeId == node.id }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+    ) {
+        // Node Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = node.nodeType,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(node.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+
+            node.sourceFilePath?.let { path ->
+                val f = File(path)
+                Button(
+                    onClick = {
+                        onClose()
+                        if (node.nodeType == "IMAGE") onOpenImage(f) else onOpenFile(f)
+                    },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Open File", fontSize = 12.sp)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        if (node.summary.isNotBlank()) {
+            Text(node.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // Direct Connections
+        if (connectedEdges.isNotEmpty()) {
+            Text(
+                text = "Connected Entities (${connectedEdges.size})",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(items = connectedEdges, key = { edge -> "${edge.sourceNodeId}|${edge.relation}|${edge.targetNodeId}|${edge.evidenceSource.orEmpty()}" }) { edge ->
+                    val otherId = if (edge.sourceNodeId == node.id) edge.targetNodeId else edge.sourceNodeId
+                    val otherNode = nodeMap[otherId]
+                    if (otherNode != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectRelatedNode(otherNode) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = edge.relation.lowercase(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.width(80.dp)
+                                )
+                                Text(
+                                    text = otherNode.label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+// -------------------------------------------------------------
+// MINIMAL EMPTY & SETUP STATES
+// -------------------------------------------------------------
+
+@Composable
+fun DeclutteredEmptyState(
+    title: String,
+    message: String,
+    actionLabel: String,
+    onAction: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Psychology,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
+            Spacer(modifier = Modifier.height(18.dp))
+            Button(
+                onClick = onAction,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(actionLabel)
             }
         }
     }
@@ -1830,12 +2696,9 @@ fun computeOrganicGraphLayout(
         }
     }
 
-    // Force-directed simulation iterations
     val k = 110f
     val kSq = k * k
     val tempMax = 20f
-    // Layout cost grows quadratically with node count. Fewer iterations keep
-    // larger real-world libraries responsive while preserving a readable layout.
     val iterations = when {
         count <= 80 -> 30
         count <= 160 -> 20
@@ -1854,7 +2717,7 @@ fun computeOrganicGraphLayout(
             dispY[it.id] = 0f
         }
 
-        // 1. Repulsion between all node pairs
+        // 1. Repulsion between node pairs
         for (i in 0 until count) {
             val u = nodes[i].id
             val ux = currentX[u] ?: continue
@@ -1923,554 +2786,4 @@ fun computeOrganicGraphLayout(
     }
 
     return nodes.associate { it.id to Offset(currentX[it.id] ?: 0f, currentY[it.id] ?: 0f) }
-}
-
-// -------------------------------------------------------------
-// TAB 2: DECLUTTERED ASK AI & SEARCH VIEW (CONNECTED TO REAL DATA)
-// -------------------------------------------------------------
-
-@Composable
-fun DeclutteredAskAiView(
-    ragAnswer: RagAnswer?,
-    isQuerying: Boolean,
-    smartSuggestions: List<String>,
-    apiConfigured: Boolean,
-    onOpenAiSettings: () -> Unit,
-    onQuery: (String) -> Unit,
-    onOpenFile: (File) -> Unit,
-    onOpenImage: (File) -> Unit
-) {
-    if (!apiConfigured) {
-        AiSetupRequiredState(onOpenAiSettings = onOpenAiSettings)
-        return
-    }
-
-    var queryText by remember { mutableStateOf("") }
-    val context = LocalContext.current
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-    ) {
-        // Query Input Field
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                OutlinedTextField(
-                    value = queryText,
-                    onValueChange = { queryText = it },
-                    placeholder = { Text("Search files, places, or notes...", fontSize = 13.sp) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(
-                        onSearch = {
-                            if (queryText.isNotBlank() && !isQuerying) onQuery(queryText.trim())
-                        }
-                    ),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("rag_query_input")
-                )
-                if (queryText.isNotEmpty()) {
-                    IconButton(onClick = { queryText = "" }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
-                    }
-                }
-                IconButton(
-                    onClick = { if (queryText.isNotBlank()) onQuery(queryText.trim()) },
-                    enabled = queryText.isNotBlank() && !isQuerying,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("rag_submit_query_btn")
-                ) {
-                    if (isQuerying) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(
-                            Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Send",
-                            tint = if (queryText.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Dynamic, honest suggestions based on real files
-        val suggestionsToShow = if (smartSuggestions.isNotEmpty()) {
-            smartSuggestions
-        } else {
-            listOf("Search documents", "Find camera photos", "Show locations")
-        }
-
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            items(suggestionsToShow) { prompt ->
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    modifier = Modifier.clickable {
-                        queryText = prompt
-                        onQuery(prompt)
-                    }
-                ) {
-                    Text(
-                        text = prompt,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        if (ragAnswer != null) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Answer Card
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.AutoAwesome,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Results", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                }
-                                IconButton(
-                                    onClick = {
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        clipboard.setPrimaryClip(ClipData.newPlainText("Results", ragAnswer.answer))
-                                        Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
-                                    },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(15.dp))
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = ragAnswer.answer,
-                                style = MaterialTheme.typography.bodyMedium,
-                                lineHeight = 20.sp
-                            )
-                        }
-                    }
-                }
-
-                // Sources list
-                if (ragAnswer.connectedNodes.isNotEmpty()) {
-                    item {
-                        Text(
-                            text = "Matching Files & Entities (${ragAnswer.connectedNodes.size})",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-
-                    items(items = ragAnswer.connectedNodes, key = { it.id }) { node ->
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    node.sourceFilePath?.let { path ->
-                                        val f = File(path)
-                                        if (node.nodeType == "IMAGE") onOpenImage(f) else onOpenFile(f)
-                                    }
-                                }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val icon = when (node.nodeType) {
-                                    "IMAGE" -> Icons.Default.Image
-                                    "DOCUMENT" -> Icons.Default.Description
-                                    "LOCATION" -> Icons.Default.LocationOn
-                                    "DEVICE" -> Icons.Default.PhoneAndroid
-                                    "FOLDER" -> Icons.Default.Folder
-                                    else -> Icons.Default.Hub
-                                }
-                                val tint = when (node.nodeType) {
-                                    "IMAGE" -> ColorImages
-                                    "DOCUMENT" -> ColorDocuments
-                                    "LOCATION" -> Color(0xFFE65100)
-                                    else -> MaterialTheme.colorScheme.primary
-                                }
-                                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(node.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                    Text(node.summary.take(80), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                                }
-                                if (node.sourceFilePath != null) {
-                                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// -------------------------------------------------------------
-// TAB 3: DECLUTTERED CONNECTIONS VIEW
-// -------------------------------------------------------------
-
-@Composable
-fun DeclutteredConnectionsView(
-    nodes: List<KgNodeEntity>,
-    edges: List<KgEdgeEntity>,
-    onNodeClick: (KgNodeEntity) -> Unit,
-    onOpenFile: (File) -> Unit,
-    onOpenImage: (File) -> Unit,
-    onIndexFiles: () -> Unit
-) {
-    if (edges.isEmpty()) {
-        DeclutteredEmptyState(
-            title = "No Connections Discovered",
-            message = "Scan your device storage to link camera photos with documents and discover shared locations.",
-            actionLabel = "Scan Storage",
-            onAction = onIndexFiles
-        )
-        return
-    }
-
-    val nodeMap = remember(nodes) { nodes.associateBy { it.id } }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(items = edges, key = { edge -> "${edge.sourceNodeId}|${edge.relation}|${edge.targetNodeId}|${edge.evidenceSource.orEmpty()}" }) { edge ->
-            val source = nodeMap[edge.sourceNodeId]
-            val target = nodeMap[edge.targetNodeId]
-
-            if (source != null && target != null) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Source Node
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable {
-                                        source.sourceFilePath?.let {
-                                            val f = File(it)
-                                            if (source.nodeType == "IMAGE") onOpenImage(f) else onOpenFile(f)
-                                        } ?: onNodeClick(source)
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val icon = if (source.nodeType == "IMAGE") Icons.Default.Image else Icons.Default.Description
-                                    Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(source.label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, maxLines = 1)
-                                }
-                            }
-
-                            // Clean Relation Arrow
-                            Text(
-                                text = " → ${edge.relation.lowercase()} → ",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            )
-
-                            // Target Node
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable {
-                                        target.sourceFilePath?.let {
-                                            val f = File(it)
-                                            if (target.nodeType == "IMAGE") onOpenImage(f) else onOpenFile(f)
-                                        } ?: onNodeClick(target)
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val icon = when (target.nodeType) {
-                                        "IMAGE" -> Icons.Default.Image
-                                        "DOCUMENT" -> Icons.Default.Description
-                                        "LOCATION" -> Icons.Default.LocationOn
-                                        "DEVICE" -> Icons.Default.PhoneAndroid
-                                        "FOLDER" -> Icons.Default.Folder
-                                        else -> Icons.Default.Hub
-                                    }
-                                    Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(target.label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, maxLines = 1)
-                                }
-                            }
-                        }
-
-                        if (edge.evidenceSnippet.isNotBlank()) {
-                            Text(
-                                text = edge.evidenceSnippet,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 6.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// -------------------------------------------------------------
-// NODE DETAIL BOTTOM SHEET
-// -------------------------------------------------------------
-
-@Composable
-fun DeclutteredNodeSheet(
-    node: KgNodeEntity,
-    allEdges: List<KgEdgeEntity>,
-    allNodes: List<KgNodeEntity>,
-    onOpenFile: (File) -> Unit,
-    onOpenImage: (File) -> Unit,
-    onSelectRelatedNode: (KgNodeEntity) -> Unit,
-    onClose: () -> Unit
-) {
-    val nodeMap = remember(allNodes) { allNodes.associateBy { it.id } }
-    val connectedEdges = remember(node, allEdges) {
-        allEdges.filter { it.sourceNodeId == node.id || it.targetNodeId == node.id }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp)
-    ) {
-        // Node Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Text(
-                        text = node.nodeType,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(node.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            }
-
-            node.sourceFilePath?.let { path ->
-                val f = File(path)
-                Button(
-                    onClick = {
-                        onClose()
-                        if (node.nodeType == "IMAGE") onOpenImage(f) else onOpenFile(f)
-                    },
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("Open File", fontSize = 12.sp)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        if (node.summary.isNotBlank()) {
-            Text(node.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-
-        // Direct Connections
-        if (connectedEdges.isNotEmpty()) {
-            Text(
-                text = "Connected (${connectedEdges.size})",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(bottom = 6.dp)
-            )
-
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(180.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                items(items = connectedEdges, key = { edge -> "${edge.sourceNodeId}|${edge.relation}|${edge.targetNodeId}|${edge.evidenceSource.orEmpty()}" }) { edge ->
-                    val otherId = if (edge.sourceNodeId == node.id) edge.targetNodeId else edge.sourceNodeId
-                    val otherNode = nodeMap[otherId]
-                    if (otherNode != null) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelectRelatedNode(otherNode) }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = edge.relation.lowercase(),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.width(80.dp)
-                                )
-                                Text(
-                                    text = otherNode.label,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-    }
-}
-
-// -------------------------------------------------------------
-// MINIMAL DECLUTTERED EMPTY STATE
-// -------------------------------------------------------------
-
-@Composable
-fun DeclutteredEmptyState(
-    title: String,
-    message: String,
-    actionLabel: String,
-    onAction: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(64.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Psychology,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 24.dp)
-            )
-            Spacer(modifier = Modifier.height(18.dp))
-            Button(
-                onClick = onAction,
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(actionLabel)
-            }
-        }
-    }
 }

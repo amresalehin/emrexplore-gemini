@@ -19,8 +19,9 @@ class BrainIndexWorker(appContext: Context, params: WorkerParameters) : Coroutin
         } ?: return Result.failure(workDataOf("error" to "AI provider is not configured"))
 
         val manual = inputData.getBoolean("manual", false)
-        if (!config.isEnabled || (!manual && !config.autoSync) || (!isKeylessAiConfig(config) && config.apiKey.isBlank())) {
-            return Result.failure(workDataOf("error" to "Configure and save an AI provider first"))
+        val isOnlineReady = config.isEnabled && (isKeylessAiConfig(config) || config.apiKey.isNotBlank())
+        if (!isOnlineReady && !manual) {
+            return Result.failure(workDataOf("error" to "Brain auto-sync requires an enabled AI provider"))
         }
 
         val repository = KnowledgeGraphRepository(applicationContext)

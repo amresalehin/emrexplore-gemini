@@ -9,11 +9,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -38,7 +40,8 @@ fun FilePropertiesDialog(
     onDismiss: () -> Unit,
     onInspectMetadata: ((FileItem) -> Unit)? = null,
     onOpenFile: ((File) -> Unit)? = null,
-    onOpenImage: ((File) -> Unit)? = null
+    onOpenImage: ((File) -> Unit)? = null,
+    onAskAiAboutFile: ((File) -> Unit)? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -85,6 +88,20 @@ fun FilePropertiesDialog(
                             onOpenImage?.invoke(file)
                         }
                     )
+                }
+
+                if (!item.isDirectory && onAskAiAboutFile != null) {
+                    FilledTonalButton(
+                        onClick = {
+                            onDismiss()
+                            onAskAiAboutFile(File(item.path))
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                        Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                        Text("Ask AI About This File")
+                    }
                 }
 
                 if (item.isImage && onInspectMetadata != null) {

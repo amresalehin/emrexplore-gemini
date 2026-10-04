@@ -352,8 +352,8 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                         MainTab.BRAIN -> KnowledgeGraphScreen(
                             nodes = uiState.kgNodes,
                             edges = uiState.kgEdges,
-                             nodeCount = uiState.kgNodeCount,
-                             edgeCount = uiState.kgEdgeCount,
+                            nodeCount = uiState.kgNodeCount,
+                            edgeCount = uiState.kgEdgeCount,
                             aiConfig = uiState.aiConfig,
                             apiConfigured = uiState.aiConfigLoaded && uiState.aiConfig.isEnabled,
                             isIndexing = uiState.isKgIndexing,
@@ -362,15 +362,22 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                             ragAnswer = uiState.ragAnswer,
                             isRagQuerying = uiState.isRagQuerying,
                             smartSuggestions = uiState.kgSmartSuggestions,
+                            askAiMessages = uiState.askAiMessages,
+                            attachedAiFile = uiState.attachedAiFile,
+                            onAttachFile = { viewModel.attachAiFile(it) },
+                            onDetachFile = { viewModel.detachAiFile() },
+                            onClearChat = { viewModel.clearAskAiChat() },
                             onQueryRag = { viewModel.queryRag(it) },
                             onIndexAllFiles = { viewModel.indexAllFilesForKnowledgeGraph() },
                             onAskAiForFile = { node ->
-                                val context = listOf(
-                                    "Tell me about this file.",
-                                    "File: ${node.label}.",
-                                    node.summary
-                                ).filter { it.isNotBlank() }.joinToString(" ")
-                                viewModel.queryRag(context)
+                                val path = node.sourceFilePath
+                                if (path != null) {
+                                    val file = File(path)
+                                    if (file.exists()) {
+                                        viewModel.attachAiFile(file)
+                                    }
+                                }
+                                viewModel.queryRag("Tell me about this file: ${node.label}")
                             },
                             brainTopics = uiState.brainTopics,
                             selectedBrainTopic = uiState.brainTopics.firstOrNull { it.id == uiState.selectedBrainTopicId },
@@ -452,7 +459,11 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                 isVideo = false
             )) },
             onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false)) },
-            onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false, mimeType = "image/jpeg")) }
+            onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false, mimeType = "image/jpeg")) },
+            onAskAiAboutFile = { file ->
+                viewModel.closeProperties()
+                viewModel.askAiAboutFile(file)
+            }
         )
     }
 
@@ -460,7 +471,11 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
     uiState.activeMetadataReport?.let { report ->
         MetadataInspectorSheet(
             report = report,
-            onDismiss = { viewModel.closeMetadataInspector() }
+            onDismiss = { viewModel.closeMetadataInspector() },
+            onAskAiAboutFile = { file ->
+                viewModel.closeMetadataInspector()
+                viewModel.askAiAboutFile(file)
+            }
         )
     }
 

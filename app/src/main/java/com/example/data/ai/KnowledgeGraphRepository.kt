@@ -464,12 +464,13 @@ class KnowledgeGraphRepository(private val context: Context) {
         val chunkCount = ragDao.getChunkCountForFile(filePath)
         val indexed = kgDao.getNodeByFilePath(filePath) != null &&
             (!result.hasSearchableContent || chunkCount > 0)
+        val targetModel = if (isImageFile(file)) {
+            if (isAiReady(config) && multimodalEmbeddingModel(config).isNotBlank()) multimodalEmbeddingModel(config) else OfflineEmbeddingEngine.MODEL_NAME
+        } else {
+            if (isAiReady(config) && textEmbeddingModel(config).isNotBlank()) textEmbeddingModel(config) else OfflineEmbeddingEngine.MODEL_NAME
+        }
         val embeddingsReady = !result.hasSearchableContent ||
-            !requiresEmbeddings(config) ||
-            ragDao.getChunksMissingEmbeddings(
-                filePath,
-                if (isImageFile(file)) multimodalEmbeddingModel(config) else textEmbeddingModel(config)
-            ) == 0
+            ragDao.getChunksMissingEmbeddings(filePath, targetModel) == 0
         if (indexed && embeddingsReady) {
             fingerprintDao.insert(IndexFingerprintEntity(filePath, file.length(), file.lastModified(), hash, modelVersion, embeddingSignature(config)))
             modelRunDao.insert(ModelRunEntity(runId, filePath, "INDEX", config.chatModel.ifBlank { "local" }, true, null, runStartedAt, System.currentTimeMillis()))
@@ -538,9 +539,16 @@ class KnowledgeGraphRepository(private val context: Context) {
         // 1. Chunk document
         val structuredChunks = chunkStructuredText(contentText)
         val chunks = structuredChunks.map { it.first }
-        val embeddings = if (isAiReady(config) && textEmbeddingModel(config).isNotBlank()) {
-            client.embedTextPassages(chunks, config)
+        val onlineEmbeddings = if (isAiReady(config) && textEmbeddingModel(config).isNotBlank()) {
+            runCatching { client.embedTextPassages(chunks, config) }.getOrNull().orEmpty()
         } else emptyList()
+
+        val (embeddings, modelName) = if (onlineEmbeddings.isNotEmpty() && onlineEmbeddings.size == chunks.size) {
+            onlineEmbeddings to textEmbeddingModel(config)
+        } else {
+            OfflineEmbeddingEngine.embedTextPassages(chunks) to OfflineEmbeddingEngine.MODEL_NAME
+        }
+
         val ragChunks = chunks.mapIndexed { idx, chunk ->
             RagChunkEntity(
                 chunkId = hashKey("$filePath:$idx"),
@@ -550,7 +558,7 @@ class KnowledgeGraphRepository(private val context: Context) {
                 content = chunk,
                 tagsJson = "[]",
                 embeddingJson = embeddings.getOrNull(idx)?.let { embeddingToJson(it) },
-                embeddingModel = embeddings.getOrNull(idx)?.let { textEmbeddingModel(config) },
+                embeddingModel = modelName,
                 contentHash = hashKey(chunk),
                 sectionPath = structuredChunks.getOrNull(idx)?.second.orEmpty()
             )
@@ -717,12 +725,19 @@ class KnowledgeGraphRepository(private val context: Context) {
             tagsJson = tagsJsonArray,
             contentHash = hashKey(chunkContent)
         )
-        val vector = if (isAiReady(config) && multimodalEmbeddingModel(config).isNotBlank()) {
-            client.embedMultimodalDocument(base64Thumbnail, chunkContent, config)
+        val onlineVector = if (isAiReady(config) && multimodalEmbeddingModel(config).isNotBlank()) {
+            runCatching { client.embedMultimodalDocument(base64Thumbnail, chunkContent, config) }.getOrNull()
         } else null
+
+        val (vector, vectorModel) = if (onlineVector != null) {
+            onlineVector to multimodalEmbeddingModel(config)
+        } else {
+            OfflineEmbeddingEngine.embedText(chunkContent) to OfflineEmbeddingEngine.MODEL_NAME
+        }
+
         ragDao.insertChunks(listOf(chunk.copy(
-            embeddingJson = vector?.let { embeddingToJson(it) },
-            embeddingModel = vector?.let { multimodalEmbeddingModel(config) }
+            embeddingJson = embeddingToJson(vector),
+            embeddingModel = vectorModel
         )))
 
         // 4. Build Knowledge Graph nodes & edges
@@ -829,37 +844,196 @@ class KnowledgeGraphRepository(private val context: Context) {
     }
 
     /**
-     * Executes RAG: Hybrid retrieval over text chunks + Knowledge Graph traversal + real synthesis.
+     * Talks specifically and exclusively about a single attached file.
+     * The AI will receive THAT file only, without database contamination.
      */
-    suspend fun queryRag(question: String): RagAnswer = withContext(Dispatchers.IO) {
+    suspend fun queryFileSpecifically(
+        file: File,
+        question: String,
+        chatHistory: List<Pair<String, String>> = emptyList()
+    ): RagAnswer = withContext(Dispatchers.IO) {
         val started = System.currentTimeMillis()
-        val clean = question.trim()
-        if (clean.isBlank()) return@withContext RagAnswer("Please enter a question.", isSuccessful = false)
-        val config = getAiConfig()
-        val scored = try {
-            brainEngine.search(clean, config, 8)
-        } catch (error: Exception) {
+        if (!file.exists() || !file.canRead()) {
             return@withContext RagAnswer(
-                "Semantic retrieval is unavailable: ${error.message ?: "embedding failed"}. No lexical fallback is used.",
+                answer = "Could not read the attached file \"${file.name}\". Please ensure it exists and has read permissions.",
                 isSuccessful = false,
                 latencyMs = System.currentTimeMillis() - started
             )
         }
+
+        val config = getAiConfig()
+        val ext = file.extension.lowercase()
+        val isImage = ext in setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp")
+        val isPdf = ext == "pdf"
+        val isText = ext in setOf("txt", "md", "json", "xml", "csv", "kt", "java", "py", "c", "cpp", "h", "js", "ts", "html", "css", "log", "yaml", "yml", "gradle", "properties", "sh", "bat", "sql")
+
+        // 1. Gather file content / visual payload
+        var fileContent: String? = null
+        var base64Jpeg: String? = null
+
+        val report = try { metadataExtractor.extract(file) } catch (_: Exception) { null }
+        val metadataSummary = buildString {
+            append("File Name: ${file.name}\n")
+            append("Size: ${android.text.format.Formatter.formatFileSize(context, file.length())}\n")
+            append("Last Modified: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(file.lastModified()))}\n")
+            report?.let { rep ->
+                if (rep.mimeType.isNotBlank()) append("MIME Type: ${rep.mimeType}\n")
+                val meta = rep.summary
+                if (meta.imageWidth > 0 && meta.imageHeight > 0) append("Resolution: ${meta.imageWidth}x${meta.imageHeight}\n")
+                if (!meta.make.isNullOrBlank()) append("Camera: ${meta.make} ${meta.model.orEmpty()}\n")
+                if (!meta.dateTimeOriginal.isNullOrBlank()) append("Date Shot: ${meta.dateTimeOriginal}\n")
+                if (!meta.city.isNullOrBlank()) append("Location: ${meta.city}, ${meta.country.orEmpty()}\n")
+                if (meta.latitude != null && meta.longitude != null) append("GPS: ${meta.latitude}, ${meta.longitude}\n")
+            }
+        }
+
+        if (isImage) {
+            base64Jpeg = getCompressedBase64(file, null, maxDimension = 1024)
+        } else if (isPdf) {
+            fileContent = extractPdfText(file, null)
+        } else if (isText) {
+            fileContent = try {
+                file.inputStream().bufferedReader().use { it.readText().take(60000) }
+            } catch (e: Exception) {
+                "Error reading text: ${e.message}"
+            }
+        } else {
+            fileContent = metadataSummary
+        }
+
+        // 2. Synthesize with AI
+        val answer = if (isAiReady(config)) {
+            try {
+                client.chatAboutFile(
+                    question = question,
+                    fileName = file.name,
+                    fileContent = fileContent,
+                    base64Jpeg = base64Jpeg,
+                    metadataSummary = metadataSummary,
+                    chatHistory = chatHistory,
+                    config = config
+                )
+            } catch (e: Exception) {
+                synthesizeOfflineFileAnswer(file, question, fileContent, metadataSummary, e.message)
+            }
+        } else {
+            synthesizeOfflineFileAnswer(file, question, fileContent, metadataSummary, null)
+        }
+
+        val fileNode = kgDao.getNode("doc:${file.absolutePath}")
+            ?: kgDao.getNode("img:${file.absolutePath}")
+            ?: KgNodeEntity(
+                id = "file:${file.absolutePath}",
+                label = file.name,
+                nodeType = if (isImage) "IMAGE" else if (isPdf) "DOCUMENT" else "FILE",
+                sourceFilePath = file.absolutePath,
+                summary = fileContent?.take(150) ?: metadataSummary.take(150)
+            )
+
+        RagAnswer(
+            answer = answer,
+            connectedNodes = listOf(fileNode),
+            isSuccessful = true,
+            latencyMs = System.currentTimeMillis() - started
+        )
+    }
+
+    private fun synthesizeOfflineFileAnswer(
+        file: File,
+        question: String,
+        fileContent: String?,
+        metadataSummary: String?,
+        errorReason: String?
+    ): String {
+        return buildString {
+            if (errorReason != null) {
+                append("*(AI service notice: $errorReason. Showing local file analysis.)*\n\n")
+            }
+            append("### Attached File: **${file.name}**\n\n")
+            if (!metadataSummary.isNullOrBlank()) {
+                append("**Metadata & Details:**\n")
+                append(metadataSummary.lines().filter { it.isNotBlank() }.joinToString("\n") { "• $it" })
+                append("\n\n")
+            }
+            if (!fileContent.isNullOrBlank()) {
+                val words = fileContent.split(Regex("\\s+")).filter { it.isNotBlank() }
+                append("**Content Overview:**\n")
+                append("• Extracted Length: ${fileContent.length} chars (~${words.size} words)\n\n")
+                append("**File Excerpt:**\n")
+                append("> " + fileContent.take(500).replace("\n", "\n> ") + "...\n\n")
+            }
+            append("💡 *Tip: Enable an AI provider with an API key in Brain Settings for generative answers about this file.*")
+        }
+    }
+
+    /**
+     * Executes RAG: Hybrid retrieval over text chunks + Knowledge Graph traversal + real synthesis.
+     */
+    suspend fun queryRag(
+        question: String,
+        chatHistory: List<Pair<String, String>> = emptyList()
+    ): RagAnswer = withContext(Dispatchers.IO) {
+        val started = System.currentTimeMillis()
+        val clean = question.trim()
+        if (clean.isBlank()) return@withContext RagAnswer("Please enter a question.", isSuccessful = false)
+        val config = getAiConfig()
+
+        // 1. Try hybrid semantic retrieval
+        val scored = try {
+            brainEngine.search(clean, config, 8)
+        } catch (_: Exception) {
+            emptyList()
+        }
+
         val matchedChunks = scored.map { it.chunk }
         val seedNodes = mutableListOf<KgNodeEntity>()
         tokenizeQuestion(clean).take(8).forEach { token -> seedNodes += kgDao.searchNodes(token).take(5) }
-        val (graphNodes, evidence) = brainEngine.graphContext(seedNodes)
+        val (graphNodes, evidence) = if (seedNodes.isNotEmpty()) {
+            brainEngine.graphContext(seedNodes)
+        } else {
+            emptyList<KgNodeEntity>() to emptyList()
+        }
+
+        val allRelevantNodes = (seedNodes + graphNodes).distinctBy { it.id }.take(30)
+
         val context = buildString {
-            matchedChunks.forEachIndexed { index, chunk ->
-                append("=== SOURCE ${index + 1}: ${File(chunk.filePath).name} (${chunk.fileType}) ===\n")
-                append(chunk.content).append("\n\n")
+            if (matchedChunks.isNotEmpty()) {
+                matchedChunks.forEachIndexed { index, chunk ->
+                    append("=== SOURCE ${index + 1}: ${File(chunk.filePath).name} (${chunk.fileType}) ===\n")
+                    append(chunk.content).append("\n\n")
+                }
+            } else if (allRelevantNodes.isNotEmpty()) {
+                append("=== RELEVANT MATCHED FILES & ENTITIES ===\n")
+                allRelevantNodes.forEach { node ->
+                    append("• [${node.nodeType}] ${node.label}: ${node.summary} (File: ${node.sourceFilePath.orEmpty()})\n")
+                }
+                append("\n")
             }
         }
+
         val answer = if (isAiReady(config)) {
-            try { client.generateRagAnswer(clean, context, evidence.joinToString("\n"), config) }
-            catch (error: Exception) { synthesizeRealOfflineAnswer(clean, matchedChunks, seedNodes, graphNodes, evidence) }
-        } else synthesizeRealOfflineAnswer(clean, matchedChunks, seedNodes, graphNodes, evidence)
-        RagAnswer(answer, matchedChunks, (seedNodes + graphNodes).distinctBy { it.id }.take(30), true, System.currentTimeMillis() - started)
+            try {
+                if (context.isNotBlank()) {
+                    client.generateRagAnswer(clean, context, evidence.joinToString("\n"), config)
+                } else {
+                    client.chatGeneral(clean, null, chatHistory, config)
+                }
+            } catch (error: Exception) {
+                if (allRelevantNodes.isNotEmpty() || matchedChunks.isNotEmpty()) {
+                    synthesizeRealOfflineAnswer(clean, matchedChunks, seedNodes, graphNodes, evidence)
+                } else {
+                    "I searched your files and knowledge graph but couldn't find a direct match for \"$clean\". You can attach a specific file using the clip button to talk about it directly, or configure an AI provider in Settings."
+                }
+            }
+        } else {
+            if (allRelevantNodes.isNotEmpty() || matchedChunks.isNotEmpty()) {
+                synthesizeRealOfflineAnswer(clean, matchedChunks, seedNodes, graphNodes, evidence)
+            } else {
+                "No indexed files matched \"$clean\". You can attach a specific file using the clip icon below to talk about it directly, or tap Sync to index your storage."
+            }
+        }
+
+        RagAnswer(answer, matchedChunks, allRelevantNodes, true, System.currentTimeMillis() - started)
     }
 
     private fun tokenizeQuestion(value: String): List<String> = value.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length > 1 }.distinct()

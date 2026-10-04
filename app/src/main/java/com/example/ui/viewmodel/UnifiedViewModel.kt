@@ -35,6 +35,8 @@ import com.example.data.ai.AvailableAiModel
 import com.example.data.ai.ConnectedDotsItem
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.ai.RagAnswer
+import com.example.data.ai.AttachedAiFile
+import com.example.data.ai.AskAiChatMessage
 import com.example.data.local.AiProviderConfigEntity
 import com.example.data.local.BrainTopicEntity
 import com.example.data.local.KgEdgeEntity
@@ -253,6 +255,8 @@ data class UiState(
     val kgIndexingStatus: String = "Ready",
     val ragAnswer: RagAnswer? = null,
     val isRagQuerying: Boolean = false,
+    val askAiMessages: List<AskAiChatMessage> = emptyList(),
+    val attachedAiFile: AttachedAiFile? = null,
     val activeFileConnectedDots: List<ConnectedDotsItem> = emptyList(),
     val kgSmartSuggestions: List<String> = emptyList(),
     val brainTopics: List<BrainTopicEntity> = emptyList(),
@@ -2286,25 +2290,81 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun queryRag(question: String) {
+    fun attachAiFile(file: File) {
+        val ext = file.extension.lowercase()
+        val isImg = ext in setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp")
+        val mime = if (isImg) "image/$ext" else if (ext == "pdf") "application/pdf" else "application/octet-stream"
+        _uiState.update {
+            it.copy(
+                attachedAiFile = AttachedAiFile(
+                    file = file,
+                    name = file.name,
+                    path = file.absolutePath,
+                    mimeType = mime,
+                    size = file.length(),
+                    isImage = isImg
+                )
+            )
+        }
+    }
+
+    fun askAiAboutFile(file: File) {
+        attachAiFile(file)
+        setTab(MainTab.BRAIN)
+    }
+
+    fun detachAiFile() {
+        _uiState.update { it.copy(attachedAiFile = null) }
+    }
+
+    fun clearAskAiChat() {
+        _uiState.update { it.copy(askAiMessages = emptyList(), ragAnswer = null) }
+    }
+
+    fun queryRag(question: String, attachedOverride: AttachedAiFile? = null) {
         if (question.isBlank()) return
-        val config = _uiState.value.aiConfig
-        if (!isBrainAiConfigured(config)) {
+        val attached = attachedOverride ?: _uiState.value.attachedAiFile
+
+        val userMsg = AskAiChatMessage(
+            isUser = true,
+            text = question.trim(),
+            attachedFile = attached
+        )
+
+        _uiState.update {
+            it.copy(
+                isRagQuerying = true,
+                askAiMessages = it.askAiMessages + userMsg
+            )
+        }
+
+        viewModelScope.launch {
+            val history = _uiState.value.askAiMessages
+                .filter { !it.isError }
+                .takeLast(8)
+                .map { if (it.isUser) "User" to it.text else "AI" to it.text }
+
+            val answer = if (attached != null && attached.file.exists()) {
+                kgRepository.queryFileSpecifically(attached.file, question.trim(), history)
+            } else {
+                kgRepository.queryRag(question.trim(), history)
+            }
+
+            val aiMsg = AskAiChatMessage(
+                isUser = false,
+                text = answer.answer,
+                attachedFile = attached,
+                referencedNodes = answer.connectedNodes,
+                isError = !answer.isSuccessful
+            )
+
             _uiState.update {
                 it.copy(
                     isRagQuerying = false,
-                    ragAnswer = RagAnswer(
-                        "Configure and save an AI provider API key in Brain settings first.",
-                        isSuccessful = false
-                    )
+                    ragAnswer = answer,
+                    askAiMessages = it.askAiMessages + aiMsg
                 )
             }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update { it.copy(isRagQuerying = true) }
-            val answer = kgRepository.queryRag(question)
-            _uiState.update { it.copy(isRagQuerying = false, ragAnswer = answer) }
         }
     }
 

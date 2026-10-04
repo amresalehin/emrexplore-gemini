@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import java.io.File
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
@@ -35,6 +36,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Code
@@ -118,7 +120,8 @@ enum class MetadataTab(val label: String, val icon: ImageVector) {
 @Composable
 fun MetadataInspectorSheet(
     report: MetadataReport,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onAskAiAboutFile: ((File) -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
@@ -132,7 +135,8 @@ fun MetadataInspectorSheet(
     ) {
         MetadataInspectorContent(
             report = report,
-            onDismiss = onDismiss
+            onDismiss = onDismiss,
+            onAskAiAboutFile = onAskAiAboutFile
         )
     }
 }
@@ -142,7 +146,8 @@ fun MetadataInspectorSheet(
 fun MetadataInspectorContent(
     report: MetadataReport,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onAskAiAboutFile: ((File) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var selectedTab by remember { mutableStateOf(MetadataTab.SUMMARY) }
@@ -307,6 +312,17 @@ fun MetadataInspectorContent(
                     // Share report
                     IconButton(onClick = { shareFullReport() }) {
                         Icon(Icons.Default.Share, contentDescription = "Share Report")
+                    }
+
+                    // Ask AI about file
+                    if (onAskAiAboutFile != null && report.filePath.isNotBlank()) {
+                        IconButton(onClick = { onAskAiAboutFile(File(report.filePath)) }) {
+                            Icon(
+                                Icons.Default.AutoAwesome,
+                                contentDescription = "Ask AI about this file",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
 
