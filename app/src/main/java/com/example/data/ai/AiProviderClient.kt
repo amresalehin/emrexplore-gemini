@@ -241,7 +241,7 @@ class AiProviderClient {
         val base = validateEndpoint(config.baseUrl.trimEnd('/').removeSuffix("/v1"), ProviderType.OLLAMA).toString().trimEnd('/')
         val request = Request.Builder().url("$base/api/tags").get().build()
         okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw RuntimeException("Ollama models HTTP ${response.code}: ${response.body?.string().orEmpty()}")
+            if (!response.isSuccessful) throw safeHttpError("Ollama models", response.code)
             val models = JSONObject(response.body?.string().orEmpty()).optJSONArray("models") ?: return emptyList()
             return (0 until models.length()).mapNotNull { i ->
                 val item = models.optJSONObject(i) ?: return@mapNotNull null
