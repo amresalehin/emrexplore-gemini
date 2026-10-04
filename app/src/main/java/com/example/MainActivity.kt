@@ -427,7 +427,7 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             onDismiss = { viewModel.closeProperties() },
             onInspectMetadata = { item -> viewModel.inspectMetadata(com.example.data.model.MediaItem(
                 id = item.path.hashCode().toLong(),
-                uri = item.uri,
+                uri = item.uri ?: android.net.Uri.fromFile(File(item.path)),
                 name = item.name,
                 path = item.path,
                 size = item.size,
