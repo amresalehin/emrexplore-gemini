@@ -788,6 +788,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun canNavigateUp(): Boolean {
+        val current = File(_uiState.value.currentPath).absoluteFile
+        val root = File(repository.rootPath).absoluteFile
+        return current != root && current.parentFile?.canRead() == true
+    }
+
     fun navigateUp(): Boolean {
         val current = File(_uiState.value.currentPath)
         val parent = current.parentFile
@@ -2344,6 +2350,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         mediaPlayer?.release()
         mediaPlayer = null
         audioProgressJob?.cancel()
+        repository.operationManager.shutdown()
     }
 }
 
