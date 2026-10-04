@@ -129,6 +129,8 @@ enum class GraphScreenTab(val label: String) {
 fun KnowledgeGraphScreen(
     nodes: List<KgNodeEntity>,
     edges: List<KgEdgeEntity>,
+    nodeCount: Int = nodes.size,
+    edgeCount: Int = edges.size,
     aiConfig: AiProviderConfigEntity?,
     isIndexing: Boolean,
     indexingProgress: Float,
@@ -216,7 +218,7 @@ fun KnowledgeGraphScreen(
                                 text = if (nodes.isEmpty()) {
                                     if (isIndexing) "Connecting storage..." else "Not connected to storage"
                                 } else {
-                                    "${nodes.size} files & entities • ${edges.size} connections"
+                                    "${nodeCount} nodes • ${edgeCount} connections"
                                 },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
