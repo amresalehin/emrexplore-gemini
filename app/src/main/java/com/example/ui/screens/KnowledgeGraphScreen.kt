@@ -2006,7 +2006,7 @@ fun DeclutteredAskAiView(
                         )
                     }
 
-                    items(ragAnswer.connectedNodes) { node ->
+                    items(items = ragAnswer.connectedNodes, key = { it.id }) { node ->
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -2086,7 +2086,7 @@ fun DeclutteredConnectionsView(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(edges) { edge ->
+        items(items = edges, key = { "${edge.sourceNodeId}|${edge.relation}|${edge.targetNodeId}|${edge.evidenceSource.orEmpty()}" }) { edge ->
             val source = nodeMap[edge.sourceNodeId]
             val target = nodeMap[edge.targetNodeId]
 
@@ -2267,7 +2267,7 @@ fun DeclutteredNodeSheet(
                     .height(180.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                items(connectedEdges) { edge ->
+                items(items = connectedEdges, key = { "${edge.sourceNodeId}|${edge.relation}|${edge.targetNodeId}|${edge.evidenceSource.orEmpty()}" }) { edge ->
                     val otherId = if (edge.sourceNodeId == node.id) edge.targetNodeId else edge.sourceNodeId
                     val otherNode = nodeMap[otherId]
                     if (otherNode != null) {
