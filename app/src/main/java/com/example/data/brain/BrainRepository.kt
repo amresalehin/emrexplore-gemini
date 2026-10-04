@@ -140,7 +140,6 @@ class BrainRepository(private val context: Context) {
             if (candidates.isEmpty()) break
 
             for (candidate in candidates) {
-                candidatePaths += candidate.path
                 if (candidate.name.startsWith(".") ||
                     candidate.path.split(File.separatorChar).any { segment -> segment == ".trash" }
                 ) {
@@ -150,7 +149,6 @@ class BrainRepository(private val context: Context) {
 
                 val file = File(candidate.path)
                 if (!file.isFile || !file.canRead()) {
-                    fileIndexDao.deleteByPath(candidate.path)
                     failed++
                     onProgress(
                         processed + 1,
@@ -162,6 +160,7 @@ class BrainRepository(private val context: Context) {
                     continue
                 }
 
+                candidatePaths += candidate.path
                 val outcome = indexer.index(file, config, force)
                 when {
                     outcome.success && outcome.skipped -> skipped++
