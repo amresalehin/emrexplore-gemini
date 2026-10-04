@@ -14,7 +14,7 @@ enum class ProviderType(
 ) {
     GEMINI(
         displayName = "Google Gemini",
-        description = "Direct REST with Gemini 3.5 Flash & native multimodal vision",
+        description = "Direct REST with Gemini 3.8 Flash and native multimodal vision",
         defaultBaseUrl = "https://generativelanguage.googleapis.com/",
         defaultModel = "gemini-3.8-flash",
         defaultVisionModel = "gemini-3.8-flash",
@@ -22,8 +22,8 @@ enum class ProviderType(
         keyHint = "AIzaSy..."
     ),
     OPENAI_COMPATIBLE(
-        displayName = "OpenAI",
-        description = "GPT-4o & GPT-4o-mini with structured entity extraction",
+        displayName = "OpenAI / Compatible",
+        description = "OpenAI API or any compatible proxy / local server",
         defaultBaseUrl = "https://api.openai.com/v1/",
         defaultModel = "gpt-4o-mini",
         defaultVisionModel = "gpt-4o-mini",
@@ -52,8 +52,8 @@ enum class ProviderType(
         displayName = "Groq Cloud",
         description = "Ultra-fast LPUs for instant document extraction & indexing",
         defaultBaseUrl = "https://api.groq.com/openai/v1/",
-        defaultModel = "openai/gpt-oss-120b",
-        defaultVisionModel = "openai/gpt-oss-120b",
+        defaultModel = "qwen/qwen3.8-27b",
+        defaultVisionModel = "qwen/qwen3.8-27b",
         defaultEmbeddingModel = "",
         keyHint = "gsk_..."
     );
