@@ -32,13 +32,20 @@ class BrainIndexWorker(appContext: Context, params: WorkerParameters) : Coroutin
             return Result.success(workDataOf("indexed" to 0))
         }
 
+        var failures = 0
         for ((index, file) in candidates.withIndex()) {
             currentCoroutineContext().ensureActive()
             setProgress(workDataOf("current" to index + 1, "total" to candidates.size, "path" to file.absolutePath))
-            repository.indexFile(file, android.net.Uri.fromFile(file), config)
+            if (!repository.indexFile(file, android.net.Uri.fromFile(file), config)) {
+                failures++
+            }
         }
         repository.recomputeGraphDegrees()
-        return Result.success(workDataOf("indexed" to candidates.size))
+        return when {
+            failures == 0 -> Result.success(workDataOf("indexed" to candidates.size, "failed" to 0))
+            runAttemptCount < 2 -> Result.retry()
+            else -> Result.failure(workDataOf("indexed" to candidates.size - failures, "failed" to failures))
+        }
     }
 
     companion object {
