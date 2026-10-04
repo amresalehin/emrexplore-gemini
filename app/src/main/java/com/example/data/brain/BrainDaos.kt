@@ -14,6 +14,12 @@ interface BrainDocumentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(item: BrainDocumentEntity)
 
+    @Query("SELECT path FROM brain_documents")
+    suspend fun getAllPaths(): List<String>
+
+    @Query("SELECT path FROM brain_documents WHERE path = :path OR path LIKE :prefix || '/%'")
+    suspend fun getPathsUnder(path: String, prefix: String): List<String>
+
     @Query("DELETE FROM brain_documents WHERE path = :path")
     suspend fun delete(path: String)
 
