@@ -54,11 +54,13 @@ class GalleryAiWorker(appContext: Context, params: WorkerParameters) : Coroutine
 
             val paths = store.pendingPaths()
             if (paths.isEmpty()) {
+                val processed = store.completedCount()
+                val total = store.totalCount()
                 store.clear()
                 return Result.success(
                     workDataOf(
-                        "processed" to store.completedCount(),
-                        "total" to store.totalCount(),
+                        "processed" to processed,
+                        "total" to total,
                         "failed" to 0
                     )
                 )
@@ -117,11 +119,12 @@ class GalleryAiWorker(appContext: Context, params: WorkerParameters) : Coroutine
 
             if (!store.hasPendingWork()) {
                 val completed = store.completedCount()
+                val completedTotal = store.totalCount()
                 store.clear()
                 return Result.success(
                     workDataOf(
                         "processed" to completed,
-                        "total" to total,
+                        "total" to completedTotal,
                         "failed" to failedThisAttempt
                     )
                 )
