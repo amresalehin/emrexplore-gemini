@@ -439,12 +439,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         // Collect Knowledge Graph and AI config flows
         viewModelScope.launch {
             kgRepository.allNodesFlow.collectLatest { nodes ->
-                _uiState.update { it.copy(kgNodes = nodes, kgNodeCount = nodes.size) }
+                _uiState.update { it.copy(kgNodes = nodes) }
             }
         }
         viewModelScope.launch {
             kgRepository.allEdgesFlow.collectLatest { edges ->
-                _uiState.update { it.copy(kgEdges = edges, kgEdgeCount = edges.size) }
+                _uiState.update { it.copy(kgEdges = edges) }
             }
         }
         viewModelScope.launch {
@@ -457,6 +457,16 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             kgRepository.chunkCountFlow.collectLatest { count ->
                 _uiState.update { it.copy(kgChunkCount = count) }
+            }
+        }
+        viewModelScope.launch {
+            kgRepository.nodeCountFlow.collectLatest { count ->
+                _uiState.update { it.copy(kgNodeCount = count) }
+            }
+        }
+        viewModelScope.launch {
+            kgRepository.edgeCountFlow.collectLatest { count ->
+                _uiState.update { it.copy(kgEdgeCount = count) }
             }
         }
     }
