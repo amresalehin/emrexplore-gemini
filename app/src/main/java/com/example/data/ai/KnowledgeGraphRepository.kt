@@ -33,6 +33,7 @@ class KnowledgeGraphRepository(private val context: Context) {
     private val mentionDao = db.entityMentionDao()
     private val modelRunDao = db.modelRunDao()
     private val client = AiProviderClient()
+    private val brainEngine = BrainEngine(ragDao, kgDao, client)
     private val metadataExtractor = MetadataExtractor(context)
 
     val allNodesFlow: Flow<List<KgNodeEntity>> = kgDao.getAllNodesFlow()
@@ -177,7 +178,7 @@ class KnowledgeGraphRepository(private val context: Context) {
         if (contentText.isBlank()) return
 
         // 1. Chunk document
-        val chunks = chunkText(contentText, chunkSize = 1200, overlap = 200)
+        val chunks = chunkStructuredText(contentText).map { it.first }
         val ragChunks = chunks.mapIndexed { idx, chunk ->
             RagChunkEntity(
                 chunkId = hashKey("$filePath:$idx"),
@@ -415,120 +416,29 @@ class KnowledgeGraphRepository(private val context: Context) {
      * Executes RAG: Hybrid retrieval over text chunks + Knowledge Graph traversal + real synthesis.
      */
     suspend fun queryRag(question: String): RagAnswer = withContext(Dispatchers.IO) {
-        val startTime = System.currentTimeMillis()
+        val started = System.currentTimeMillis()
+        val clean = question.trim()
+        if (clean.isBlank()) return@withContext RagAnswer("Please enter a question.", isSuccessful = false)
         val config = getAiConfig()
-
-        val cleanQuestion = question.trim()
-        val stopWords = setOf(
-            "what", "where", "when", "which", "show", "find", "tell", "about", "with",
-            "from", "that", "this", "have", "does", "matching", "matches", "photos",
-            "photo", "images", "image", "docs", "document", "documents", "files", "file"
-        )
-        val rawKeywords = cleanQuestion.split("\\s+".toRegex())
-            .map { it.trim('?', '.', ',', '!', '"', '\'', ':', ';').lowercase() }
-            .filter { it.length >= 2 }
-
-        val searchKeywords = rawKeywords.filter { it !in stopWords }.ifEmpty { rawKeywords }
-
-        val isAskingImages = rawKeywords.any { it in setOf("photo", "photos", "image", "images", "picture", "pictures", "camera", "jpg", "png", "screenshot", "screenshots") }
-        val isAskingDocs = rawKeywords.any { it in setOf("doc", "docs", "document", "documents", "note", "notes", "text", "txt", "pdf", "receipt", "plan", "summary") }
-        val isAskingLocation = rawKeywords.any { it in setOf("location", "locations", "place", "places", "where", "city", "country", "gps", "travel", "paris", "tokyo", "trip") }
-
-        // 1. Search relevant RAG chunks
-        val matchedChunks = mutableListOf<RagChunkEntity>()
-        for (kw in searchKeywords.take(6)) {
-            val found = ragDao.searchChunks(kw, limit = 8)
-            for (c in found) {
-                if (matchedChunks.none { it.chunkId == c.chunkId }) {
-                    matchedChunks.add(c)
-                }
+        val scored = brainEngine.search(clean, config, 8)
+        val matchedChunks = scored.map { it.chunk }
+        val seedNodes = mutableListOf<KgNodeEntity>()
+        tokenizeQuestion(clean).take(8).forEach { token -> seedNodes += kgDao.searchNodes(token).take(5) }
+        val (graphNodes, evidence) = brainEngine.graphContext(seedNodes)
+        val context = buildString {
+            matchedChunks.forEachIndexed { index, chunk ->
+                append("=== SOURCE ${index + 1}: ${File(chunk.filePath).name} (${chunk.fileType}) ===\\n")
+                append(chunk.content).append("\\n\\n")
             }
         }
-
-        // 2. Search relevant Knowledge Graph nodes
-        val matchedNodes = mutableListOf<KgNodeEntity>()
-        for (kw in searchKeywords.take(6)) {
-            val nodes = kgDao.searchNodes(kw)
-            for (n in nodes) {
-                if (matchedNodes.none { it.id == n.id }) {
-                    matchedNodes.add(n)
-                }
-            }
-        }
-
-        // If specific keyword matching was sparse, broaden based on query intent
-        if (isAskingImages) {
-            val imageNodes = kgDao.getNodesByType("IMAGE", limit = 10)
-            for (n in imageNodes) {
-                if (matchedNodes.none { it.id == n.id }) matchedNodes.add(n)
-            }
-        }
-        if (isAskingDocs) {
-            val docNodes = kgDao.getNodesByType("DOCUMENT", limit = 10)
-            for (n in docNodes) {
-                if (matchedNodes.none { it.id == n.id }) matchedNodes.add(n)
-            }
-        }
-        if (isAskingLocation) {
-            val locNodes = kgDao.getNodesByType("LOCATION", limit = 10)
-            for (n in locNodes) {
-                if (matchedNodes.none { it.id == n.id }) matchedNodes.add(n)
-            }
-        }
-
-        // 3. Traverse 1-hop edges from matched nodes to connect dots
-        val connectionExcerpts = mutableListOf<String>()
-        val connectedNodes = mutableListOf<KgNodeEntity>()
-
-        for (node in matchedNodes.take(8)) {
-            val edges = kgDao.getEdgesForNode(node.id)
-            for (edge in edges.take(4)) {
-                val neighborId = if (edge.sourceNodeId == node.id) edge.targetNodeId else edge.sourceNodeId
-                val neighbor = kgDao.getNode(neighborId)
-                if (neighbor != null && neighbor.id != node.id) {
-                    if (connectedNodes.none { it.id == neighbor.id }) {
-                        connectedNodes.add(neighbor)
-                    }
-                    val snippet = edge.evidenceSnippet.ifBlank { "${node.label} ${edge.relation.lowercase()} ${neighbor.label}" }
-                    connectionExcerpts.add("• [${node.label}] ──(${edge.relation})──> [${neighbor.label}]: $snippet")
-                }
-            }
-        }
-
-        // 4. Build context
-        val contextText = StringBuilder()
-        matchedChunks.take(8).forEach { chunk ->
-            val fileName = chunk.filePath.substringAfterLast(File.separator)
-            contextText.append("--- Source: $fileName (${chunk.fileType}) ---\n")
-            contextText.append("${chunk.content}\n\n")
-        }
-
-        // 5. Synthesize answer using AI client or local real-data summarizer
-        val answerText = if (config.isEnabled && config.apiKey.isNotBlank()) {
-            try {
-                client.generateRagAnswer(
-                    question = cleanQuestion,
-                    contextText = contextText.toString(),
-                    graphContext = connectionExcerpts.joinToString("\n"),
-                    config = config
-                )
-            } catch (e: Exception) {
-                synthesizeRealOfflineAnswer(cleanQuestion, matchedChunks, matchedNodes, connectedNodes, connectionExcerpts)
-            }
-        } else {
-            synthesizeRealOfflineAnswer(cleanQuestion, matchedChunks, matchedNodes, connectedNodes, connectionExcerpts)
-        }
-
-        val allCitations = (matchedNodes + connectedNodes).distinctBy { it.id }
-        RagAnswer(
-            answer = answerText,
-            sourceChunks = matchedChunks,
-            connectedNodes = allCitations,
-            isSuccessful = true,
-            latencyMs = System.currentTimeMillis() - startTime
-        )
+        val answer = if (config.isEnabled && config.apiKey.isNotBlank()) {
+            try { client.generateRagAnswer(clean, context, evidence.joinToString("\\n"), config) }
+            catch (error: Exception) { synthesizeRealOfflineAnswer(clean, matchedChunks, seedNodes, graphNodes, evidence) }
+        } else synthesizeRealOfflineAnswer(clean, matchedChunks, seedNodes, graphNodes, evidence)
+        RagAnswer(answer, matchedChunks, (seedNodes + graphNodes).distinctBy { it.id }.take(30), true, System.currentTimeMillis() - started)
     }
 
+    private fun tokenizeQuestion(value: String): List<String> = value.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length > 1 }.distinct()
     private fun synthesizeRealOfflineAnswer(
         question: String,
         chunks: List<RagChunkEntity>,
