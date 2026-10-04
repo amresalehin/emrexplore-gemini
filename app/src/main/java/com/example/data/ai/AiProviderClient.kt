@@ -49,7 +49,7 @@ class AiProviderClient {
             if (config.baseUrl.isBlank() && provider == ProviderType.CUSTOM) {
                 return@withContext ConnectionTestResult(false, "Enter a base URL first.", System.currentTimeMillis() - startTime)
             }
-            if (provider != ProviderType.OLLAMA && config.apiKey.isBlank()) {
+            if (!isKeylessAiConfig(config) && config.apiKey.isBlank()) {
                 return@withContext ConnectionTestResult(false, "Enter an API key first.", System.currentTimeMillis() - startTime)
             }
             if (config.chatModel.isBlank()) {
@@ -295,8 +295,11 @@ class AiProviderClient {
             .put("model", model)
             .put("input", JSONArray().apply { inputs.forEach { put(it.take(120000)) } })
             .put("encoding_format", "float")
-        if (inputType != null && requiresNvidiaEmbeddingParams(model)) root.put("input_type", inputType)
-        if (modality != null && requiresNvidiaEmbeddingParams(model)) root.put("modality", modality)
+        if (requiresNvidiaEmbeddingParams(model)) {
+            inputType?.let { root.put("input_type", it) }
+            modality?.let { root.put("modality", it) }
+            root.put("truncate", "END")
+        }
         val builder = Request.Builder().url(url).post(root.toString().toRequestBody(jsonMediaType))
         config.apiKey.trim().takeIf { it.isNotBlank() }?.let { builder.addHeader("Authorization", "Bearer $it") }
         applyCustomHeaders(builder, config)
