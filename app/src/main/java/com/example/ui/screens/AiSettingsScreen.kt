@@ -531,7 +531,7 @@ fun AiSettingsScreen(
                         text = when (selectedProvider) {
                             ProviderType.GEMINI -> "Get a free Google AI Studio key at https://aistudio.google.com/app/apikey"
                             ProviderType.OPENAI_COMPATIBLE -> "Create an API key in your OpenAI platform dashboard"
-                            ProviderType.OLLAMA -> "No key required for local Ollama. Ensure Ollama is running with OLLAMA_ORIGINS=\"*\""
+                            ProviderType.OLLAMA -> "No key required for local Ollama. Prefer localhost binding; do not enable unrestricted origins."
                             ProviderType.OPENROUTER -> "Generate a key on OpenRouter.ai to access any model"
                             ProviderType.CUSTOM -> "Use your endpoint's authentication requirements; local endpoints may not need a key"
                             ProviderType.GROQ -> "Obtain a high-speed inference key on console.groq.com"
