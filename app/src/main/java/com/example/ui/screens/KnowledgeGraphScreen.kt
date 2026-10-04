@@ -2086,7 +2086,7 @@ fun DeclutteredConnectionsView(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(items = edges, key = { "${edge.sourceNodeId}|${edge.relation}|${edge.targetNodeId}|${edge.evidenceSource.orEmpty()}" }) { edge ->
+        items(items = edges, key = { edge -> "${edge.sourceNodeId}|${edge.relation}|${edge.targetNodeId}|${edge.evidenceSource.orEmpty()}" }) { edge ->
             val source = nodeMap[edge.sourceNodeId]
             val target = nodeMap[edge.targetNodeId]
 
