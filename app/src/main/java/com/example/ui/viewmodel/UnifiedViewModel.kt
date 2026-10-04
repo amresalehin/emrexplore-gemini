@@ -239,7 +239,6 @@ data class UiState(
     val aiConfig: AiProviderConfigEntity = AiProviderConfigEntity(),
     val isTestingAiConnection: Boolean = false,
     val aiTestResult: ConnectionTestResult? = null,
-    val showAiSettingsDialog: Boolean = false,
     val isAiSettingsScreenOpen: Boolean = false,
     val aiConfigLoaded: Boolean = false,
     val isKgIndexing: Boolean = false,
@@ -2126,7 +2125,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     // --- Knowledge Graph & RAG Actions ---
 
     fun setShowAiSettings(show: Boolean) {
-        _uiState.update { it.copy(isAiSettingsScreenOpen = show, showAiSettingsDialog = false) }
+        _uiState.update { it.copy(isAiSettingsScreenOpen = show) }
     }
 
     fun saveAiConfig(config: AiProviderConfigEntity) {
