@@ -4,9 +4,8 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import kotlinx.coroutines.currentCoroutineContext
 import com.example.data.local.AppDatabase
-import com.example.data.repository.FileRepository
-import kotlinx.coroutines.ensureActive
 import java.io.File
 
 class BrainIndexWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
@@ -33,7 +32,7 @@ class BrainIndexWorker(appContext: Context, params: WorkerParameters) : Coroutin
         }
 
         for ((index, file) in candidates.withIndex()) {
-            ensureActive()
+            currentCoroutineContext().ensureActive()
             setProgress(workDataOf("current" to index + 1, "total" to candidates.size, "path" to file.absolutePath))
             repository.indexFile(file, android.net.Uri.fromFile(file), config)
         }
