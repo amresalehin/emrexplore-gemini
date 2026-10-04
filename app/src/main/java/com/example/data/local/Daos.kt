@@ -239,7 +239,7 @@ interface KgDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNodes(nodes: List<KgNodeEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEdges(edges: List<KgEdgeEntity>)
 
     @Query("SELECT * FROM kg_nodes ORDER BY degree DESC, updatedAt DESC")
@@ -257,8 +257,23 @@ interface KgDao {
     @Query("SELECT * FROM kg_nodes WHERE id IN (:ids)")
     suspend fun getNodes(ids: List<String>): List<KgNodeEntity>
 
-    @Query("DELETE FROM kg_edges WHERE evidenceSource = :sourceFilePath")
-    suspend fun deleteEdgesByEvidenceSource(sourceFilePath: String)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEdgeEvidence(items: List<KgEdgeEvidenceEntity>)
+
+    @Query("DELETE FROM kg_edge_evidence WHERE evidenceSource = :sourceFilePath")
+    suspend fun deleteEdgeEvidenceBySource(sourceFilePath: String)
+
+    @Query("""
+        DELETE FROM kg_edges
+        WHERE evidenceSource IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM kg_edge_evidence e
+              WHERE e.sourceNodeId = kg_edges.sourceNodeId
+                AND e.targetNodeId = kg_edges.targetNodeId
+                AND e.relation = kg_edges.relation
+          )
+    """)
+    suspend fun deleteSourcedEdgesWithoutEvidence
 
     @Query("DELETE FROM kg_nodes WHERE nodeType NOT IN ('DOCUMENT', 'IMAGE') AND id NOT IN (SELECT sourceNodeId FROM kg_edges UNION SELECT targetNodeId FROM kg_edges)")
     suspend fun deleteOrphanedNonFileNodes()
@@ -307,6 +322,9 @@ interface KgDao {
 
     @Query("DELETE FROM kg_edges")
     suspend fun clearAllEdges()
+
+    @Query("DELETE FROM kg_edge_evidence")
+    suspend fun clearAllEdgeEvidence()
 }
 
 @Dao
