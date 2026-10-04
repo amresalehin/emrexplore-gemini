@@ -31,7 +31,7 @@ class BrainEngine(
         }
 
         val textModel = config.textEmbeddingModel.ifBlank { config.embeddingModel }
-        val multimodalModel = config.multimodalEmbeddingModel
+        val multimodalModel = config.multimodalEmbeddingModel.ifBlank { textModel }
         if (textModel.isBlank() && multimodalModel.isBlank()) {
             throw IllegalStateException("Semantic retrieval requires at least one embedding model")
         }
@@ -97,14 +97,8 @@ class BrainEngine(
             page.forEach { row ->
                 val vector = parseEmbedding(row.embeddingJson)
                 if (vector.isNotEmpty()) {
-                    val chunkTypeMatches = runCatching {
-                        // File type is encoded in the chunk itself; defer the cheap check until IDs are loaded.
-                        true
-                    }.getOrDefault(true)
-                    if (chunkTypeMatches) {
-                        val semantic = cosine(queryEmbedding, vector)
-                        if (semantic > 0f) candidates[row.chunkId] = semantic
-                    }
+                    val semantic = cosine(queryEmbedding, vector)
+                    if (semantic > 0f) candidates[row.chunkId] = semantic
                 }
             }
 
