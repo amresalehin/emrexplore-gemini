@@ -2002,8 +2002,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     private fun isBrainAiConfigured(config: AiProviderConfigEntity): Boolean {
         val provider = com.example.data.ai.ProviderType.fromString(config.providerType)
-        val localProvider = provider == com.example.data.ai.ProviderType.OLLAMA
-        return config.isEnabled && (localProvider || config.apiKey.isNotBlank())
+        val keylessProvider = provider in setOf(
+            com.example.data.ai.ProviderType.OLLAMA,
+            com.example.data.ai.ProviderType.OPENAI_COMPATIBLE,
+            com.example.data.ai.ProviderType.CUSTOM
+        )
+        return config.isEnabled && (keylessProvider || config.apiKey.isNotBlank())
     }
 
     fun indexAllFilesForKnowledgeGraph() {
@@ -2032,15 +2036,19 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     "txt", "md", "json", "csv", "xml", "html", "htm", "log", "kt", "java", "py", "js", "ts",
                     "c", "cpp", "properties", "sql", "yaml", "yml", "pdf", "conf", "ini", "tsv", "gradle", "kts", "env"
                 )
-                val scanRoots = listOf(File(repository.rootPath), repository.baseWorkingDir).distinctBy { it.absolutePath }
-                for (root in scanRoots) {
-                    if (!root.exists() || !root.isDirectory) continue
-                    root.walkTopDown()
-                        .onEnter { dir -> dir.name !in setOf("Android", ".trash", "cache", ".thumbnails") }
-                        .filter { it.isFile && !it.name.startsWith(".") && it.extension.lowercase() in supportedBrainExtensions }
-                        .forEach { file -> candidateMap[file.absolutePath] = FileCandidate(file, Uri.fromFile(file)) }
+                // FileRepository owns the canonical filesystem index. Brain no longer
+                // performs a second recursive storage traversal with different rules.
+                withContext(Dispatchers.IO) {
+                    kgRepository.getBrainCandidates()
+                        .asSequence()
+                        .filter { it.extension.lowercase() in supportedBrainExtensions && !it.name.startsWith(".") }
+                        .map { item ->
+                            val file = File(item.path)
+                            file to Uri.fromFile(file)
+                        }
+                        .filter { (file, _) -> file.exists() && file.isFile && file.canRead() }
+                        .forEach { (file, uri) -> candidateMap[file.absolutePath] = FileCandidate(file, uri) }
                 }
-
                 // Keep explicitly selected/recent/favorite files even when outside the standard roots.
                 for (item in _uiState.value.files) if (!item.isDirectory) candidateMap[item.path] = FileCandidate(File(item.path), item.uri)
                 for (recent in _uiState.value.recentsList) candidateMap[recent.path] = FileCandidate(File(recent.path), Uri.fromFile(File(recent.path)))
