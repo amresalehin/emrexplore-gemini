@@ -18,10 +18,8 @@ class BrainIndexWorker(appContext: Context, params: WorkerParameters) : Coroutin
             it.copy(apiKey = com.example.data.security.ApiKeyProtector.decrypt(it.apiKey))
         } ?: return Result.failure(workDataOf("error" to "AI provider is not configured"))
 
-        val provider = ProviderType.fromString(config.providerType)
-        val keyless = provider in setOf(ProviderType.OLLAMA, ProviderType.OPENAI_COMPATIBLE, ProviderType.CUSTOM)
         val manual = inputData.getBoolean("manual", false)
-        if (!config.isEnabled || (!manual && !config.autoSync) || (!keyless && config.apiKey.isBlank())) {
+        if (!config.isEnabled || (!manual && !config.autoSync) || (!isKeylessAiConfig(config) && config.apiKey.isBlank())) {
             return Result.failure(workDataOf("error" to "Configure and save an AI provider first"))
         }
 
