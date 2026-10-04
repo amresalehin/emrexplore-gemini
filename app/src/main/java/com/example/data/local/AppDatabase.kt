@@ -20,6 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PlaceSearchCacheEntity::class,
         AiProviderConfigEntity::class,
         KgNodeEntity::class,
+        BrainTopicEntity::class,
         KgEdgeEntity::class,
         KgEdgeEvidenceEntity::class,
         RagChunkEntity::class,
@@ -28,7 +29,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         IndexFingerprintEntity::class,
         ModelRunEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -43,6 +44,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun placeSearchCacheDao(): PlaceSearchCacheDao
     abstract fun aiProviderConfigDao(): AiProviderConfigDao
     abstract fun kgDao(): KgDao
+    abstract fun brainTopicDao(): BrainTopicDao
     abstract fun ragDao(): RagDao
 
     abstract fun memoryFactDao(): MemoryFactDao
@@ -60,6 +62,13 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiModel TEXT")
                 db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiFileLastModified INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiProcessedAt INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS brain_topics (id TEXT NOT NULL PRIMARY KEY, heading TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_brain_topics_updatedAt ON brain_topics(updatedAt)")
             }
         }
 
@@ -109,7 +118,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "emrexplore.db"
-                )  .addMigrations(MIGRATION_4_6, MIGRATION_6_7, MIGRATION_7_8)
+                )  .addMigrations(MIGRATION_4_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                  .fallbackToDestructiveMigrationFrom(1, 2, 3)
                  .build()
                 INSTANCE = instance
