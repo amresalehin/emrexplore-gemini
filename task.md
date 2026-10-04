@@ -210,3 +210,21 @@ Target branch: `gemini` (repository default branch)
 - [ ] Version AI enrichment cache by provider/prompt/schema/privacy policy.
 - [ ] Add symlink/visited-set protections to all recursive filesystem paths.
 - [ ] Expand automated regression coverage for the above invariants.
+
+## Brain v2 — Full Rebuild (2026-10-05)
+
+- [x] Remove the legacy `KnowledgeGraphRepository` and `BrainEngine` implementations.
+- [x] Replace legacy KG/RAG tables with a fresh Brain schema and migration.
+- [x] Introduce a canonical bounded content reader for text, PDF, and image inputs.
+- [x] Introduce atomic per-file Brain indexing with last-known-good preservation on failures.
+- [x] Make local deterministic embeddings mandatory; treat provider embeddings as an optional second retrieval signal.
+- [x] Fuse heterogeneous embedding rankings with Reciprocal Rank Fusion instead of comparing incompatible cosine spaces.
+- [x] Add bounded lexical fallback and live-filesystem validation for retrieval.
+- [x] Add bounded graph expansion with provider-aware location privacy.
+- [x] Make Brain sync filesystem-authoritative and remove stale Brain sources.
+- [x] Route file rename, restore, and text-editor saves through Brain reindex hooks.
+- [x] Remove provider-gating from offline Brain indexing.
+- [x] Add pure Brain-core unit tests and database-surface assertions.
+- [ ] Finish UI naming cleanup from remaining historical `kg` identifiers.
+- [ ] Add paged candidate enumeration for very large libraries.
+- [ ] Add migration-specific instrumentation and performance benchmarks.
