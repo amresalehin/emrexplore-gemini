@@ -1,6 +1,7 @@
 package com.example.data.ai
 
 import android.content.Context
+import androidx.room.withTransaction
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
@@ -37,6 +38,14 @@ class KnowledgeGraphRepository(private val context: Context) {
     private val brainEngine = BrainEngine(ragDao, kgDao, client)
     private val metadataExtractor = MetadataExtractor(context)
 
+    private val brainIndexVersion = "brain-v3"
+
+    private fun isAiReady(config: AiProviderConfigEntity): Boolean =
+        config.isEnabled && (ProviderType.fromString(config.providerType) == ProviderType.OLLAMA || config.apiKey.isNotBlank())
+
+    private fun requiresEmbeddings(config: AiProviderConfigEntity): Boolean =
+        isAiReady(config) && config.embeddingModel.isNotBlank()
+
     val allNodesFlow: Flow<List<KgNodeEntity>> = kgDao.getAllNodesFlow()
     val allEdgesFlow: Flow<List<KgEdgeEntity>> = kgDao.getAllEdgesFlow()
     val nodeCountFlow: Flow<Int> = kgDao.getNodeCountFlow()
@@ -58,12 +67,18 @@ class KnowledgeGraphRepository(private val context: Context) {
         return client.testConnection(config)
     }
 
+    suspend fun listAiModels(config: AiProviderConfigEntity) = client.listModels(config)
+
     suspend fun clearGraph() = withContext(Dispatchers.IO) {
-        kgDao.clearAllNodes()
-        kgDao.clearAllEdges()
-        ragDao.clearAllChunks()
-        factDao.clearAll()
-        fingerprintDao.clearAll()
+        db.withTransaction {
+            kgDao.clearAllEdges()
+            kgDao.clearAllNodes()
+            ragDao.clearAllChunks()
+            factDao.clearAll()
+            mentionDao.clearAll()
+            fingerprintDao.clearAll()
+            modelRunDao.clearAll()
+        }
     }
 
     /**
@@ -156,11 +171,15 @@ class KnowledgeGraphRepository(private val context: Context) {
 
         val filePath = file.absolutePath
         val hash = computeFileHash(file, uri)
-        val modelVersion = ProviderType.fromString(config.providerType).name + ":" + config.chatModel + ":" + config.visionModel + ":" + config.isEnabled
+        val modelVersion = brainIndexVersion + ":" + ProviderType.fromString(config.providerType).name + ":" + config.chatModel + ":" + config.visionModel + ":" + config.isEnabled
         val existing = fingerprintDao.get(filePath)
         if (existing != null && existing.size == file.length() && existing.lastModified == file.lastModified() && existing.contentHash == hash && existing.modelVersion == modelVersion && existing.embeddingModel == config.embeddingModel) return@withContext
         if (isDoc) indexDocumentInternal(file, uri, config) else indexImageInternal(file, uri, config)
-        fingerprintDao.insert(IndexFingerprintEntity(filePath, file.length(), file.lastModified(), hash, modelVersion, config.embeddingModel))
+        val persistedChunks = ragDao.getChunksForFile(filePath)
+        val indexed = kgDao.getNodeByFilePath(filePath) != null && persistedChunks.isNotEmpty()
+        val embeddingsReady = !requiresEmbeddings(config) || persistedChunks.all { !it.embeddingJson.isNullOrBlank() && it.embeddingModel == config.embeddingModel }
+        if (indexed && embeddingsReady) fingerprintDao.insert(IndexFingerprintEntity(filePath, file.length(), file.lastModified(), hash, modelVersion, config.embeddingModel))
+        else fingerprintDao.delete(filePath)
     }
 
     private suspend fun indexDocumentInternal(file: File, uri: android.net.Uri?, config: AiProviderConfigEntity) {
@@ -182,7 +201,7 @@ class KnowledgeGraphRepository(private val context: Context) {
         // 1. Chunk document
         val structuredChunks = chunkStructuredText(contentText)
         val chunks = structuredChunks.map { it.first }
-        val embeddings = if (config.isEnabled && config.apiKey.isNotBlank()) client.embedTexts(chunks, config) else emptyList()
+        val embeddings = if (isAiReady(config)) client.embedTexts(chunks, config) else emptyList()
         val ragChunks = chunks.mapIndexed { idx, chunk ->
             RagChunkEntity(
                 chunkId = hashKey("$filePath:$idx"),
@@ -200,7 +219,7 @@ class KnowledgeGraphRepository(private val context: Context) {
         ragDao.insertChunks(ragChunks)
 
         // 2. Extract entities and relations
-        val analysis = if (config.isEnabled && config.apiKey.isNotBlank()) {
+        val analysis = if (isAiReady(config)) {
             client.analyzeDocument(contentText, file.name, config)
         } else {
             createLocalTextAnalysis(file.name, contentText)
@@ -311,11 +330,11 @@ class KnowledgeGraphRepository(private val context: Context) {
         val metadataSummary = metadataSummaryBuilder.toString()
 
         // 2. Call AI vision if enabled & key provided
-        val base64Thumbnail = if (config.isEnabled && config.apiKey.isNotBlank() && file.exists() && file.canRead()) {
-            getCompressedBase64(file, maxDimension = 768)
+        val base64Thumbnail = if (isAiReady(config) && file.exists() && file.canRead()) {
+            getCompressedBase64(file, uri, maxDimension = 768)
         } else null
 
-        val analysis = if (config.isEnabled && config.apiKey.isNotBlank()) {
+        val analysis = if (isAiReady(config)) {
             client.analyzeImage(base64Thumbnail, metadataSummary, file.name, config)
         } else {
             createLocalImageAnalysis(file.name, metadataSummary, metadataReport)
@@ -333,7 +352,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             tagsJson = tagsJsonArray,
             contentHash = hashKey(chunkContent)
         )
-        val vector = if (config.isEnabled && config.apiKey.isNotBlank()) client.embedTexts(listOf(chunkContent), config).firstOrNull() else null
+        val vector = if (isAiReady(config)) client.embedTexts(listOf(chunkContent), config).firstOrNull() else null
         ragDao.insertChunks(listOf(chunk.copy(
             embeddingJson = vector?.let { embeddingToJson(it) },
             embeddingModel = vector?.let { config.embeddingModel }
@@ -443,12 +462,12 @@ class KnowledgeGraphRepository(private val context: Context) {
         val (graphNodes, evidence) = brainEngine.graphContext(seedNodes)
         val context = buildString {
             matchedChunks.forEachIndexed { index, chunk ->
-                append("=== SOURCE ${index + 1}: ${File(chunk.filePath).name} (${chunk.fileType}) ===\\n")
-                append(chunk.content).append("\\n\\n")
+                append("=== SOURCE ${index + 1}: ${File(chunk.filePath).name} (${chunk.fileType}) ===\n")
+                append(chunk.content).append("\n\n")
             }
         }
-        val answer = if (config.isEnabled && config.apiKey.isNotBlank()) {
-            try { client.generateRagAnswer(clean, context, evidence.joinToString("\\n"), config) }
+        val answer = if (isAiReady(config)) {
+            try { client.generateRagAnswer(clean, context, evidence.joinToString("\n"), config) }
             catch (error: Exception) { synthesizeRealOfflineAnswer(clean, matchedChunks, seedNodes, graphNodes, evidence) }
         } else synthesizeRealOfflineAnswer(clean, matchedChunks, seedNodes, graphNodes, evidence)
         RagAnswer(answer, matchedChunks, (seedNodes + graphNodes).distinctBy { it.id }.take(30), true, System.currentTimeMillis() - started)
@@ -479,12 +498,14 @@ class KnowledgeGraphRepository(private val context: Context) {
     }
 
     private suspend fun replaceSourceData(filePath: String) {
+        kgDao.deleteEdgesByEvidenceSource(filePath)
         kgDao.deleteEdgesForNode("doc:$filePath")
         kgDao.deleteEdgesForNode("img:$filePath")
         kgDao.deleteNodeByFilePath(filePath)
         ragDao.deleteChunksForFile(filePath)
         factDao.deleteForFile(filePath)
         mentionDao.deleteForFile(filePath)
+        kgDao.deleteOrphanedNonFileNodes()
     }
 
     private fun synthesizeRealOfflineAnswer(
@@ -663,19 +684,15 @@ class KnowledgeGraphRepository(private val context: Context) {
         )
     }
 
-    private fun getCompressedBase64(file: File, maxDimension: Int): String? {
+    private fun getCompressedBase64(file: File, uri: android.net.Uri?, maxDimension: Int): String? {
         return try {
-            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeFile(file.absolutePath, options)
-
+            val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            val openInput = { if (file.exists() && file.canRead()) file.inputStream() else uri?.let { context.contentResolver.openInputStream(it) } }
+            openInput()?.use { BitmapFactory.decodeStream(it, null, boundsOptions) } ?: return null
             var sampleSize = 1
-            while (options.outWidth / sampleSize > maxDimension || options.outHeight / sampleSize > maxDimension) {
-                sampleSize *= 2
-            }
-
+            while (boundsOptions.outWidth / sampleSize > maxDimension || boundsOptions.outHeight / sampleSize > maxDimension) sampleSize *= 2
             val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-            val bitmap = BitmapFactory.decodeFile(file.absolutePath, decodeOptions) ?: return null
-
+            val bitmap = openInput()?.use { BitmapFactory.decodeStream(it, null, decodeOptions) } ?: return null
             val stream = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, 75, stream)
             bitmap.recycle()
