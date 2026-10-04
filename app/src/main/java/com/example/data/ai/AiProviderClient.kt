@@ -432,8 +432,7 @@ class AiProviderClient {
 
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                val errorBody = response.body?.string().orEmpty()
-                throw RuntimeException("Gemini API Error HTTP ${response.code}: $errorBody")
+                throw safeHttpError("Gemini API", response.code)
             }
             val responseBody = response.body?.string().orEmpty()
             val jsonResponse = JSONObject(responseBody)
