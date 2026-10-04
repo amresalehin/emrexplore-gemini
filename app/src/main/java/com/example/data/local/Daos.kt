@@ -273,7 +273,7 @@ interface KgDao {
                 AND e.relation = kg_edges.relation
           )
     """)
-    suspend fun deleteSourcedEdgesWithoutEvidence
+    suspend fun deleteSourcedEdgesWithoutEvidence()
 
     @Query("DELETE FROM kg_nodes WHERE nodeType NOT IN ('DOCUMENT', 'IMAGE') AND id NOT IN (SELECT sourceNodeId FROM kg_edges UNION SELECT targetNodeId FROM kg_edges)")
     suspend fun deleteOrphanedNonFileNodes()
