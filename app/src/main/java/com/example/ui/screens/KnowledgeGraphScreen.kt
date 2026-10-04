@@ -51,6 +51,9 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FilterCenterFocus
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Image
@@ -83,6 +86,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -519,6 +523,15 @@ fun DeclutteredCanvasView(
         map
     }
 
+    // Auto-fit network graph to viewport on layout settle or category filter change
+    LaunchedEffect(filteredNodes.size, layoutSeed) {
+        if (nodePositions.isNotEmpty()) {
+            val fit = calculateFitScaleAndOffset(nodePositions.values)
+            scale = fit.first
+            offset = fit.second
+        }
+    }
+
     // Search matches
     val searchMatches = remember(searchQuery, filteredNodes) {
         if (searchQuery.isBlank()) emptySet<String>()
@@ -690,6 +703,54 @@ fun DeclutteredCanvasView(
                 .weight(1f)
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface)
+                .pointerInput(filteredNodes, scale, offset) {
+                    detectTapGestures(
+                        onTap = { tapOffset ->
+                            val centerOffset = Offset(size.width / 2f, size.height / 2f)
+                            var closestNode: KgNodeEntity? = null
+                            var closestDist = Float.MAX_VALUE
+                            val minTouchTargetPx = 36f * density
+
+                            for (node in filteredNodes) {
+                                val pos = nodePositions[node.id] ?: continue
+                                val screenPos = centerOffset + offset + (pos * scale)
+                                val deg = degreeMap[node.id] ?: 0
+                                val baseRadius = 14f + deg.coerceAtMost(8) * 1.8f
+                                val nodeRadiusPx = (baseRadius * scale).coerceIn(8f, 48f)
+                                val touchRadiusPx = maxOf(nodeRadiusPx + 16f * density, minTouchTargetPx)
+                                val dist = (tapOffset - screenPos).getDistance()
+                                if (dist <= touchRadiusPx && dist < closestDist) {
+                                    closestDist = dist
+                                    closestNode = node
+                                }
+                            }
+                            activeNode = closestNode
+                        },
+                        onDoubleTap = { tapOffset ->
+                            val centerOffset = Offset(size.width / 2f, size.height / 2f)
+                            var closestNode: KgNodeEntity? = null
+                            var closestDist = Float.MAX_VALUE
+                            val minTouchTargetPx = 36f * density
+
+                            for (node in filteredNodes) {
+                                val pos = nodePositions[node.id] ?: continue
+                                val screenPos = centerOffset + offset + (pos * scale)
+                                val deg = degreeMap[node.id] ?: 0
+                                val baseRadius = 14f + deg.coerceAtMost(8) * 1.8f
+                                val nodeRadiusPx = (baseRadius * scale).coerceIn(8f, 48f)
+                                val touchRadiusPx = maxOf(nodeRadiusPx + 16f * density, minTouchTargetPx)
+                                val dist = (tapOffset - screenPos).getDistance()
+                                if (dist <= touchRadiusPx && dist < closestDist) {
+                                    closestDist = dist
+                                    closestNode = node
+                                }
+                            }
+                            if (closestNode != null) {
+                                onNodeClick(closestNode)
+                            }
+                        }
+                    )
+                }
                 .pointerInput(Unit) {
                     detectTransformGestures { centroid, pan, zoom, _ ->
                         val newScale = (scale * zoom).coerceIn(0.35f, 3.5f)
@@ -698,38 +759,6 @@ fun DeclutteredCanvasView(
                         offset = offset + pan - focus * (newScale / scale - 1f)
                         scale = newScale
                     }
-                }
-                .pointerInput(filteredNodes, scale, offset) {
-                    detectTapGestures(
-                        onTap = { tapOffset ->
-                            val centerOffset = Offset(size.width / 2f, size.height / 2f)
-                            val worldTap = (tapOffset - offset - centerOffset) / scale
-                            var hit: KgNodeEntity? = null
-                            for (node in filteredNodes) {
-                                val pos = nodePositions[node.id] ?: continue
-                                val deg = degreeMap[node.id] ?: 0
-                                val hitRadius = 16f + deg.coerceAtMost(8) * 2f
-                                if ((worldTap - pos).getDistance() <= (hitRadius + 18f)) {
-                                    hit = node
-                                    break
-                                }
-                            }
-                            activeNode = hit
-                        },
-                        onDoubleTap = { tapOffset ->
-                            val centerOffset = Offset(size.width / 2f, size.height / 2f)
-                            val worldTap = (tapOffset - offset - centerOffset) / scale
-                            for (node in filteredNodes) {
-                                val pos = nodePositions[node.id] ?: continue
-                                val deg = degreeMap[node.id] ?: 0
-                                val hitRadius = 16f + deg.coerceAtMost(8) * 2f
-                                if ((worldTap - pos).getDistance() <= (hitRadius + 18f)) {
-                                    onNodeClick(node)
-                                    break
-                                }
-                            }
-                        }
-                    )
                 }
                 .testTag("interactive_graph_canvas")
         ) {
@@ -1124,7 +1153,7 @@ fun DeclutteredCanvasView(
                 tonalElevation = 4.dp,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 12.dp, bottom = if (activeNode != null) 160.dp else 16.dp)
+                    .padding(end = 12.dp, bottom = if (activeNode != null) 180.dp else 16.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(4.dp),
@@ -1152,6 +1181,24 @@ fun DeclutteredCanvasView(
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(Icons.Default.CenterFocusStrong, contentDescription = "Recenter", modifier = Modifier.size(18.dp))
+                    }
+                    if (activeNode != null) {
+                        IconButton(
+                            onClick = {
+                                val p = nodePositions[activeNode?.id]
+                                if (p != null) {
+                                    offset = -p * scale
+                                }
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.FilterCenterFocus,
+                                contentDescription = "Focus on Node",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                     IconButton(
                         onClick = {
@@ -1248,11 +1295,29 @@ fun DeclutteredCanvasView(
                                     }
                                 }
 
-                                IconButton(
-                                    onClick = { activeNode = null },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(16.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = {
+                                            val p = nodePositions[node.id]
+                                            if (p != null) {
+                                                offset = -p * scale
+                                            }
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.FilterCenterFocus,
+                                            contentDescription = "Center on node",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { activeNode = null },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(16.dp))
+                                    }
                                 }
                             }
 
@@ -1280,15 +1345,27 @@ fun DeclutteredCanvasView(
                                             if (node.nodeType == "IMAGE") onOpenImage(f) else onOpenFile(f)
                                         },
                                         shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                         modifier = Modifier.height(34.dp)
                                     ) {
                                         Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text("Open", fontSize = 12.sp)
                                     }
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                 }
+
+                                FilledTonalButton(
+                                    onClick = { onAskAiForFile(node) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(34.dp)
+                                ) {
+                                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Ask AI", fontSize = 12.sp)
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
 
                                 Button(
                                     onClick = { onNodeClick(node) },
@@ -1296,7 +1373,7 @@ fun DeclutteredCanvasView(
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                                     modifier = Modifier.height(34.dp)
                                 ) {
-                                    Text("Explore Connections", fontSize = 12.sp)
+                                    Text("Explore", fontSize = 12.sp)
                                 }
                             }
                         }
@@ -1326,13 +1403,14 @@ private fun BrainTopicWorkspace(
     var editingTopicId by remember { mutableStateOf<String?>(null) }
     var heading by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var isExpanded by remember { mutableStateOf(selectedTopic != null) }
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Row(
@@ -1340,15 +1418,43 @@ private fun BrainTopicWorkspace(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Topics", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text(
-                        "Define a context and let Brain find related files semantically.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { isExpanded = !isExpanded }
+                ) {
+                    Icon(
+                        imageVector = if (isExpanded || isEditorOpen) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Column {
+                        Text(
+                            text = if (topics.isEmpty()) "Topics" else "Topics (${topics.size})",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (!isExpanded && !isEditorOpen) {
+                            Text(
+                                text = if (selectedTopic != null) "Active: ${selectedTopic.heading}" else "Tap to expand context topics",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        } else {
+                            Text(
+                                "Define a context and let Brain find related files semantically.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
                 FilledTonalButton(
                     onClick = {
@@ -1356,15 +1462,18 @@ private fun BrainTopicWorkspace(
                         heading = ""
                         description = ""
                         isEditorOpen = true
+                        isExpanded = true
                     },
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier.height(34.dp)
+                    modifier = Modifier.height(32.dp)
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add topic", fontSize = 12.sp)
+                    Text("Add", fontSize = 12.sp)
                 }
             }
+
+            if (isExpanded || isEditorOpen) {
 
             if (topics.isNotEmpty()) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1623,6 +1732,7 @@ private fun BrainTopicWorkspace(
                     }
                 }
             }
+            }
         }
     }
 }
@@ -1655,9 +1765,9 @@ fun getNodeIcon(nodeType: String) = when (nodeType) {
 fun calculateFitScaleAndOffset(positions: Collection<Offset>): Pair<Float, Offset> {
     if (positions.isEmpty()) return 1f to Offset.Zero
     var minX = Float.MAX_VALUE
-    var maxX = Float.MIN_VALUE
+    var maxX = -Float.MAX_VALUE
     var minY = Float.MAX_VALUE
-    var maxY = Float.MIN_VALUE
+    var maxY = -Float.MAX_VALUE
     for (p in positions) {
         if (p.x < minX) minX = p.x
         if (p.x > maxX) maxX = p.x

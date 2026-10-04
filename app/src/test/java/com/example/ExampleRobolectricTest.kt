@@ -85,4 +85,15 @@ class ExampleRobolectricTest {
         assertEquals(listOf("Photos", "a.txt", "z.txt"), sorted.map { it.name })
         assertTrue(sorted.first().isDirectory)
     }
+
+    @Test
+    fun database_initializes_and_opens_successfully() {
+        val db = com.example.data.local.AppDatabase.getDatabase(context)
+        assertNotNull(db)
+        assertNotNull(db.ragDao())
+        assertNotNull(db.brainTopicDao())
+        assertNotNull(db.kgDao())
+        val writableDb = db.openHelper.writableDatabase
+        assertNotNull(writableDb)
+    }
 }
