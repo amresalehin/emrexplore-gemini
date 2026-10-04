@@ -1531,6 +1531,30 @@ class FileRepository(private val context: Context) {
         renamed
     }
 
+    private fun moveAcrossFilesystemsSafely(source: File, destination: File): Boolean {
+        if (!source.exists()) return false
+        destination.parentFile?.mkdirs()
+        if (source.renameTo(destination)) return true
+        return try {
+            val copied = if (source.isDirectory) {
+                source.copyRecursively(destination, overwrite = false)
+            } else {
+                source.copyTo(destination, overwrite = false)
+                true
+            }
+            if (!copied || !destination.exists()) return false
+            val deleted = if (source.isDirectory) source.deleteRecursively() else source.delete()
+            if (!deleted) {
+                if (destination.isDirectory) destination.deleteRecursively() else destination.delete()
+                false
+            } else true
+        } catch (_: Exception) {
+            if (destination.exists()) {
+                try { if (destination.isDirectory) destination.deleteRecursively() else destination.delete() } catch (_: Exception) { }
+            }
+            false
+        }
+    }
     suspend fun deleteFile(path: String, toTrash: Boolean): Boolean = withContext(Dispatchers.IO) {
         val file = File(path)
         if (!file.exists()) return@withContext false
@@ -1540,7 +1564,7 @@ class FileRepository(private val context: Context) {
         if (toTrash) {
             val trashDir = File(baseWorkingDir, ".trash").apply { mkdirs() }
             val targetTrashFile = File(trashDir, "${System.currentTimeMillis()}_${file.name}")
-            val success = file.renameTo(targetTrashFile)
+            val success = moveAcrossFilesystemsSafely(file, targetTrashFile)
             if (success) {
                 invalidateFolderCache(parent)
                 removeIndexedPath(path, isDir)
@@ -1572,7 +1596,7 @@ class FileRepository(private val context: Context) {
         origFile.parentFile?.mkdirs()
 
         val success = if (trashFile.exists()) {
-            trashFile.renameTo(origFile)
+            moveAcrossFilesystemsSafely(trashFile, origFile)
         } else false
 
         if (success) {
