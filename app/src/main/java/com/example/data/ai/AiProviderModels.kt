@@ -22,13 +22,13 @@ enum class ProviderType(
         keyHint = "AIzaSy..."
     ),
     OPENAI_COMPATIBLE(
-        displayName = "OpenAI / Compatible",
-        description = "OpenAI API or any compatible proxy / local server",
-        defaultBaseUrl = "https://api.openai.com/v1/",
-        defaultModel = "gpt-4o-mini",
-        defaultVisionModel = "gpt-4o-mini",
-        defaultEmbeddingModel = "text-embedding-3-small",
-        keyHint = "sk-proj-..."
+        displayName = "OpenAI-compatible",
+        description = "NVIDIA NIM, OpenAI, Groq, or any compatible endpoint",
+        defaultBaseUrl = "https://integrate.api.nvidia.com/v1",
+        defaultModel = "nvidia/nemotron-3-super-120b-a12b",
+        defaultVisionModel = "meta/llama-3.2-11b-vision-instruct",
+        defaultEmbeddingModel = "nvidia/llama-nemotron-embed-vl-1b-v2",
+        keyHint = "API key"
     ),
     OLLAMA(
         displayName = "Ollama (Local AI)",
@@ -69,7 +69,10 @@ enum class ProviderType(
 
     companion object {
         fun fromString(value: String): ProviderType {
-            return entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: GEMINI
+            return when (value.trim().uppercase()) {
+                OPENROUTER.name, GROQ.name, CUSTOM.name -> OPENAI_COMPATIBLE
+                else -> entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: GEMINI
+            }
         }
     }
 }
