@@ -439,6 +439,38 @@ class KnowledgeGraphRepository(private val context: Context) {
     }
 
     private fun tokenizeQuestion(value: String): List<String> = value.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length > 1 }.distinct()
+    private fun chunkStructuredText(text: String): List<Pair<String, String>> {
+        val out = mutableListOf<Pair<String, String>>()
+        var section = "Document"
+        val buffer = StringBuilder()
+        fun flush() { val v = buffer.toString().trim(); if (v.isNotBlank()) out.add(v to section); buffer.setLength(0) }
+        text.lines().forEach { line -> val t=line.trim(); if (t.startsWith("#")) { flush(); section=t.trimStart('#').trim().ifBlank { section } }; buffer.append(line).append('\n'); if(buffer.length>=1400) flush() }
+        flush()
+        return if(out.isEmpty()) listOf(text.take(1400) to section) else out
+    }
+
+    private fun normalize(value: String): String = value.trim().lowercase().replace(Regex("\\s+"), " ")
+
+    private fun embeddingToJson(vector: FloatArray): String = JSONArray().apply { vector.forEach { put(it.toDouble()) } }.toString()
+
+    private fun computeFileHash(file: File, uri: android.net.Uri?): String {
+        return try {
+            val digest=MessageDigest.getInstance("SHA-256")
+            val input=when { file.exists() && file.canRead() -> file.inputStream(); uri!=null -> context.contentResolver.openInputStream(uri); else -> null } ?: return hashKey("${file.absolutePath}:${file.length()}:${file.lastModified()}")
+            input.use { val buffer=ByteArray(8192); while(true){ val n=it.read(buffer); if(n<=0) break; digest.update(buffer,0,n) } }
+            digest.digest().joinToString("") { "%02x".format(it) }
+        } catch(_: Exception){ hashKey("${file.absolutePath}:${file.length()}:${file.lastModified()}") }
+    }
+
+    private suspend fun replaceSourceData(filePath: String) {
+        kgDao.deleteEdgesForNode("doc:$filePath")
+        kgDao.deleteEdgesForNode("img:$filePath")
+        kgDao.deleteNodeByFilePath(filePath)
+        ragDao.deleteChunksForFile(filePath)
+        factDao.deleteForFile(filePath)
+        mentionDao.deleteForFile(filePath)
+    }
+
     private fun synthesizeRealOfflineAnswer(
         question: String,
         chunks: List<RagChunkEntity>,
