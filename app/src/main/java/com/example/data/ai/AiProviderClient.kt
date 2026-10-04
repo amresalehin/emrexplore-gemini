@@ -95,10 +95,11 @@ class AiProviderClient {
 
     suspend fun embedTexts(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> =
         withContext(Dispatchers.IO) {
-            if (texts.isEmpty()) return@withContext emptyList()
+            if (texts.isEmpty() || config.embeddingModel.isBlank()) return@withContext emptyList()
             try {
                 when (ProviderType.fromString(config.providerType)) {
                     ProviderType.GEMINI -> embedGemini(texts, config)
+                    ProviderType.OLLAMA -> embedOllama(texts, config)
                     else -> embedOpenAi(texts, config)
                 }
             } catch (error: Exception) {
@@ -109,17 +110,19 @@ class AiProviderClient {
 
     private fun embedGemini(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> {
         val baseUrl = config.baseUrl.trimEnd('/').ifBlank { "https://generativelanguage.googleapis.com" }
-        val model = config.embeddingModel.ifBlank { "gemini-embedding-2-preview" }
-        val url = "$baseUrl/v1beta/models/$model:batchEmbedContents?key=${config.apiKey.trim()}"
+        val model = config.embeddingModel.trim().removePrefix("models/")
+        val endpoint = if (baseUrl.endsWith("/v1beta") || baseUrl.endsWith("/v1")) baseUrl else "$baseUrl/v1beta"
+        val url = "$endpoint/models/$model:batchEmbedContents"
         val requests = JSONArray()
         texts.forEach { value ->
             requests.put(
                 JSONObject()
                     .put("model", "models/$model")
-                    .put("content", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", value.take(8000)))))
+                    .put("content", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", value.take(32000)))))
             )
         }
         val request = Request.Builder().url(url)
+            .addHeader("x-goog-api-key", config.apiKey.trim())
             .post(JSONObject().put("requests", requests).toString().toRequestBody(jsonMediaType))
             .build()
         okHttpClient.newCall(request).execute().use { response ->
@@ -132,18 +135,35 @@ class AiProviderClient {
         }
     }
 
+    private fun embedOllama(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> {
+        val base = config.baseUrl.trimEnd('/').removeSuffix("/v1")
+        val url = "$base/api/embed"
+        val root = JSONObject()
+            .put("model", config.embeddingModel)
+            .put("input", JSONArray().apply { texts.forEach { put(it.take(8000)) } })
+        val requestBuilder = Request.Builder().url(url)
+            .post(root.toString().toRequestBody(jsonMediaType))
+        applyCustomHeaders(requestBuilder, config)
+        okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
+            if (!response.isSuccessful) throw RuntimeException("Ollama embedding HTTP ${response.code}: ${response.body?.string().orEmpty()}")
+            val body = JSONObject(response.body?.string().orEmpty())
+            val array = body.optJSONArray("embeddings") ?: return emptyList()
+            return (0 until array.length()).mapNotNull { i ->
+                val values = array.optJSONArray(i) ?: return@mapNotNull null
+                FloatArray(values.length()) { idx -> values.optDouble(idx, 0.0).toFloat() }
+            }
+        }
+    }
+
     private fun embedOpenAi(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> {
         val rawBase = config.baseUrl.trimEnd('/').ifBlank { "https://api.openai.com/v1" }
         val url = if (rawBase.endsWith("/embeddings")) rawBase else "$rawBase/embeddings"
         val root = JSONObject()
-            .put("model", config.embeddingModel.ifBlank { "text-embedding-3-small" })
-            .put("input", JSONArray().apply { texts.forEach { put(it.take(8000)) } })
+            .put("model", config.embeddingModel)
+            .put("input", JSONArray().apply { texts.forEach { put(it.take(32000)) } })
         val builder = Request.Builder().url(url).post(root.toString().toRequestBody(jsonMediaType))
         config.apiKey.trim().takeIf { it.isNotBlank() }?.let { builder.addHeader("Authorization", "Bearer $it") }
-        try {
-            val headers = JSONObject(config.customHeadersJson.ifBlank { "{}" })
-            headers.keys().forEach { key -> builder.addHeader(key, headers.optString(key)) }
-        } catch (_: Exception) {}
+        applyCustomHeaders(builder, config)
         okHttpClient.newCall(builder.build()).execute().use { response ->
             if (!response.isSuccessful) throw RuntimeException("Embedding HTTP ${response.code}: ${response.body?.string().orEmpty()}")
             val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data") ?: return emptyList()
@@ -152,6 +172,94 @@ class AiProviderClient {
                 FloatArray(values.length()) { idx -> values.optDouble(idx, 0.0).toFloat() }
             }
         }
+    }
+
+    suspend fun listModels(config: AiProviderConfigEntity): List<AvailableAiModel> = withContext(Dispatchers.IO) {
+        try {
+            when (ProviderType.fromString(config.providerType)) {
+                ProviderType.GEMINI -> listGeminiModels(config)
+                ProviderType.OLLAMA -> listOllamaModels(config)
+                else -> listOpenAiModels(config)
+            }
+        } catch (error: Exception) {
+            Log.w("AiProviderClient", "Model discovery failed: ${error.message}")
+            emptyList()
+        }
+    }
+
+    private fun listGeminiModels(config: AiProviderConfigEntity): List<AvailableAiModel> {
+        val base = config.baseUrl.trimEnd('/').ifBlank { "https://generativelanguage.googleapis.com" }
+        val endpoint = if (base.endsWith("/v1beta") || base.endsWith("/v1")) base else "$base/v1beta"
+        val request = Request.Builder().url("$endpoint/models").addHeader("x-goog-api-key", config.apiKey.trim()).get().build()
+        okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw RuntimeException("Gemini models HTTP ${response.code}: ${response.body?.string().orEmpty()}")
+            val models = JSONObject(response.body?.string().orEmpty()).optJSONArray("models") ?: return emptyList()
+            return (0 until models.length()).mapNotNull { i ->
+                val item = models.optJSONObject(i) ?: return@mapNotNull null
+                val name = item.optString("name").removePrefix("models/")
+                val methods = item.optJSONArray("supportedGenerationMethods")
+                val generation = methods != null && (0 until methods.length()).any { methods.optString(it) == "generateContent" }
+                if (!generation && !name.contains("embedding", true)) return@mapNotNull null
+                AvailableAiModel(
+                    id = name,
+                    supportsVision = generation && !name.contains("live", true) && !name.contains("tts", true) && !name.contains("transcribe", true),
+                    supportsEmbedding = name.contains("embedding", true)
+                )
+            }.sortedBy { it.id }
+        }
+    }
+
+    private fun listOllamaModels(config: AiProviderConfigEntity): List<AvailableAiModel> {
+        val base = config.baseUrl.trimEnd('/').removeSuffix("/v1")
+        val request = Request.Builder().url("$base/api/tags").get().build()
+        okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw RuntimeException("Ollama models HTTP ${response.code}: ${response.body?.string().orEmpty()}")
+            val models = JSONObject(response.body?.string().orEmpty()).optJSONArray("models") ?: return emptyList()
+            return (0 until models.length()).mapNotNull { i ->
+                val item = models.optJSONObject(i) ?: return@mapNotNull null
+                val name = item.optString("name").ifBlank { item.optString("model") }
+                if (name.isBlank()) return@mapNotNull null
+                val details = item.optJSONObject("details")
+                val families = details?.optJSONArray("families")
+                val hasClipFamily = families != null && (0 until families.length()).any { families.optString(it).contains("clip", true) }
+                AvailableAiModel(
+                    id = name,
+                    supportsVision = hasClipFamily || name.contains("vision", true) || name.contains("gemma3", true),
+                    supportsEmbedding = name.contains("embed", true) || name.contains("bge", true) || name.contains("e5", true)
+                )
+            }.sortedBy { it.id }
+        }
+    }
+
+    private fun listOpenAiModels(config: AiProviderConfigEntity): List<AvailableAiModel> {
+        val base = config.baseUrl.trimEnd('/').let { if (it.endsWith("/models")) it else "$it/models" }
+        val builder = Request.Builder().url(base).get()
+        config.apiKey.trim().takeIf { it.isNotBlank() }?.let { builder.addHeader("Authorization", "Bearer $it") }
+        applyCustomHeaders(builder, config)
+        okHttpClient.newCall(builder.build()).execute().use { response ->
+            if (!response.isSuccessful) throw RuntimeException("Models HTTP ${response.code}: ${response.body?.string().orEmpty()}")
+            val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data") ?: return emptyList()
+            return (0 until data.length()).mapNotNull { i ->
+                val item = data.optJSONObject(i) ?: return@mapNotNull null
+                val id = item.optString("id").trim()
+                if (id.isBlank()) return@mapNotNull null
+                val architecture = item.optJSONObject("architecture")
+                val inputs = architecture?.optJSONArray("input_modalities")
+                val hasImage = inputs != null && (0 until inputs.length()).any { inputs.optString(it).equals("image", true) }
+                AvailableAiModel(
+                    id = id,
+                    supportsVision = hasImage || id.contains("vision", true) || id.contains("vl", true),
+                    supportsEmbedding = id.contains("embedding", true) || id.contains("embed", true)
+                )
+            }.sortedBy { it.id }
+        }
+    }
+
+    private fun applyCustomHeaders(builder: Request.Builder, config: AiProviderConfigEntity) {
+        try {
+            val headers = JSONObject(config.customHeadersJson.ifBlank { "{}" })
+            headers.keys().forEach { key -> builder.addHeader(key, headers.optString(key)) }
+        } catch (_: Exception) { }
     }
 
     suspend fun analyzeImage(
@@ -265,7 +373,7 @@ class AiProviderClient {
         val model = modelOverride.ifBlank { config.chatModel.ifBlank { "gemini-3.5-flash" } }
         val apiKey = config.apiKey.trim()
 
-        val url = "$baseUrl/v1beta/models/$model:generateContent?key=$apiKey"
+        val url = "$baseUrl/v1beta/models/$model:generateContent"
 
         val partsArray = JSONArray()
         partsArray.put(JSONObject().put("text", prompt))
@@ -281,12 +389,15 @@ class AiProviderClient {
         val contentsArray = JSONArray().put(JSONObject().put("parts", partsArray))
         val root = JSONObject().apply {
             put("contents", contentsArray)
-            put("generationConfig", JSONObject().put("temperature", config.temperature.toDouble()))
+            if (!model.startsWith("gemini-3.", ignoreCase = true)) {
+                put("generationConfig", JSONObject().put("temperature", config.temperature.toDouble()))
+            }
         }
 
         val requestBody = root.toString().toRequestBody(jsonMediaType)
         val request = Request.Builder()
             .url(url)
+            .addHeader("x-goog-api-key", apiKey)
             .post(requestBody)
             .build()
 
