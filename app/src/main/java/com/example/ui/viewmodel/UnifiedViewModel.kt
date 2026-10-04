@@ -354,7 +354,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
         viewModelScope.launch {
             // Remove any legacy demo files before the first real storage/count read.
-            repository.initializeSampleDataIfNeeded()
+            repository.initializeStorageDefaults()
             val prefs = repository.getPreferences()
             val initialPath = if (prefs.rememberLastDirectory && prefs.lastDirectoryPath.isNotBlank() && File(prefs.lastDirectoryPath).exists()) {
                 prefs.lastDirectoryPath
