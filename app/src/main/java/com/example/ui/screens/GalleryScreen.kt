@@ -187,7 +187,9 @@ fun GalleryScreen(
             }
         }
     }
-    val pagedMedia = groupedPagingFlow.collectAsLazyPagingItems()
+    val pagedMedia = if (selectedAlbumId == null) {
+        groupedPagingFlow.collectAsLazyPagingItems()
+    } else null
 
     LaunchedEffect(galleryGridState) {
         var lastIndex = 0
