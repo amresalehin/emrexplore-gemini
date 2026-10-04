@@ -26,13 +26,62 @@ class BrainEngine(
         config: AiProviderConfigEntity,
         limit: Int = 8
     ): List<ScoredChunk> = withContext(Dispatchers.IO) {
-        if (!config.isEnabled || config.embeddingModel.isBlank()) {
-            throw IllegalStateException("Semantic retrieval requires an enabled AI provider and embedding model")
+        if (!config.isEnabled) {
+            throw IllegalStateException("Semantic retrieval requires an enabled AI provider")
         }
 
-        val queryEmbedding = client.embedTexts(listOf(question), config).firstOrNull()
-            ?: throw IllegalStateException("Embedding provider returned no query embedding")
+        val textModel = config.textEmbeddingModel.ifBlank { config.embeddingModel }
+        val multimodalModel = config.multimodalEmbeddingModel
+        if (textModel.isBlank() && multimodalModel.isBlank()) {
+            throw IllegalStateException("Semantic retrieval requires at least one embedding model")
+        }
 
+        val perModelLimit = (limit * 3).coerceAtLeast(8)
+        val textResults = if (textModel.isNotBlank()) {
+            runCatching {
+                val queryEmbedding = client.embedTextQuery(question, config)
+                    ?: throw IllegalStateException("Text embedding provider returned no query embedding")
+                retrieveByModel(queryEmbedding, textModel, "DOCUMENT", perModelLimit)
+            }.getOrElse { emptyList() }
+        } else emptyList()
+
+        val multimodalResults = if (multimodalModel.isNotBlank()) {
+            runCatching {
+                val queryEmbedding = client.embedMultimodalQuery(question, config)
+                    ?: throw IllegalStateException("Multimodal embedding provider returned no query embedding")
+                retrieveByModel(queryEmbedding, multimodalModel, "IMAGE", perModelLimit)
+            }.getOrElse { emptyList() }
+        } else emptyList()
+
+        if (textResults.isEmpty() && multimodalResults.isEmpty()) {
+            throw IllegalStateException("No semantic matches found in the Brain index")
+        }
+
+        val fused = linkedMapOf<String, Float>()
+        fun addResults(results: List<ScoredChunk>, weight: Float) {
+            results.forEachIndexed { rank, result ->
+                val rrf = weight / (60f + rank + 1f)
+                fused[result.chunk.chunkId] = (fused[result.chunk.chunkId] ?: 0f) + rrf
+            }
+        }
+        addResults(textResults, 0.55f)
+        addResults(multimodalResults, 0.45f)
+
+        val ids = fused.entries.sortedByDescending { it.value }
+            .take((limit * 4).coerceAtLeast(limit))
+            .map { it.key }
+        ragDao.getChunksByIds(ids)
+            .sortedByDescending { fused[it.chunkId] ?: 0f }
+            .take(limit)
+            .map { ScoredChunk(it, fused[it.chunkId] ?: 0f) }
+    }
+
+    private suspend fun retrieveByModel(
+        queryEmbedding: FloatArray,
+        embeddingModel: String,
+        fileType: String,
+        limit: Int
+    ): List<ScoredChunk> {
         val candidates = linkedMapOf<String, Float>()
         val startedAt = System.nanoTime()
         var offset = 0
@@ -42,14 +91,20 @@ class BrainEngine(
             (System.nanoTime() - startedAt) / 1_000_000L < SEMANTIC_TIME_BUDGET_MS
         ) {
             val pageLimit = minOf(SEMANTIC_PAGE_SIZE, MAX_SEMANTIC_ROWS - scanned)
-            val page = ragDao.getEmbeddedChunksPage(config.embeddingModel, pageLimit, offset)
+            val page = ragDao.getEmbeddedChunksPage(embeddingModel, pageLimit, offset)
             if (page.isEmpty()) break
 
             page.forEach { row ->
                 val vector = parseEmbedding(row.embeddingJson)
                 if (vector.isNotEmpty()) {
-                    val semantic = cosine(queryEmbedding, vector)
-                    if (semantic > 0f) candidates[row.chunkId] = semantic
+                    val chunkTypeMatches = runCatching {
+                        // File type is encoded in the chunk itself; defer the cheap check until IDs are loaded.
+                        true
+                    }.getOrDefault(true)
+                    if (chunkTypeMatches) {
+                        val semantic = cosine(queryEmbedding, vector)
+                        if (semantic > 0f) candidates[row.chunkId] = semantic
+                    }
                 }
             }
 
@@ -58,18 +113,16 @@ class BrainEngine(
             if (page.size < pageLimit) break
         }
 
-        if (candidates.isEmpty()) throw IllegalStateException("No semantic matches found in the Brain index")
-
-        val topIds = candidates.entries
-            .sortedByDescending { it.value }
-            .take((limit * 4).coerceAtLeast(limit))
+        if (candidates.isEmpty()) return emptyList()
+        val topIds = candidates.entries.sortedByDescending { it.value }
+            .take((limit * 3).coerceAtLeast(limit))
             .map { it.key }
-        val rows = ragDao.getChunksByIds(topIds)
-        rows.sortedByDescending { candidates[it.chunkId] ?: 0f }
+        return ragDao.getChunksByIds(topIds)
+            .filter { it.fileType.equals(fileType, ignoreCase = true) }
+            .sortedByDescending { candidates[it.chunkId] ?: 0f }
             .take(limit)
             .map { ScoredChunk(it, candidates[it.chunkId] ?: 0f) }
     }
-
     suspend fun graphContext(
         seedNodes: List<KgNodeEntity>,
         maxDepth: Int = 3,
