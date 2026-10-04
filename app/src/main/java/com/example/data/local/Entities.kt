@@ -132,7 +132,7 @@ data class PlaceSearchCacheEntity(
 @Entity(tableName = "ai_provider_config")
 data class AiProviderConfigEntity(
     @PrimaryKey val id: Int = 1,
-    val providerType: String = "GEMINI", // "GEMINI", "OPENAI_COMPATIBLE", "OLLAMA"
+    val providerType: String = "GEMINI",
     val apiKey: String = "",
     val baseUrl: String = "https://generativelanguage.googleapis.com/",
     val chatModel: String = "gemini-3.5-flash",
@@ -154,13 +154,14 @@ data class AiProviderConfigEntity(
     ]
 )
 data class KgNodeEntity(
-    @PrimaryKey val id: String, // e.g. "doc:/path/file.txt", "img:/path/photo.jpg", "ent:Tokyo"
+    @PrimaryKey val id: String,
     val label: String,
-    val nodeType: String, // "DOCUMENT", "IMAGE", "ENTITY", "LOCATION", "TOPIC", "PERSON"
+    val nodeType: String,
     val sourceFilePath: String? = null,
     val thumbnailUri: String? = null,
     val summary: String = "",
     val degree: Int = 0,
+    val confidence: Float = 1.0f,
     val updatedAt: Long = System.currentTimeMillis()
 )
 
@@ -176,9 +177,10 @@ data class KgNodeEntity(
 data class KgEdgeEntity(
     val sourceNodeId: String,
     val targetNodeId: String,
-    val relation: String, // "REFERENCES", "DEPICTS", "MENTIONS", "LOCATED_AT", "CREATED_AT", "SIMILAR_TO"
+    val relation: String,
     val weight: Float = 1.0f,
     val evidenceSnippet: String = "",
+    val evidenceSource: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -186,16 +188,96 @@ data class KgEdgeEntity(
     tableName = "rag_chunks",
     indices = [
         Index(value = ["filePath"]),
-        Index(value = ["fileType"])
+        Index(value = ["fileType"]),
+        Index(value = ["indexedTimestamp"])
     ]
 )
 data class RagChunkEntity(
-    @PrimaryKey val chunkId: String, // hash(filePath + chunkIndex)
+    @PrimaryKey val chunkId: String,
     val filePath: String,
-    val fileType: String, // "DOCUMENT" or "IMAGE"
+    val fileType: String,
     val chunkIndex: Int,
     val content: String,
     val tagsJson: String = "[]",
+    val embeddingJson: String? = null,
+    val embeddingModel: String? = null,
+    val contentHash: String = "",
+    val sectionPath: String = "",
+    val pageNumber: Int? = null,
     val indexedTimestamp: Long = System.currentTimeMillis()
 )
 
+@Entity(
+    tableName = "memory_facts",
+    indices = [
+        Index(value = ["normalizedSubject"]),
+        Index(value = ["predicate"]),
+        Index(value = ["validFrom"]),
+        Index(value = ["validTo"]),
+        Index(value = ["confidence"])
+    ]
+)
+data class MemoryFactEntity(
+    @PrimaryKey val id: String,
+    val subject: String,
+    val normalizedSubject: String,
+    val predicate: String,
+    val objectValue: String,
+    val normalizedObject: String,
+    val confidence: Float = 0.5f,
+    val sourceType: String = "AI",
+    val evidence: String = "",
+    val sourceFilePath: String? = null,
+    val validFrom: Long? = null,
+    val validTo: Long? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "entity_mentions",
+    primaryKeys = ["entityId", "sourceFilePath", "chunkId"],
+    indices = [
+        Index(value = ["entityId"]),
+        Index(value = ["sourceFilePath"]),
+        Index(value = ["chunkId"])
+    ]
+)
+data class EntityMentionEntity(
+    val entityId: String,
+    val sourceFilePath: String,
+    val chunkId: String,
+    val mentionText: String,
+    val entityType: String,
+    val confidence: Float = 0.5f,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "index_fingerprints",
+    indices = [Index(value = ["filePath"]), Index(value = ["contentHash"]), Index(value = ["modelVersion"])]
+)
+data class IndexFingerprintEntity(
+    @PrimaryKey val filePath: String,
+    val size: Long,
+    val lastModified: Long,
+    val contentHash: String,
+    val modelVersion: String,
+    val embeddingModel: String,
+    val indexedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "model_runs",
+    indices = [Index(value = ["filePath"]), Index(value = ["startedAt"])]
+)
+data class ModelRunEntity(
+    @PrimaryKey val id: String,
+    val filePath: String?,
+    val operation: String,
+    val model: String,
+    val success: Boolean,
+    val error: String? = null,
+    val startedAt: Long,
+    val finishedAt: Long = System.currentTimeMillis()
+)
