@@ -113,8 +113,36 @@ class FileOperationManager(
                 }
             }
 
-            // 2. Pre-flight check: Disk space validation for COPY / MOVE
+            // 2. Pre-flight destination validation for COPY / MOVE.
+            // Do this before creating the destination directory so a descendant
+            // target cannot become part of the source tree during the operation.
             if (type == OperationType.COPY || type == OperationType.MOVE) {
+                if (targetDir.isBlank()) {
+                    _progress.update {
+                        it.copy(
+                            id = opId,
+                            type = type,
+                            status = OperationStatus.ERROR,
+                            errorMessage = "A destination folder is required."
+                        )
+                    }
+                    return@launch
+                }
+                for (src in validSources) {
+                    val destinationError = validateDestination(src, File(targetDir))
+                    if (destinationError != null) {
+                        _progress.update {
+                            it.copy(
+                                id = opId,
+                                type = type,
+                                status = OperationStatus.ERROR,
+                                errorMessage = destinationError
+                            )
+                        }
+                        return@launch
+                    }
+                }
+
                 val destDir = File(targetDir)
                 if (!destDir.exists()) destDir.mkdirs()
 
@@ -365,6 +393,9 @@ class FileOperationManager(
 
     private suspend fun streamCopyFile(src: File, dest: File, onByteChunk: (Long) -> Unit) {
         withContext(Dispatchers.IO) {
+            if (src.canonicalFile == dest.canonicalFile) {
+                throw IOException("Source and destination are the same file.")
+            }
             val parent = dest.parentFile
             if (parent != null && !parent.exists()) parent.mkdirs()
 
@@ -466,6 +497,24 @@ class FileOperationManager(
 
     fun dismiss() {
         _progress.update { FileOperationProgress(status = OperationStatus.IDLE) }
+    }
+
+    private fun validateDestination(source: File, targetDir: File): String? {
+        return try {
+            val canonicalSource = source.canonicalFile
+            val canonicalTargetDir = targetDir.canonicalFile
+            val canonicalDestination = File(canonicalTargetDir, source.name).canonicalFile
+
+            when {
+                canonicalSource == canonicalDestination ->
+                    "Source and destination are the same path."
+                source.isDirectory && canonicalDestination.toPath().startsWith(canonicalSource.toPath()) ->
+                    "Cannot copy or move a folder into itself or one of its descendants."
+                else -> null
+            }
+        } catch (e: IOException) {
+            "Could not validate the destination path: ${e.localizedMessage ?: "I/O error"}"
+        }
     }
 
     private fun generateUniqueFile(file: File): File {
