@@ -13,8 +13,6 @@ class BrainEngine(
     data class ScoredChunk(val chunk: RagChunkEntity, val score: Float)
 
     companion object {
-        private const val LEXICAL_RESULTS_PER_TOKEN = 8
-        private const val MAX_QUERY_TOKENS = 6
         private const val SEMANTIC_PAGE_SIZE = 64
         private const val SEMANTIC_TIME_BUDGET_MS = 750L
         private const val MAX_SEMANTIC_ROWS = 8192
@@ -60,7 +58,7 @@ class BrainEngine(
             if (page.size < pageLimit) break
         }
 
-        if (candidates.isEmpty()) return@withContext emptyList()
+        if (candidates.isEmpty()) throw IllegalStateException("No semantic matches found in the Brain index")
 
         val topIds = candidates.entries
             .sortedByDescending { it.value }
