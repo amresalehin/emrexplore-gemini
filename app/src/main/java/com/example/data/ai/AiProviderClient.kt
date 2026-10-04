@@ -483,6 +483,7 @@ class AiProviderClient {
         question: String,
         contextText: String,
         graphContext: String,
+        chatHistory: List<Pair<String, String>> = emptyList(),
         config: AiProviderConfigEntity
     ): String = withContext(Dispatchers.IO) {
         val prompt = """
@@ -495,6 +496,12 @@ class AiProviderClient {
             === RETRIEVED DOCUMENT & IMAGE EXCERPTS ===
             $contextText
             
+            ${if (chatHistory.isNotEmpty()) {
+                "=== RECENT CONVERSATION TURNS ===\n" +
+                    chatHistory.takeLast(6).joinToString("\n\n") { (userQ, aiA) ->
+                        "User: $userQ\nAssistant: $aiA"
+                    } + "\n"
+            } else ""}
             === USER QUESTION ===
             $question
             
