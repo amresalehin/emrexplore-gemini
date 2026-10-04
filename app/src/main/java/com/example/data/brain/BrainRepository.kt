@@ -55,6 +55,7 @@ class BrainRepository(private val context: Context) {
     private val fileIndexDao = db.fileIndexDao()
 
     private val client = AiProviderClient()
+    private val brainAi = DefaultBrainAiGateway(client)
     private val contentReader = BrainContentReader(appContext)
     private val indexer = BrainIndexer(
         context = appContext,
@@ -63,7 +64,7 @@ class BrainRepository(private val context: Context) {
         nodeDao = brainNodeDao,
         edgeDao = brainEdgeDao,
         runDao = brainRunDao,
-        client = client
+        client = brainAi
     )
     private val retriever = BrainRetriever(
         context = appContext,
