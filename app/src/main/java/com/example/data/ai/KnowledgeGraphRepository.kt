@@ -917,6 +917,7 @@ class KnowledgeGraphRepository(private val context: Context) {
         }
 
         // 2. Synthesize with AI
+        var successful = true
         val answer = if (isAiReady(config)) {
             try {
                 client.chatAboutFile(
@@ -929,6 +930,7 @@ class KnowledgeGraphRepository(private val context: Context) {
                     config = config
                 )
             } catch (e: Exception) {
+                successful = false
                 synthesizeOfflineFileAnswer(file, question, fileContent, metadataSummary, e.message)
             }
         } else {
@@ -948,7 +950,7 @@ class KnowledgeGraphRepository(private val context: Context) {
         RagAnswer(
             answer = answer,
             connectedNodes = listOf(fileNode),
-            isSuccessful = true,
+            isSuccessful = successful,
             latencyMs = System.currentTimeMillis() - started
         )
     }
