@@ -259,6 +259,7 @@ data class UiState(
     val aiModels: List<AvailableAiModel> = emptyList(),
     val aiVisionModels: List<AvailableAiModel> = emptyList(),
     val aiEmbeddingModels: List<AvailableAiModel> = emptyList(),
+    val aiMultimodalEmbeddingModels: List<AvailableAiModel> = emptyList(),
     val isFetchingAiModels: Boolean = false,
     val aiModelFetchError: String? = null,
 
@@ -2149,7 +2150,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(
                         aiModels = all.filter { model -> model.supportsChat },
                         aiVisionModels = all.filter { model -> model.supportsChat && model.supportsVision },
-                        aiEmbeddingModels = all.filter { model -> model.supportsEmbedding },
+                        aiEmbeddingModels = all.filter { model -> model.supportsEmbedding && !model.supportsMultimodalEmbedding },
+                        aiMultimodalEmbeddingModels = all.filter { model -> model.supportsMultimodalEmbedding },
                         isFetchingAiModels = false
                     )
                 }
