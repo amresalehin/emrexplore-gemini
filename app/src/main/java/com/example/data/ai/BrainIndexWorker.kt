@@ -55,7 +55,7 @@ class BrainIndexWorker(appContext: Context, params: WorkerParameters) : Coroutin
         private val SUPPORTED_EXTENSIONS = setOf(
             "jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp",
             "txt", "md", "json", "csv", "xml", "html", "htm", "log", "kt", "java", "py", "js", "ts",
-            "c", "cpp", "properties", "sql", "yaml", "yml", "pdf", "conf", "ini", "tsv", "gradle", "kts", "env"
+            "c", "cpp", "sql", "yaml", "yml", "pdf", "tsv", "gradle", "kts"
         )
     }
 }
