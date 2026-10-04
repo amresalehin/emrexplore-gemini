@@ -327,3 +327,61 @@ interface RagDao {
     suspend fun clearAllChunks()
 }
 
+
+
+@Dao
+interface MemoryFactDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(fact: MemoryFactEntity)
+
+    @Query("SELECT * FROM memory_facts WHERE normalizedSubject = :subject OR normalizedObject = :subject ORDER BY confidence DESC LIMIT :limit")
+    suspend fun findByEntity(subject: String, limit: Int = 50): List<MemoryFactEntity>
+
+    @Query("SELECT * FROM memory_facts ORDER BY confidence DESC, updatedAt DESC LIMIT :limit")
+    suspend fun getTopFacts(limit: Int = 100): List<MemoryFactEntity>
+
+    @Query("DELETE FROM memory_facts WHERE sourceFilePath = :path")
+    suspend fun deleteForFile(path: String)
+
+    @Query("DELETE FROM memory_facts")
+    suspend fun clearAll()
+}
+
+@Dao
+interface EntityMentionDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<EntityMentionEntity>)
+
+    @Query("DELETE FROM entity_mentions WHERE sourceFilePath = :path")
+    suspend fun deleteForFile(path: String)
+
+    @Query("SELECT * FROM entity_mentions WHERE entityId = :entityId ORDER BY confidence DESC")
+    suspend fun getForEntity(entityId: String): List<EntityMentionEntity>
+
+    @Query("SELECT DISTINCT sourceFilePath FROM entity_mentions WHERE entityId = :entityId")
+    suspend fun getSourceFiles(entityId: String): List<String>
+}
+
+@Dao
+interface IndexFingerprintDao {
+    @Query("SELECT * FROM index_fingerprints WHERE filePath = :path LIMIT 1")
+    suspend fun get(path: String): IndexFingerprintEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(item: IndexFingerprintEntity)
+
+    @Query("DELETE FROM index_fingerprints WHERE filePath = :path")
+    suspend fun delete(path: String)
+
+    @Query("DELETE FROM index_fingerprints")
+    suspend fun clearAll()
+}
+
+@Dao
+interface ModelRunDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(item: ModelRunEntity)
+
+    @Query("SELECT * FROM model_runs WHERE filePath = :path ORDER BY startedAt DESC LIMIT :limit")
+    suspend fun getForFile(path: String, limit: Int = 20): List<ModelRunEntity>
+}
