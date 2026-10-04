@@ -260,7 +260,7 @@ class AiProviderClient {
     }
 
     private fun listOpenAiModels(config: AiProviderConfigEntity): List<AvailableAiModel> {
-        val base = config.baseUrl.trimEnd('/').let { if (it.endsWith("/models")) it else "$it/models" }
+        val base = validateEndpoint(config.baseUrl.trimEnd('/').let { if (it.endsWith("/models")) it else "$it/models" }, ProviderType.fromString(config.providerType))
         val builder = Request.Builder().url(base).get()
         config.apiKey.trim().takeIf { it.isNotBlank() }?.let { builder.addHeader("Authorization", "Bearer $it") }
         applyCustomHeaders(builder, config)
