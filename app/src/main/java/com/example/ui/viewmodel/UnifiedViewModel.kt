@@ -376,21 +376,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             loadStorageStats()
             calculateCategoryCounts()
 
-            // Continue indexing in the background without modifying the user's file library.
+            // File indexing may continue, but Brain/AI indexing is strictly opt-in.
             launch(Dispatchers.IO) {
                 if (prefs.autoIndexOnStart && repository.totalIndexedCount() == 0) {
                     repository.indexStorage(force = false)
                 }
-                try {
-                    val currentNodes = kgRepository.nodeCountFlow.firstOrNull() ?: 0
-                    if (currentNodes == 0) {
-                        indexAllFilesForKnowledgeGraph()
-                    }
-                } catch (e: Exception) {
-                    Log.w("UnifiedViewModel", "Initial KG index check: ${e.message}")
-                }
             }
-        }
 
         // Collect Room Database Flows
         // Suggestions are stable during a sync; refresh once at startup and again after indexing completes.
@@ -486,10 +477,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 // path temporarily and are loaded only when explicitly needed.
             }
             MainTab.BRAIN -> {
-                // Brain Knowledge Graph & RAG view - auto-connect if empty
-                if (_uiState.value.kgNodes.isEmpty() && !_uiState.value.isKgIndexing) {
-                    indexAllFilesForKnowledgeGraph()
-                }
+                // Brain work is explicitly started by the user after AI setup.
+            }
             }
         }
     }
@@ -693,9 +682,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
         loadStorageStats()
         calculateCategoryCounts()
-        if (_uiState.value.kgNodes.isEmpty() && !_uiState.value.isKgIndexing) {
-            indexAllFilesForKnowledgeGraph()
-        }
+        // Storage permission alone must never start Brain/AI indexing.
     }
 
     fun loadFiles(path: String = _uiState.value.currentPath) {
@@ -1916,8 +1903,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun saveAiConfig(config: AiProviderConfigEntity) {
         viewModelScope.launch {
-            kgRepository.saveAiConfig(config)
-            _uiState.update { it.copy(aiConfig = config) }
+            val saved = config.copy(
+                apiKey = config.apiKey.trim(),
+                baseUrl = config.baseUrl.trim()
+            )
+            kgRepository.saveAiConfig(saved)
+            _uiState.update { it.copy(aiConfig = saved) }
             showMessage("AI settings saved")
         }
     }
@@ -1959,6 +1950,19 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun queryRag(question: String) {
         if (question.isBlank()) return
+        val config = _uiState.value.aiConfig
+        if (!isBrainAiConfigured(config)) {
+            _uiState.update {
+                it.copy(
+                    isRagQuerying = false,
+                    ragAnswer = RagAnswer(
+                        "Configure and save an AI provider API key in Brain settings first.",
+                        isSuccessful = false
+                    )
+                )
+            }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isRagQuerying = true) }
             val answer = kgRepository.queryRag(question)
@@ -1973,9 +1977,21 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun isBrainAiConfigured(config: AiProviderConfigEntity): Boolean {
+        val provider = com.example.data.ai.ProviderType.fromString(config.providerType)
+        val localProvider = provider == com.example.data.ai.ProviderType.OLLAMA
+        return config.isEnabled && (localProvider || config.apiKey.isNotBlank())
+    }
+
     fun indexAllFilesForKnowledgeGraph() {
         if (_uiState.value.isKgIndexing) return
+        val config = _uiState.value.aiConfig
+        if (!isBrainAiConfigured(config)) {
+            _uiState.update { it.copy(kgIndexingStatus = "Configure and save an AI provider API key first") }
+            return
+        }
         viewModelScope.launch {
+
             _uiState.update {
                 it.copy(
                     isKgIndexing = true,
