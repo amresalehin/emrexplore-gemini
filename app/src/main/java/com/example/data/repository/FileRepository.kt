@@ -204,7 +204,7 @@ class FileRepository(private val context: Context) {
         }
     }
 
-    private fun removeLegacySampleData() {
+    private suspend fun removeLegacySampleData() {
         val legacyFiles = listOf(
             File(baseWorkingDir, "Camera/Sunset_Horizon_2026.jpg"),
             File(baseWorkingDir, "Camera/Mountain_Peak_Spring.jpg"),
@@ -219,7 +219,11 @@ class FileRepository(private val context: Context) {
             File(baseWorkingDir, ".emrexplore_seeded")
         )
         legacyFiles.forEach { file ->
-            try { if (file.isFile) file.delete() } catch (_: Exception) { }
+            try {
+                if (file.isFile) file.delete()
+                // Keep Room from resurrecting a file that has been removed from disk.
+                fileIndexDao.deleteByPath(file.absolutePath)
+            } catch (_: Exception) { }
         }
         listOf(
             File(baseWorkingDir, "Camera"),
@@ -244,7 +248,14 @@ class FileRepository(private val context: Context) {
             val entities = fileIndexDao.getFilesByParent(dirPath)
             if (entities.isNotEmpty()) {
                 val favSet = try { favoriteDao.getAllFavoritePathsSync().toHashSet() } catch (e: Exception) { emptySet() }
-                val items = entities.map { entity ->
+                // Room is a cache, not the source of truth. Never surface entries whose
+                // backing path has disappeared since the index was written.
+                val validEntities = entities.filter { entity ->
+                    val file = File(entity.path)
+                    file.exists() && (!entity.isDirectory || file.isDirectory)
+                }
+                if (validEntities.isEmpty()) return@withContext null
+                val items = validEntities.map { entity ->
                     FileItem(
                         name = entity.name,
                         path = entity.path,
@@ -254,7 +265,7 @@ class FileRepository(private val context: Context) {
                         mimeType = entity.mimeType,
                         extension = entity.extension,
                         isFavorite = favSet.contains(entity.path),
-                        childCount = entity.childCount,
+                        childCount = if (entity.isDirectory) fastChildCount(File(entity.path)) else 0,
                         uri = Uri.fromFile(File(entity.path))
                     )
                 }
