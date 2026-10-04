@@ -314,9 +314,11 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                             edges = uiState.kgEdges,
                             aiConfig = uiState.aiConfig,
                             apiConfigured = uiState.aiConfig.isEnabled &&
-                                (com.example.data.ai.ProviderType.fromString(uiState.aiConfig.providerType) ==
-                                    com.example.data.ai.ProviderType.OLLAMA ||
-                                    uiState.aiConfig.apiKey.isNotBlank()),
+                                (com.example.data.ai.ProviderType.fromString(uiState.aiConfig.providerType) in setOf(
+                                    com.example.data.ai.ProviderType.OLLAMA,
+                                    com.example.data.ai.ProviderType.OPENAI_COMPATIBLE,
+                                    com.example.data.ai.ProviderType.CUSTOM
+                                ) || uiState.aiConfig.apiKey.isNotBlank()),
                             isIndexing = uiState.isKgIndexing,
                             indexingProgress = uiState.kgIndexingProgress,
                             indexingStatus = uiState.kgIndexingStatus,
