@@ -53,13 +53,15 @@ class MediaRepository(context: Context) {
         query: String,
         filter: MediaFilter,
         favoritesOnly: Boolean,
-        radius: Int = 2
+        radius: Int = 2,
+        sort: com.example.ui.viewmodel.GallerySortOption = com.example.ui.viewmodel.GallerySortOption.DATE_DESC
     ): MediaViewerWindow {
         val source = MediaSearchPagingSource(
             appContext,
             query,
             filter,
-            favoritesOnly
+            favoritesOnly,
+            sort = sort
         )
 
         var providerOffset = 0
@@ -165,7 +167,12 @@ class MediaRepository(context: Context) {
      * the UI Paging snapshot. The PagingSource is reused as the canonical query
      * implementation, but only the requested viewer window is materialized.
      */
-    suspend fun viewerPosition(item: com.example.data.model.MediaItem, source: FullscreenMediaSource, albumId: String? = null): Int {
+    suspend fun viewerPosition(
+        item: com.example.data.model.MediaItem,
+        source: FullscreenMediaSource,
+        albumId: String? = null,
+        sort: com.example.ui.viewmodel.GallerySortOption = com.example.ui.viewmodel.GallerySortOption.DATE_DESC
+    ): Int {
         if (source == FullscreenMediaSource.FAVORITES) {
             val dao = com.example.data.local.AppDatabase.getDatabase(appContext).favoriteDao()
             val timestamp = dao.getFavoriteTimestamp(item.path) ?: return 0
@@ -186,9 +193,52 @@ class MediaRepository(context: Context) {
             FullscreenMediaSource.ALL, FullscreenMediaSource.ALBUM, FullscreenMediaSource.SEARCH -> mutableListOf(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
             else -> mutableListOf(mediaType.toString())
         }
-        var selection = "($typeSelection) AND (" + MediaStore.Files.FileColumns.DATE_ADDED + " > ? OR (" + MediaStore.Files.FileColumns.DATE_ADDED + " = ? AND " + MediaStore.Files.FileColumns._ID + " > ?))"
-        val dateSeconds = item.dateAdded / 1000L
-        args += listOf(dateSeconds.toString(), dateSeconds.toString(), rawId.toString())
+        val precedingSelection: String
+        val precedingArgs: List<String>
+        when (sort) {
+            com.example.ui.viewmodel.GallerySortOption.DATE_DESC -> {
+                precedingSelection = MediaStore.Files.FileColumns.DATE_ADDED + " > ? OR (" +
+                    MediaStore.Files.FileColumns.DATE_ADDED + " = ? AND " +
+                    MediaStore.Files.FileColumns._ID + " > ?)"
+                val dateSeconds = item.dateAdded / 1000L
+                precedingArgs = listOf(dateSeconds.toString(), dateSeconds.toString(), rawId.toString())
+            }
+            com.example.ui.viewmodel.GallerySortOption.DATE_ASC -> {
+                precedingSelection = MediaStore.Files.FileColumns.DATE_ADDED + " < ? OR (" +
+                    MediaStore.Files.FileColumns.DATE_ADDED + " = ? AND " +
+                    MediaStore.Files.FileColumns._ID + " < ?)"
+                val dateSeconds = item.dateAdded / 1000L
+                precedingArgs = listOf(dateSeconds.toString(), dateSeconds.toString(), rawId.toString())
+            }
+            com.example.ui.viewmodel.GallerySortOption.NAME_ASC -> {
+                precedingSelection = "LOWER(" + MediaStore.Files.FileColumns.DISPLAY_NAME + ") < ? OR (LOWER(" +
+                    MediaStore.Files.FileColumns.DISPLAY_NAME + ") = ? AND " +
+                    MediaStore.Files.FileColumns._ID + " < ?)"
+                val name = item.name.lowercase()
+                precedingArgs = listOf(name, name, rawId.toString())
+            }
+            com.example.ui.viewmodel.GallerySortOption.NAME_DESC -> {
+                precedingSelection = "LOWER(" + MediaStore.Files.FileColumns.DISPLAY_NAME + ") > ? OR (LOWER(" +
+                    MediaStore.Files.FileColumns.DISPLAY_NAME + ") = ? AND " +
+                    MediaStore.Files.FileColumns._ID + " > ?)"
+                val name = item.name.lowercase()
+                precedingArgs = listOf(name, name, rawId.toString())
+            }
+            com.example.ui.viewmodel.GallerySortOption.SIZE_ASC -> {
+                precedingSelection = MediaStore.Files.FileColumns.SIZE + " < ? OR (" +
+                    MediaStore.Files.FileColumns.SIZE + " = ? AND " +
+                    MediaStore.Files.FileColumns._ID + " < ?)"
+                precedingArgs = listOf(item.size.toString(), item.size.toString(), rawId.toString())
+            }
+            com.example.ui.viewmodel.GallerySortOption.SIZE_DESC -> {
+                precedingSelection = MediaStore.Files.FileColumns.SIZE + " > ? OR (" +
+                    MediaStore.Files.FileColumns.SIZE + " = ? AND " +
+                    MediaStore.Files.FileColumns._ID + " > ?)"
+                precedingArgs = listOf(item.size.toString(), item.size.toString(), rawId.toString())
+            }
+        }
+        var selection = "($typeSelection) AND ($precedingSelection)"
+        args += precedingArgs
         if (source == FullscreenMediaSource.ALBUM) {
             selection += " AND " + MediaStore.Files.FileColumns.BUCKET_ID + " = ?"
             args += requireNotNull(albumId)
@@ -215,17 +265,18 @@ class MediaRepository(context: Context) {
         source: FullscreenMediaSource,
         centerIndex: Int,
         radius: Int = 2,
-        albumId: String? = null
+        albumId: String? = null,
+        sort: com.example.ui.viewmodel.GallerySortOption = com.example.ui.viewmodel.GallerySortOption.DATE_DESC
     ): MediaViewerWindow {
         val start = (centerIndex - radius).coerceAtLeast(0)
         val size = (radius * 2 + 1).coerceAtLeast(1)
         val pagingSource = when (source) {
-            FullscreenMediaSource.ALL -> MediaStorePagingSource(appContext, MediaFilter.ALL)
-            FullscreenMediaSource.PHOTOS -> MediaStorePagingSource(appContext, MediaFilter.PHOTOS)
-            FullscreenMediaSource.VIDEOS -> MediaStorePagingSource(appContext, MediaFilter.VIDEOS)
+            FullscreenMediaSource.ALL -> MediaStorePagingSource(appContext, MediaFilter.ALL, sort)
+            FullscreenMediaSource.PHOTOS -> MediaStorePagingSource(appContext, MediaFilter.PHOTOS, sort)
+            FullscreenMediaSource.VIDEOS -> MediaStorePagingSource(appContext, MediaFilter.VIDEOS, sort)
             FullscreenMediaSource.FAVORITES -> FavoriteMediaPagingSource(appContext)
             FullscreenMediaSource.ALBUM -> requireNotNull(albumId) { "albumId is required for album fullscreen source" }
-                .let { MediaStoreAlbumPagingSource(appContext, it) }
+                .let { MediaStoreAlbumPagingSource(appContext, it, sort) }
             FullscreenMediaSource.SEARCH -> error("Use loadSearchViewerWindow() for SEARCH source")
         }
         return when (val result = pagingSource.load(
