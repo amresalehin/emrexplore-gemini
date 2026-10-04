@@ -189,7 +189,7 @@ class FileRepository(private val context: Context) {
             return externalDir ?: context.filesDir
         }
 
-    suspend fun initializeSampleDataIfNeeded() = withContext(Dispatchers.IO) {
+    suspend fun initializeStorageDefaults() = withContext(Dispatchers.IO) {
         // emrexplore used to populate app-private storage with demo files. Remove those
         // legacy artifacts once, and never create synthetic files in a real user library.
         removeLegacySampleData()
