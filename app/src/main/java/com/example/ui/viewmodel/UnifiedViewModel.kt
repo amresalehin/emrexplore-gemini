@@ -426,6 +426,43 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
+        // Gallery AI is also WorkManager-backed so processing survives activity/process recreation.
+        viewModelScope.launch {
+            WorkManager.getInstance(getApplication<Application>())
+                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
+                .collectLatest { works ->
+                    val work = works.firstOrNull() ?: return@collectLatest
+                    val progress = work.progress
+                    val total = progress.getInt("total", 0)
+                    val current = progress.getInt("current", 0)
+                    val path = progress.getString("path").orEmpty()
+                    when (work.state) {
+                        androidx.work.WorkInfo.State.RUNNING,
+                        androidx.work.WorkInfo.State.ENQUEUED -> _uiState.update {
+                            it.copy(
+                                isGalleryAiProcessing = true,
+                                galleryAiProgress = if (total > 0) current.toFloat() / total else 0f,
+                                galleryAiStatus = if (path.isBlank()) "Processing gallery AI..." else "AI: " + File(path).name + " ($current/$total)"
+                            )
+                        }
+                        androidx.work.WorkInfo.State.SUCCEEDED -> _uiState.update {
+                            it.copy(
+                                isGalleryAiProcessing = false,
+                                galleryAiProgress = 1f,
+                                galleryAiStatus = "AI enrichment complete"
+                            )
+                        }
+                        androidx.work.WorkInfo.State.FAILED -> _uiState.update {
+                            it.copy(isGalleryAiProcessing = false, galleryAiStatus = "AI processing failed")
+                        }
+                        androidx.work.WorkInfo.State.CANCELLED -> _uiState.update {
+                            it.copy(isGalleryAiProcessing = false, galleryAiStatus = "AI processing cancelled")
+                        }
+                        else -> Unit
+                    }
+                }
+        }
+
         // Brain indexing is WorkManager-backed. Reattach the UI to the durable
         // unique work after process recreation instead of relying on ViewModel state.
         viewModelScope.launch {
