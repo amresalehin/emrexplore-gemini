@@ -244,7 +244,7 @@ fun AiSettingsScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Zero-Telemetry & Local Security",
+                            text = if (selectedProvider == ProviderType.OLLAMA) "Local Ollama: requests use your configured local endpoint." else "Cloud AI: file text, image thumbnails, and selected metadata are sent to your chosen provider.",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
