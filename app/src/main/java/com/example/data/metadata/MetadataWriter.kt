@@ -102,6 +102,28 @@ object MetadataWriter {
         }
     }
 
+    fun writeAiMetadata(file: File, caption: String, tags: List<String>): Boolean {
+        if (!file.exists() || !file.isFile) return false
+        return try {
+            val exif = ExifInterface(file.absolutePath)
+            if (caption.isNotBlank()) {
+                exif.setAttribute(ExifInterface.TAG_IMAGE_DESCRIPTION, caption.trim())
+            }
+            val cleanedTags = tags.map { it.trim() }.filter { it.isNotBlank() }.distinct().take(50)
+            if (cleanedTags.isNotEmpty()) {
+                exif.setAttribute(
+                    ExifInterface.TAG_USER_COMMENT,
+                    "AI-TAGS: " + cleanedTags.joinToString(", ")
+                )
+            }
+            exif.saveAttributes()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
     private fun convertToDms(coord: Double): String {
         val abs = Math.abs(coord)
         val deg = abs.toInt()
