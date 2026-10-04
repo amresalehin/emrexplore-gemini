@@ -139,12 +139,12 @@ data class PlaceSearchCacheEntity(
 @Entity(tableName = "ai_provider_config")
 data class AiProviderConfigEntity(
     @PrimaryKey val id: Int = 1,
-    val providerType: String = "GEMINI",
+    val providerType: String = "OPENAI_COMPATIBLE",
     val apiKey: String = "",
-    val baseUrl: String = "https://generativelanguage.googleapis.com/",
-    val chatModel: String = "",
-    val visionModel: String = "",
-    val embeddingModel: String = "",
+    val baseUrl: String = "https://integrate.api.nvidia.com/v1",
+    val chatModel: String = "nvidia/nemotron-3-super-120b-a12b",
+    val visionModel: String = "meta/llama-3.2-11b-vision-instruct",
+    val embeddingModel: String = "nvidia/llama-nemotron-embed-vl-1b-v2",
     val customHeadersJson: String = "{}",
     val temperature: Float = 0.2f,
     val isEnabled: Boolean = false,
