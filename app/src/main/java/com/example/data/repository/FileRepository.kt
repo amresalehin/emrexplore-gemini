@@ -3,11 +3,6 @@ package com.example.data.repository
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Path
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
@@ -50,8 +45,6 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.Calendar
 import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
@@ -197,423 +190,47 @@ class FileRepository(private val context: Context) {
         }
 
     suspend fun initializeSampleDataIfNeeded() = withContext(Dispatchers.IO) {
-        val seededMarker = File(baseWorkingDir, ".emrexplore_seeded")
-        val legacyMarker = File(baseWorkingDir, ".fossify_seeded")
-        if (!seededMarker.exists() && !legacyMarker.exists()) {
-            try {
-                createSeedDirectoriesAndFiles()
-                seededMarker.createNewFile()
-
-                // Add default bookmarks
-                bookmarkDao.addBookmark(BookmarkEntity(rootPath, "Internal Storage", "storage"))
-                val dcim = File(rootPath, "DCIM")
-                if (dcim.exists()) bookmarkDao.addBookmark(BookmarkEntity(dcim.absolutePath, "DCIM / Photos", "camera"))
-                val downloads = File(rootPath, "Download")
-                if (downloads.exists()) bookmarkDao.addBookmark(BookmarkEntity(downloads.absolutePath, "Downloads", "download"))
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
+        // emrexplore used to populate app-private storage with demo files. Remove those
+        // legacy artifacts once, and never create synthetic files in a real user library.
+        removeLegacySampleData()
         ensurePreferencesInitialized()
-    }
 
-    suspend fun totalIndexedCount(): Int = withContext(Dispatchers.IO) {
-        fileIndexDao.getTotalCount()
-    }
-
-    suspend fun getAllNonDirectoryFiles(limit: Int = 300): List<IndexedFileEntity> = withContext(Dispatchers.IO) {
-        fileIndexDao.getAllNonDirectoryFiles(limit)
-    }
-
-    suspend fun indexStorage(force: Boolean = false): Int = withContext(Dispatchers.IO) {
-        indexingMutex.withLock {
-            val currentStatus = indexStatusDao.getStatus()
-            val currentCount = fileIndexDao.getTotalCount()
-            if (!force && currentStatus?.isIndexing == true) {
-                return@withContext currentCount
-            }
-            if (!force && currentCount > 0 && currentStatus != null && (System.currentTimeMillis() - currentStatus.lastIndexedTimestamp) < 300_000) {
-                return@withContext currentCount
-            }
-
-            indexStatusDao.updateStatus(
-                IndexStatusEntity(
-                    id = 1,
-                    isIndexing = true,
-                    lastIndexedTimestamp = currentStatus?.lastIndexedTimestamp ?: 0L,
-                    totalIndexedCount = currentCount,
-                    statusMessage = "Indexing storage..."
-                )
-            )
-
-            if (force) {
-                fileIndexDao.clearIndex()
-            }
-
-            val targets = listOf(
-                File(rootPath),
-                baseWorkingDir
-            ).distinctBy { it.absolutePath }
-
-            val batch = mutableListOf<IndexedFileEntity>()
-            var indexedTotal = 0
-
-            for (target in targets) {
-                scanDirForIndexing(target, batch, maxDepth = 4, currentDepth = 0) { count ->
-                    indexedTotal += count
-                    indexStatusDao.updateStatus(
-                        IndexStatusEntity(
-                            id = 1,
-                            isIndexing = true,
-                            lastIndexedTimestamp = 0L,
-                            totalIndexedCount = indexedTotal,
-                            statusMessage = "Indexing files ($indexedTotal)..."
-                        )
-                    )
-                }
-            }
-
-            if (batch.isNotEmpty()) {
-                fileIndexDao.insertAll(batch)
-                indexedTotal += batch.size
-                batch.clear()
-            }
-
-            val finalCount = fileIndexDao.getTotalCount()
-            indexStatusDao.updateStatus(
-                IndexStatusEntity(
-                    id = 1,
-                    isIndexing = false,
-                    lastIndexedTimestamp = System.currentTimeMillis(),
-                    totalIndexedCount = finalCount,
-                    statusMessage = "Indexed $finalCount files & folders"
-                )
-            )
-
-            finalCount
+        if (bookmarkDao.getBookmarks().firstOrNull().isNullOrEmpty()) {
+            bookmarkDao.addBookmark(BookmarkEntity(rootPath, "Internal Storage", "storage"))
+            val dcim = File(rootPath, "DCIM")
+            if (dcim.exists()) bookmarkDao.addBookmark(BookmarkEntity(dcim.absolutePath, "DCIM / Photos", "camera"))
+            val downloads = File(rootPath, "Download")
+            if (downloads.exists()) bookmarkDao.addBookmark(BookmarkEntity(downloads.absolutePath, "Downloads", "download"))
         }
     }
 
-    private suspend fun scanDirForIndexing(
-        dir: File,
-        batch: MutableList<IndexedFileEntity>,
-        maxDepth: Int,
-        currentDepth: Int,
-        onBatchFlushed: suspend (Int) -> Unit
-    ) {
-        if (!dir.exists() || !dir.isDirectory || currentDepth > maxDepth) return
-        IoPriorityCoordinator.yieldIfInteractive()
-        val children = dir.listFiles() ?: return
-
-        for (file in children) {
-            val name = file.name
-            if (name.startsWith(".") && name != ".trash") continue
-            if (name == "Android" || name == "cache") continue
-
-            val isDir = file.isDirectory
-            val ext = if (isDir) "" else file.extension.lowercase()
-            val mime = if (isDir) "inode/directory" else (MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: inferMime(ext))
-            val category = determineCategory(isDir, ext, file.parentFile?.name)
-            val childCount = if (isDir) (file.listFiles()?.size ?: 0) else 0
-
-            batch.add(
-                IndexedFileEntity(
-                    path = file.absolutePath,
-                    name = file.name,
-                    parentPath = file.parent ?: "",
-                    size = if (isDir) 0L else file.length(),
-                    lastModified = file.lastModified(),
-                    isDirectory = isDir,
-                    mimeType = mime,
-                    extension = ext,
-                    category = category.name,
-                    childCount = childCount,
-                    indexedTimestamp = System.currentTimeMillis()
-                )
-            )
-
-            if (batch.size >= 100) {
-                fileIndexDao.insertAll(batch)
-                val flushedSize = batch.size
-                batch.clear()
-                onBatchFlushed(flushedSize)
-                IoPriorityCoordinator.yieldIfInteractive()
-            }
-
-            if (isDir) {
-                scanDirForIndexing(file, batch, maxDepth, currentDepth + 1, onBatchFlushed)
-            }
-        }
-    }
-
-    fun determineCategory(isDirectory: Boolean, ext: String, parentName: String?): CategoryType {
-        if (isDirectory) return CategoryType.DOCUMENTS
-        val lowerExt = ext.lowercase()
-        return when {
-            lowerExt in listOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic") -> CategoryType.IMAGES
-            lowerExt in listOf("mp4", "mkv", "webm", "avi", "mov", "3gp") -> CategoryType.VIDEOS
-            lowerExt in listOf("mp3", "m4a", "wav", "ogg", "flac", "aac") -> CategoryType.AUDIO
-            lowerExt in listOf("zip", "rar", "7z", "tar", "gz", "bz2") -> CategoryType.ARCHIVES
-            lowerExt in listOf("apk", "xapk", "apks") -> CategoryType.APKS
-            parentName?.equals("Download", ignoreCase = true) == true || parentName?.equals("Downloads", ignoreCase = true) == true -> CategoryType.DOWNLOADS
-            lowerExt in listOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "xml", "html", "kt", "java", "py", "log") -> CategoryType.DOCUMENTS
-            else -> CategoryType.DOCUMENTS
-        }
-    }
-
-    suspend fun indexFileOrDir(file: File) = withContext(Dispatchers.IO) {
-        if (!file.exists()) return@withContext
-        val isDir = file.isDirectory
-        val ext = if (isDir) "" else file.extension.lowercase()
-        val mime = if (isDir) "inode/directory" else (MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: inferMime(ext))
-        val category = determineCategory(isDir, ext, file.parentFile?.name)
-        val childCount = if (isDir) (file.listFiles()?.size ?: 0) else 0
-
-        fileIndexDao.insertOrUpdate(
-            IndexedFileEntity(
-                path = file.absolutePath,
-                name = file.name,
-                parentPath = file.parent ?: "",
-                size = if (isDir) 0L else file.length(),
-                lastModified = file.lastModified(),
-                isDirectory = isDir,
-                mimeType = mime,
-                extension = ext,
-                category = category.name,
-                childCount = childCount,
-                indexedTimestamp = System.currentTimeMillis()
-            )
+    private fun removeLegacySampleData() {
+        val legacyFiles = listOf(
+            File(baseWorkingDir, "Camera/Sunset_Horizon_2026.jpg"),
+            File(baseWorkingDir, "Camera/Mountain_Peak_Spring.jpg"),
+            File(baseWorkingDir, "Camera/Forest_Mist_Morning.jpg"),
+            File(baseWorkingDir, "Camera/Ocean_Breeze_Shore.jpg"),
+            File(baseWorkingDir, "Screenshots/Screenshot_emrexplore_UI.png"),
+            File(baseWorkingDir, "Documents/emrexplore_Overview.txt"),
+            File(baseWorkingDir, "Documents/Project_Roadmap.md"),
+            File(baseWorkingDir, "Documents/app_config.json"),
+            File(baseWorkingDir, "Downloads/Sample_Archive.zip"),
+            File(baseWorkingDir, "Music/Chime_Notification.wav"),
+            File(baseWorkingDir, ".emrexplore_seeded")
         )
-    }
-
-    suspend fun removeIndexedPath(path: String, isDirectory: Boolean) = withContext(Dispatchers.IO) {
-        if (isDirectory) {
-            fileIndexDao.deleteByPathTree(path, path)
-        } else {
-            fileIndexDao.deleteByPath(path)
+        legacyFiles.forEach { file ->
+            try { if (file.isFile) file.delete() } catch (_: Exception) { }
         }
-    }
-
-
-    private fun createSeedDirectoriesAndFiles() {
-        val root = baseWorkingDir
-
-        // 1. Camera / Photos
-        val cameraDir = File(root, "Camera").apply { mkdirs() }
-        createSampleImage(File(cameraDir, "Sunset_Horizon_2026.jpg"), "Sunset Horizon", Color.rgb(249, 115, 22), Color.rgb(67, 56, 202))
-        createSampleImage(File(cameraDir, "Mountain_Peak_Spring.jpg"), "Mountain Peak", Color.rgb(14, 165, 233), Color.rgb(15, 23, 42))
-        createSampleImage(File(cameraDir, "Forest_Mist_Morning.jpg"), "Forest Mist", Color.rgb(16, 185, 129), Color.rgb(6, 78, 59))
-        createSampleImage(File(cameraDir, "Ocean_Breeze_Shore.jpg"), "Ocean Shore", Color.rgb(6, 182, 212), Color.rgb(30, 58, 138))
-
-        // 2. Screenshots
-        val screenshotDir = File(root, "Screenshots").apply { mkdirs() }
-        createSampleImage(File(screenshotDir, "Screenshot_emrexplore_UI.png"), "emrexplore UI", Color.rgb(99, 102, 241), Color.rgb(30, 41, 59))
-
-        // 3. Documents
-        val docsDir = File(root, "Documents").apply { mkdirs() }
-        val manifesto = File(docsDir, "emrexplore_Overview.txt")
-        if (!manifesto.exists()) {
-            manifesto.writeText(
-                """
-                # emrexplore
-                
-                Modern, privacy-first file management and media viewing.
-                
-                Key Features:
-                - Fast, beautiful Material 3 user interface
-                - Full file explorer with breadcrumbs, cut/copy/paste, zip compress & extract
-                - Unified Gallery with album grouping, timeline view, and rich full-screen viewer
-                - Recycle Bin with safe restore capability
-                - Quick categories: Images, Videos, Audio, Documents, Archives, APKs
-                - Built-in text viewer & editor for notes, code, and config files
-                - Built-in audio preview player
-                - Detailed storage space analyzer
-                """.trimIndent()
-            )
-        }
-
-        val checklist = File(docsDir, "Project_Roadmap.md")
-        if (!checklist.exists()) {
-            checklist.writeText(
-                """
-                # Project Roadmap
-                
-                [x] Unified File Explorer & Media Gallery
-                [x] Fast thumbnail rendering with Coil
-                [x] Full-screen zoomable photo viewer with EXIF sheet
-                [x] Zip archive inspector and unzipper
-                [x] In-app text editor with syntax viewing
-                [x] Storage breakdown visualization
-                [x] Safe Recycle Bin persistence with Room
-                """.trimIndent()
-            )
-        }
-
-        val configFile = File(docsDir, "app_config.json")
-        if (!configFile.exists()) {
-            configFile.writeText(
-                """
-                {
-                  "app_name": "emrexplore",
-                  "version": "1.0.0",
-                  "theme": "system",
-                  "show_hidden_files": false,
-                  "default_view": "detailed_list",
-                  "gallery_columns": 3,
-                  "enable_recycle_bin": true
-                }
-                """.trimIndent()
-            )
-        }
-
-        // 4. Downloads
-        val downloadDir = File(root, "Downloads").apply { mkdirs() }
-        val sampleZip = File(downloadDir, "Sample_Archive.zip")
-        if (!sampleZip.exists()) {
-            createSampleZip(sampleZip, mapOf(
-                "Welcome.txt" to "Welcome to emrexplore!\nExtracted from sample zip.",
-                "License.txt" to "GNU General Public License v3.0\nPermissions of this strong copyleft license are conditioned on making available complete source code."
-            ))
-        }
-
-        // 5. Music / Audio
-        val musicDir = File(root, "Music").apply { mkdirs() }
-        val sampleTone = File(musicDir, "Chime_Notification.wav")
-        if (!sampleTone.exists()) {
-            createSampleWav(sampleTone)
-        }
-    }
-
-    private fun createSampleImage(file: File, label: String, topColor: Int, bottomColor: Int) {
-        if (file.exists()) return
-        try {
-            val width = 1200
-            val height = 800
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-
-            // Gradient background
-            val paint = Paint().apply { isAntiAlias = true }
-            for (y in 0 until height) {
-                val ratio = y.toFloat() / height
-                val r = (Color.red(topColor) * (1 - ratio) + Color.red(bottomColor) * ratio).toInt()
-                val g = (Color.green(topColor) * (1 - ratio) + Color.green(bottomColor) * ratio).toInt()
-                val b = (Color.blue(topColor) * (1 - ratio) + Color.blue(bottomColor) * ratio).toInt()
-                paint.color = Color.rgb(r, g, b)
-                canvas.drawLine(0f, y.toFloat(), width.toFloat(), y.toFloat(), paint)
-            }
-
-            // Mountain / sun geometric art
-            val sunPaint = Paint().apply {
-                color = Color.rgb(254, 240, 138)
-                isAntiAlias = true
-            }
-            canvas.drawCircle(width * 0.75f, height * 0.35f, 90f, sunPaint)
-
-            // Mountain path
-            val mountainPaint = Paint().apply {
-                color = Color.argb(180, 255, 255, 255)
-                isAntiAlias = true
-                style = Paint.Style.FILL
-            }
-            val mountainPath = Path().apply {
-                moveTo(100f, height.toFloat())
-                lineTo(width * 0.4f, height * 0.42f)
-                lineTo(width * 0.7f, height.toFloat())
-                close()
-            }
-            canvas.drawPath(mountainPath, mountainPaint)
-
-            val mountain2Paint = Paint().apply {
-                color = Color.argb(220, 240, 240, 250)
-                isAntiAlias = true
-                style = Paint.Style.FILL
-            }
-            val mountain2Path = Path().apply {
-                moveTo(width * 0.35f, height.toFloat())
-                lineTo(width * 0.65f, height * 0.5f)
-                lineTo(width * 0.95f, height.toFloat())
-                close()
-            }
-            canvas.drawPath(mountain2Path, mountain2Paint)
-
-            // Text Label
-            val textPaint = Paint().apply {
-                color = Color.WHITE
-                textSize = 48f
-                isAntiAlias = true
-                isFakeBoldText = true
-                setShadowLayer(8f, 2f, 2f, Color.argb(150, 0, 0, 0))
-            }
-            canvas.drawText(label, 70f, height - 50f, textPaint)
-
-            FileOutputStream(file).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
-            }
-            bitmap.recycle()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun createSampleZip(targetZip: File, entries: Map<String, String>) {
-        try {
-            ZipOutputStream(FileOutputStream(targetZip)).use { zos ->
-                for ((name, content) in entries) {
-                    val entry = ZipEntry(name)
-                    zos.putNextEntry(entry)
-                    zos.write(content.toByteArray(Charsets.UTF_8))
-                    zos.closeEntry()
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun createSampleWav(targetWav: File) {
-        try {
-            val sampleRate = 44100
-            val durationSeconds = 1.2
-            val numSamples = (durationSeconds * sampleRate).toInt()
-            val audioData = ShortArray(numSamples)
-
-            // Generate pleasant chime chord (A4 440Hz + C#5 554Hz + E5 659Hz)
-            for (i in 0 until numSamples) {
-                val t = i.toDouble() / sampleRate
-                val decay = Math.exp(-3.5 * t)
-                val sample = (Math.sin(2.0 * Math.PI * 523.25 * t) * 0.4 +
-                             Math.sin(2.0 * Math.PI * 659.25 * t) * 0.3 +
-                             Math.sin(2.0 * Math.PI * 783.99 * t) * 0.3) * decay
-                audioData[i] = (sample * Short.MAX_VALUE).toInt().toShort()
-            }
-
-            val byteData = ByteArray(numSamples * 2)
-            ByteBuffer.wrap(byteData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(audioData)
-
-            FileOutputStream(targetWav).use { out ->
-                val totalDataLen = byteData.size + 36
-                val header = ByteArray(44)
-                ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).apply {
-                    put("RIFF".toByteArray())
-                    putInt(totalDataLen)
-                    put("WAVE".toByteArray())
-                    put("fmt ".toByteArray())
-                    putInt(16) // Subchunk1Size (16 for PCM)
-                    putShort(1) // AudioFormat (1 for PCM)
-                    putShort(1) // NumChannels (1 mono)
-                    putInt(sampleRate)
-                    putInt(sampleRate * 2) // ByteRate
-                    putShort(2) // BlockAlign
-                    putShort(16) // BitsPerSample
-                    put("data".toByteArray())
-                    putInt(byteData.size)
-                }
-                out.write(header)
-                out.write(byteData)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        listOf(
+            File(baseWorkingDir, "Camera"),
+            File(baseWorkingDir, "Screenshots"),
+            File(baseWorkingDir, "Documents"),
+            File(baseWorkingDir, "Downloads"),
+            File(baseWorkingDir, "Music")
+        ).forEach { dir ->
+            try {
+                if (dir.isDirectory && (dir.list()?.isEmpty() == true)) dir.delete()
+            } catch (_: Exception) { }
         }
     }
 
