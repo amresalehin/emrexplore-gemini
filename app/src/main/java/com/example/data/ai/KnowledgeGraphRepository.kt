@@ -279,16 +279,20 @@ class KnowledgeGraphRepository(private val context: Context) {
             }
         }.toString()
 
-        mediaMetadataRepository.getOrRead(item, requireOriginalLocation = false)
+        MetadataWriter.writeAiMetadata(file, analysis.summary.trim(), tags)
+        val persistedItem = item.copy(
+            size = file.length(),
+            dateAdded = file.lastModified()
+        )
+        mediaMetadataRepository.getOrRead(persistedItem, requireOriginalLocation = false)
         mediaMetadataRepository.saveAiEnrichment(
-            item = item,
+            item = persistedItem,
             caption = analysis.summary.trim(),
             tagsJson = tagsJson,
             entitiesJson = entitiesJson,
             relationsJson = relationsJson,
             model = config.visionModel
         )
-        MetadataWriter.writeAiMetadata(file, analysis.summary.trim(), tags)
         true
     }
     suspend fun indexFile(file: File, config: AiProviderConfigEntity): Boolean =
