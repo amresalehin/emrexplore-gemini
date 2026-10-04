@@ -25,7 +25,7 @@ import androidx.room.RoomDatabase
         IndexFingerprintEntity::class,
         ModelRunEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
