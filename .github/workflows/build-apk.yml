@@ -48,7 +48,7 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
-      - name: Generate CI keystores
+      - name: Generate debug keystore
         run: |
           set -e
           keytool -genkeypair -v \
@@ -60,18 +60,19 @@ jobs:
             -keysize 2048 \
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
-          keytool -genkeypair -v \
-            -keystore release.keystore \
-            -storepass android \
-            -alias upload \
-            -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=EmrExplore CI,O=EmrExplore,C=US"
-          echo "KEYSTORE_PATH=${GITHUB_WORKSPACE}/release.keystore" >> "$GITHUB_ENV"
-          echo "STORE_PASSWORD=android" >> "$GITHUB_ENV"
-          echo "KEY_PASSWORD=android" >> "$GITHUB_ENV"
+
+      - name: Configure release signing
+        env:
+          KEYSTORE_B64: ${{ secrets.EMREXPLORE_RELEASE_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.EMREXPLORE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.EMREXPLORE_KEY_PASSWORD }}
+        run: |
+          set -e
+          test -n "$KEYSTORE_B64"
+          echo "$KEYSTORE_B64" | base64 --decode > release.keystore
+          echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/release.keystore" >> "$GITHUB_ENV"
+          echo "STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Run unit tests
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
