@@ -2348,8 +2348,16 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
 
         viewModelScope.launch {
+            val attachedPath = attached?.path
             val history = _uiState.value.askAiMessages
                 .filter { !it.isError }
+                .filter { message ->
+                    if (attachedPath != null) {
+                        message.attachedFile?.path == attachedPath
+                    } else {
+                        message.attachedFile == null
+                    }
+                }
                 .takeLast(8)
                 .map { if (it.isUser) "User" to it.text else "AI" to it.text }
 
