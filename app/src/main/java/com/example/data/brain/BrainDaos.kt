@@ -48,6 +48,14 @@ interface BrainChunkDao {
         offset: Int
     ): List<BrainChunkEntity>
 
+    @Query("""
+        SELECT * FROM brain_chunks
+        WHERE offlineEmbeddingJson != ''
+        ORDER BY indexedAt DESC
+        LIMIT :limit OFFSET :offset
+    """)
+    suspend fun getOfflinePage(limit: Int, offset: Int): List<BrainChunkEntity>
+
     @Query("SELECT * FROM brain_chunks WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<String>): List<BrainChunkEntity>
 
