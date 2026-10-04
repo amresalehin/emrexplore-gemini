@@ -156,6 +156,6 @@ data class AskAiChatMessage(
     val text: String,
     val timestamp: Long = System.currentTimeMillis(),
     val attachedFile: AttachedAiFile? = null,
-    val referencedNodes: List<KgNodeEntity> = emptyList(),
+    val referencedNodes: List<BrainNodeEntity> = emptyList(),
     val isError: Boolean = false
 )
