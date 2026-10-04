@@ -22,9 +22,7 @@ class GalleryAiWorker(appContext: Context, params: WorkerParameters) : Coroutine
         val rawConfig = db.aiProviderConfigDao().getConfig()
             ?: return Result.failure(workDataOf("error" to "AI provider is not configured"))
         val config = rawConfig.copy(apiKey = com.example.data.security.ApiKeyProtector.decrypt(rawConfig.apiKey))
-        val provider = ProviderType.fromString(config.providerType)
-        val keyless = provider in setOf(ProviderType.OLLAMA, ProviderType.OPENAI_COMPATIBLE, ProviderType.CUSTOM)
-        if (!config.isEnabled || (!keyless && config.apiKey.isBlank())) {
+        if (!config.isEnabled || (!isKeylessAiConfig(config) && config.apiKey.isBlank())) {
             return Result.failure(workDataOf("error" to "Configure and save an AI provider first"))
         }
 
