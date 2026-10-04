@@ -14,12 +14,14 @@ import com.example.data.local.KgNodeEntity
 import com.example.data.local.IndexFingerprintEntity
 import com.example.data.local.RagChunkEntity
 import com.example.data.metadata.MetadataExtractor
+import com.example.data.security.ApiKeyProtector
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.io.ByteArrayOutputStream
@@ -57,7 +59,7 @@ class KnowledgeGraphRepository(private val context: Context) {
     val nodeCountFlow: Flow<Int> = kgDao.getNodeCountFlow()
     val edgeCountFlow: Flow<Int> = kgDao.getEdgeCountFlow()
     val chunkCountFlow: Flow<Int> = ragDao.getChunkCountFlow()
-    val aiConfigFlow: Flow<AiProviderConfigEntity?> = aiConfigDao.getConfigFlow()
+    val aiConfigFlow: Flow<AiProviderConfigEntity?> = aiConfigDao.getConfigFlow().map { it?.let(::decryptConfig) }
 
     private fun normalizeAiConfig(config: AiProviderConfigEntity): AiProviderConfigEntity {
         if (config.embeddingModel != "gemini-embedding-2-preview") return config
@@ -66,15 +68,24 @@ class KnowledgeGraphRepository(private val context: Context) {
         return if (replacement.isNotBlank()) config.copy(embeddingModel = replacement) else config.copy(embeddingModel = "")
     }
 
+    private fun decryptConfig(config: AiProviderConfigEntity): AiProviderConfigEntity =
+        config.copy(apiKey = ApiKeyProtector.decrypt(config.apiKey))
+
+    private fun encryptConfig(config: AiProviderConfigEntity): AiProviderConfigEntity =
+        config.copy(apiKey = ApiKeyProtector.encrypt(config.apiKey))
+
     suspend fun getAiConfig(): AiProviderConfigEntity = withContext(Dispatchers.IO) {
         val raw = aiConfigDao.getConfig() ?: AiProviderConfigEntity()
-        normalizeAiConfig(raw).also { normalized ->
-            if (normalized != raw) aiConfigDao.saveConfig(normalized)
+        val decrypted = decryptConfig(raw)
+        val normalized = normalizeAiConfig(decrypted)
+        if (normalized != decrypted || raw.apiKey != normalized.apiKey) {
+            aiConfigDao.saveConfig(encryptConfig(normalized))
         }
+        normalized
     }
 
     suspend fun saveAiConfig(config: AiProviderConfigEntity) = withContext(Dispatchers.IO) {
-        aiConfigDao.saveConfig(normalizeAiConfig(config))
+        aiConfigDao.saveConfig(encryptConfig(normalizeAiConfig(config)))
     }
 
     suspend fun testConnection(config: AiProviderConfigEntity): ConnectionTestResult {
