@@ -669,7 +669,10 @@ class FileRepository(private val context: Context) {
             if (cached != null) {
                 PerformanceMonitor.recordFolderCacheHit()
                 val filtered = if (showHidden) cached else cached.filter { !it.name.startsWith(".") }
-                val sorted = sortFileList(filtered, sortOption)
+                val refreshed = filtered.map { item ->
+                    if (item.isDirectory) item.copy(childCount = fastChildCount(File(item.path))) else item
+                }
+                val sorted = sortFileList(refreshed, sortOption)
                 val pagedItems: List<FileItem>
                 val hasMore: Boolean
                 if (sorted.size <= 300) {
@@ -920,12 +923,12 @@ class FileRepository(private val context: Context) {
     private fun fastChildCount(dir: File): Int {
         val name = dir.name
         if (name.equals("Android", ignoreCase = true) || name.equals("data", ignoreCase = true) || name.equals("obb", ignoreCase = true)) {
-            return 0
+            return -1
         }
         return try {
-            dir.list()?.size ?: 0
+            dir.list()?.size ?: -1
         } catch (e: Exception) {
-            0
+            -1
         }
     }
 
