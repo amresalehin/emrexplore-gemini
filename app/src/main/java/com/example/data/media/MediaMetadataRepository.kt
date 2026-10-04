@@ -171,6 +171,11 @@ class MediaMetadataRepository(context: Context) {
         }
     }
 
+    suspend fun getByPath(path: String): MediaMetadataEntity? = withContext(Dispatchers.IO) {
+        if (path.isBlank()) return@withContext null
+        metadataDao.getByPath(path)
+    }
+
     suspend fun saveAiEnrichment(
         item: MediaItem,
         caption: String,
