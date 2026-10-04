@@ -441,9 +441,9 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
     }
 
     // Metadata Inspector
-    if (uiState.activeMetadataReport != null) {
+    uiState.activeMetadataReport?.let { report ->
         MetadataInspectorSheet(
-            report = uiState.activeMetadataReport,
+            report = report,
             onDismiss = { viewModel.closeMetadataInspector() }
         )
     }
