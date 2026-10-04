@@ -12,42 +12,74 @@ class BrainEngine(
 ) {
     data class ScoredChunk(val chunk: RagChunkEntity, val score: Float)
 
+    companion object {
+        private const val LEXICAL_RESULTS_PER_TOKEN = 8
+        private const val MAX_QUERY_TOKENS = 6
+        private const val SEMANTIC_CANDIDATE_THRESHOLD = 32
+        private const val SEMANTIC_PAGE_SIZE = 64
+        private const val SEMANTIC_TIME_BUDGET_MS = 250L
+        private const val MAX_SEMANTIC_ROWS = 4096
+        private const val MAX_GRAPH_SEEDS = 8
+        private const val MAX_GRAPH_NODES = 64
+        private const val MAX_GRAPH_EVIDENCE = 24
+    }
+
     suspend fun search(question: String, config: AiProviderConfigEntity, limit: Int = 8): List<ScoredChunk> = withContext(Dispatchers.IO) {
         val lexical = linkedMapOf<String, Float>()
         tokenize(question).forEach { token ->
-            ragDao.searchChunks(token, 16).forEachIndexed { index, chunk ->
+            ragDao.searchChunks(token, LEXICAL_RESULTS_PER_TOKEN).forEachIndexed { index, chunk ->
                 val score = 1f / (index + 1)
                 lexical[chunk.chunkId] = maxOf(lexical[chunk.chunkId] ?: 0f, score)
             }
         }
 
         val semanticAvailable = config.isEnabled &&
-            (ProviderType.fromString(config.providerType) in setOf(ProviderType.OLLAMA, ProviderType.OPENAI_COMPATIBLE, ProviderType.CUSTOM) || config.apiKey.isNotBlank()) &&
+            (ProviderType.fromString(config.providerType) in setOf(
+                ProviderType.OLLAMA,
+                ProviderType.OPENAI_COMPATIBLE,
+                ProviderType.CUSTOM
+            ) || config.apiKey.isNotBlank()) &&
             config.embeddingModel.isNotBlank()
-        val queryEmbedding = if (semanticAvailable) client.embedTexts(listOf(question), config).firstOrNull() else null
-        val candidates = linkedMapOf<String, Float>()
-        var offset = 0
-        val pageSize = 64
 
+        // Avoid an expensive embedding request + broad vector scan when lexical
+        // retrieval already produced a healthy candidate pool.
+        val shouldRunSemantic = semanticAvailable && lexical.size < SEMANTIC_CANDIDATE_THRESHOLD
+        val queryEmbedding = if (shouldRunSemantic) {
+            client.embedTexts(listOf(question), config).firstOrNull()
+        } else null
+
+        val candidates = linkedMapOf<String, Float>()
         if (queryEmbedding != null) {
-            while (true) {
-                val page = ragDao.getEmbeddedChunksPage(config.embeddingModel, pageSize, offset)
+            val startedAt = System.nanoTime()
+            var offset = 0
+            var scanned = 0
+
+            while (scanned < MAX_SEMANTIC_ROWS &&
+                (System.nanoTime() - startedAt) / 1_000_000L < SEMANTIC_TIME_BUDGET_MS
+            ) {
+                val pageLimit = minOf(SEMANTIC_PAGE_SIZE, MAX_SEMANTIC_ROWS - scanned)
+                val page = ragDao.getEmbeddedChunksPage(config.embeddingModel, pageLimit, offset)
                 if (page.isEmpty()) break
-                page.forEach { chunk ->
-                    val vector = parseEmbedding(chunk.embeddingJson)
+
+                page.forEach { row ->
+                    val vector = parseEmbedding(row.embeddingJson)
                     if (vector.isNotEmpty()) {
                         val semantic = cosine(queryEmbedding, vector)
-                        val lex = lexical[chunk.chunkId] ?: 0f
+                        val lex = lexical[row.chunkId] ?: 0f
                         val score = 0.70f * semantic + 0.30f * lex
-                        if (score > 0f) candidates[chunk.chunkId] = score
+                        if (score > 0f) candidates[row.chunkId] = score
                     }
                 }
-                if (page.size < pageSize) break
+
+                scanned += page.size
                 offset += page.size
+                if (page.size < pageLimit) break
             }
         }
 
-        lexical.forEach { (id, score) -> candidates[id] = maxOf(candidates[id] ?: 0f, 0.30f * score) }
+        lexical.forEach { (id, score) ->
+            candidates[id] = maxOf(candidates[id] ?: 0f, 0.30f * score)
+        }
         if (candidates.isEmpty()) return@withContext emptyList()
 
         val topIds = candidates.entries
@@ -60,32 +92,94 @@ class BrainEngine(
             .map { ScoredChunk(it, candidates[it.chunkId] ?: 0f) }
     }
 
-    suspend fun graphContext(seedNodes: List<KgNodeEntity>, maxDepth: Int = 3, maxPerNode: Int = 8): Pair<List<KgNodeEntity>, List<String>> = withContext(Dispatchers.IO) {
+    suspend fun graphContext(
+        seedNodes: List<KgNodeEntity>,
+        maxDepth: Int = 2,
+        maxPerNode: Int = 6
+    ): Pair<List<KgNodeEntity>, List<String>> = withContext(Dispatchers.IO) {
+        val seeds = seedNodes.distinctBy { it.id }.take(MAX_GRAPH_SEEDS)
+        if (seeds.isEmpty() || maxDepth <= 0) return@withContext emptyList<KgNodeEntity>() to emptyList()
+
         val discovered = LinkedHashMap<String, KgNodeEntity>()
+        val knownNodes = seeds.associateBy { it.id }.toMutableMap()
+        val seen = seeds.mapTo(mutableSetOf()) { it.id }
+        var frontier = seeds
         val evidence = mutableListOf<String>()
-        seedNodes.distinctBy { it.id }.take(12).forEach { seed ->
-            val queue = ArrayDeque<Pair<String, Int>>()
-            val seen = mutableSetOf(seed.id)
-            queue.add(seed.id to 0)
-            while (queue.isNotEmpty()) {
-                val (nodeId, depth) = queue.removeFirst()
-                if (depth >= maxDepth) continue
-                kgDao.getEdgesForNode(nodeId).sortedByDescending { it.weight }.take(maxPerNode).forEach { graphEdge ->
-                    val neighborId = if (graphEdge.sourceNodeId == nodeId) graphEdge.targetNodeId else graphEdge.sourceNodeId
-                    if (!seen.add(neighborId)) return@forEach
-                    val neighbor = kgDao.getNode(neighborId) ?: return@forEach
-                    discovered.putIfAbsent(neighbor.id, neighbor)
-                    val sourceLabel = kgDao.getNode(nodeId)?.label ?: nodeId
-                    evidence += "[$sourceLabel] -${graphEdge.relation}-> [${neighbor.label}] (${graphEdge.evidenceSnippet})"
-                    queue.add(neighborId to depth + 1)
+
+        repeat(maxDepth) {
+            if (frontier.isEmpty() || discovered.size >= MAX_GRAPH_NODES) return@repeat
+
+            val frontierIds = frontier.map { it.id }
+            val frontierSet = frontierIds.toHashSet()
+            val edges = kgDao.getEdgesForNodes(frontierIds)
+            val edgesByNode = HashMap<String, MutableList<KgEdgeEntity>>()
+
+            for (edge in edges) {
+                if (edge.sourceNodeId in frontierSet) {
+                    edgesByNode.getOrPut(edge.sourceNodeId) { mutableListOf() }.add(edge)
+                }
+                if (edge.targetNodeId in frontierSet) {
+                    edgesByNode.getOrPut(edge.targetNodeId) { mutableListOf() }.add(edge)
                 }
             }
+
+            val neighborIds = edges
+                .asSequence()
+                .flatMap { sequenceOf(it.sourceNodeId, it.targetNodeId) }
+                .filter { it !in seen }
+                .distinct()
+                .take(MAX_GRAPH_NODES - discovered.size)
+                .toList()
+            if (neighborIds.isEmpty()) return@repeat
+
+            val neighbors = kgDao.getNodes(neighborIds).associateBy { it.id }
+            knownNodes.putAll(neighbors)
+            val nextFrontier = LinkedHashMap<String, KgNodeEntity>()
+
+            for (node in frontier) {
+                val nodeEdges = edgesByNode[node.id]
+                    .orEmpty()
+                    .sortedByDescending { it.weight }
+                    .take(maxPerNode)
+
+                for (edge in nodeEdges) {
+                    val neighborId = if (edge.sourceNodeId == node.id) edge.targetNodeId else edge.sourceNodeId
+                    if (!seen.add(neighborId)) continue
+
+                    val neighbor = knownNodes[neighborId] ?: continue
+                    discovered.putIfAbsent(neighbor.id, neighbor)
+
+                    val sourceLabel = knownNodes[node.id]?.label ?: node.id
+                    evidence += "[$sourceLabel] -${edge.relation}-> [${neighbor.label}] (${edge.evidenceSnippet})"
+                    nextFrontier.putIfAbsent(neighbor.id, neighbor)
+
+                    if (discovered.size >= MAX_GRAPH_NODES) break
+                }
+                if (discovered.size >= MAX_GRAPH_NODES) break
+            }
+
+            frontier = nextFrontier.values.take(MAX_GRAPH_SEEDS * maxPerNode).toList()
         }
-        discovered.values.toList() to evidence.distinct().take(48)
+
+        discovered.values.toList() to evidence.distinct().take(MAX_GRAPH_EVIDENCE)
     }
 
-    private fun tokenize(value: String): List<String> = value.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length > 1 }.distinct()
-
+    private fun tokenize(value: String): List<String> {
+        val stopWords = setOf(
+            "the", "and", "for", "with", "this", "that", "from", "what", "when", "where",
+            "your", "have", "has", "are", "was", "were", "will", "would", "could", "should",
+            "about", "into", "over", "under", "then", "than", "how", "why", "who", "which",
+            "my", "me", "you", "our", "their", "its", "does", "did", "can"
+        )
+        return value.lowercase()
+            .split(Regex("[^\\p{L}\\p{N}]+"))
+            .asSequence()
+            .filter { it.length > 2 && it !in stopWords }
+            .distinct()
+            .sortedByDescending { it.length }
+            .take(MAX_QUERY_TOKENS)
+            .toList()
+    }
     private fun parseEmbedding(json: String?): FloatArray {
         if (json.isNullOrBlank()) return FloatArray(0)
         return try {
