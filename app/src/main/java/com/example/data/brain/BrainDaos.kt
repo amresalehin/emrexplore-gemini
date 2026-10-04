@@ -124,6 +124,9 @@ interface BrainEdgeDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<BrainEdgeEntity>)
 
+    @Query("SELECT COUNT(*) FROM brain_edges")
+    fun countFlow(): Flow<Int>
+
     @Query("SELECT * FROM brain_edges WHERE sourceNodeId = :nodeId OR targetNodeId = :nodeId")
     suspend fun forNode(nodeId: String): List<BrainEdgeEntity>
 
