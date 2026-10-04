@@ -2329,7 +2329,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 kgIndexingStatus = "Brain indexing queued..."
             )
         }
-        val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>().build()
+        val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>()
+            .setInputData(androidx.work.workDataOf("manual" to true))
+            .build()
         WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
             com.example.data.ai.BrainIndexWorker.UNIQUE_NAME,
             ExistingWorkPolicy.REPLACE,
