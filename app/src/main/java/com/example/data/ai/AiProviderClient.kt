@@ -166,7 +166,7 @@ class AiProviderClient {
             .post(root.toString().toRequestBody(jsonMediaType))
         applyCustomHeaders(requestBuilder, config)
         okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
-            if (!response.isSuccessful) throw RuntimeException("Ollama embedding HTTP ${response.code}: ${response.body?.string().orEmpty()}")
+            if (!response.isSuccessful) throw safeHttpError("Ollama embedding", response.code)
             val body = JSONObject(response.body?.string().orEmpty())
             val array = body.optJSONArray("embeddings") ?: throw RuntimeException("Ollama embedding response missing embeddings")
             if (array.length() != texts.size) throw RuntimeException("Ollama embedding response count ${array.length()} != request count ${texts.size}")
