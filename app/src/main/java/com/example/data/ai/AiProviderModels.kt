@@ -118,6 +118,9 @@ data class ConnectedDotsItem(
 
 data class AvailableAiModel(
     val id: String,
+    val supportsChat: Boolean = true,
     val supportsVision: Boolean = false,
-    val supportsEmbedding: Boolean = false
+    val supportsEmbedding: Boolean = false,
+    val isFree: Boolean = false,
+    val priceKnown: Boolean = false
 )
