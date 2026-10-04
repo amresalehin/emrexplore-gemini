@@ -40,6 +40,8 @@ class KnowledgeGraphRepository(private val context: Context) {
     private val modelRunDao = db.modelRunDao()
     private val client = AiProviderClient()
     private val brainEngine = BrainEngine(ragDao, kgDao, client)
+    private data class IndexResult(val success: Boolean, val hasSearchableContent: Boolean)
+
     private val metadataExtractor = MetadataExtractor(context)
 
     private val brainIndexVersion = "brain-v3"
@@ -199,7 +201,6 @@ class KnowledgeGraphRepository(private val context: Context) {
 
         val isImage = ext in setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp")
         val isDoc = ext in setOf("txt", "md", "json", "csv", "xml", "html", "htm", "log", "kt", "java", "py", "js", "ts", "c", "cpp", "properties", "sql", "yaml", "yml", "pdf", "conf", "ini", "tsv", "gradle", "kts", "env")
-
         if (!isImage && !isDoc) return@withContext
 
         val filePath = file.absolutePath
@@ -207,12 +208,31 @@ class KnowledgeGraphRepository(private val context: Context) {
         val modelVersion = brainIndexVersion + ":" + ProviderType.fromString(config.providerType).name + ":" + config.chatModel + ":" + config.visionModel + ":" + config.isEnabled
         val existing = fingerprintDao.get(filePath)
         if (existing != null && existing.size == file.length() && existing.lastModified == file.lastModified() && existing.contentHash == hash && existing.modelVersion == modelVersion && existing.embeddingModel == config.embeddingModel) return@withContext
-        if (isDoc) indexDocumentInternal(file, uri, config) else indexImageInternal(file, uri, config)
+
+        val result = try {
+            if (isDoc) indexDocumentInternal(file, uri, config) else indexImageInternal(file, uri, config)
+        } catch (error: Exception) {
+            Log.w("KGRepo", "Indexing failed for $filePath: ${error.message}")
+            IndexResult(success = false, hasSearchableContent = false)
+        }
+
+        if (!result.success) {
+            fingerprintDao.delete(filePath)
+            return@withContext
+        }
+
         val persistedChunks = ragDao.getChunksForFile(filePath)
-        val indexed = kgDao.getNodeByFilePath(filePath) != null && persistedChunks.isNotEmpty()
-        val embeddingsReady = !requiresEmbeddings(config) || persistedChunks.all { !it.embeddingJson.isNullOrBlank() && it.embeddingModel == config.embeddingModel }
-        if (indexed && embeddingsReady) fingerprintDao.insert(IndexFingerprintEntity(filePath, file.length(), file.lastModified(), hash, modelVersion, config.embeddingModel))
-        else fingerprintDao.delete(filePath)
+        val indexed = kgDao.getNodeByFilePath(filePath) != null &&
+            (!result.hasSearchableContent || persistedChunks.isNotEmpty())
+        val embeddingsReady = !result.hasSearchableContent ||
+            !requiresEmbeddings(config) ||
+            persistedChunks.all { !it.embeddingJson.isNullOrBlank() && it.embeddingModel == config.embeddingModel }
+
+        if (indexed && embeddingsReady) {
+            fingerprintDao.insert(IndexFingerprintEntity(filePath, file.length(), file.lastModified(), hash, modelVersion, config.embeddingModel))
+        } else {
+            fingerprintDao.delete(filePath)
+        }
     }
 
     private fun extractPdfText(file: File, uri: android.net.Uri?): String {
@@ -239,7 +259,7 @@ class KnowledgeGraphRepository(private val context: Context) {
     }
 
 
-    private suspend fun indexDocumentInternal(file: File, uri: android.net.Uri?, config: AiProviderConfigEntity) {
+    private suspend fun indexDocumentInternal(file: File, uri: android.net.Uri?, config: AiProviderConfigEntity): IndexResult {
         val filePath = file.absolutePath
         val contentText = try {
             if (file.extension.equals("pdf", ignoreCase = true)) {
@@ -252,7 +272,19 @@ class KnowledgeGraphRepository(private val context: Context) {
             return
         }
 
-        if (contentText.isBlank()) return
+        if (contentText.isBlank()) {
+            replaceSourceData(filePath)
+            kgDao.insertNodes(listOf(
+                KgNodeEntity(
+                    id = "doc:$filePath",
+                    label = file.name,
+                    nodeType = "DOCUMENT",
+                    sourceFilePath = filePath,
+                    summary = "No extractable text"
+                )
+            ))
+            return IndexResult(success = true, hasSearchableContent = false)
+        }
 
         replaceSourceData(filePath)
         // 1. Chunk document
@@ -369,9 +401,10 @@ class KnowledgeGraphRepository(private val context: Context) {
             }
         }
         if (evidence.isNotEmpty()) kgDao.insertEdgeEvidence(evidence)
+        return IndexResult(success = true, hasSearchableContent = true)
     }
 
-    private suspend fun indexImageInternal(file: File, uri: android.net.Uri?, config: AiProviderConfigEntity) {
+    private suspend fun indexImageInternal(file: File, uri: android.net.Uri?, config: AiProviderConfigEntity): IndexResult {
         val filePath = file.absolutePath
 
         // 1. Extract EXIF / IPTC / XMP metadata using existing MetadataExtractor
@@ -526,6 +559,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             }
         }
         if (evidence.isNotEmpty()) kgDao.insertEdgeEvidence(evidence)
+        return IndexResult(success = true, hasSearchableContent = true)
     }
 
     /**
