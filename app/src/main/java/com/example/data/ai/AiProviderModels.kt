@@ -76,10 +76,7 @@ enum class ProviderType(
 
     companion object {
         fun fromString(value: String): ProviderType {
-            return when (value.trim().uppercase()) {
-                OPENROUTER.name, GROQ.name, CUSTOM.name -> OPENAI_COMPATIBLE
-                else -> entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: GEMINI
-            }
+            return entries.firstOrNull { it.name.equals(value.trim(), ignoreCase = true) } ?: GEMINI
         }
     }
 }
@@ -129,7 +126,7 @@ data class ConnectedDotsItem(
 fun isKeylessAiConfig(config: com.example.data.local.AiProviderConfigEntity): Boolean {
     val provider = ProviderType.fromString(config.providerType)
     if (provider == ProviderType.OLLAMA) return true
-    if (provider != ProviderType.OPENAI_COMPATIBLE) return false
+    if (provider != ProviderType.OPENAI_COMPATIBLE && provider != ProviderType.CUSTOM) return false
     val url = config.baseUrl.trim().lowercase()
     return url.contains("localhost") || url.contains("127.0.0.1") || url.contains("10.0.2.2")
 }
