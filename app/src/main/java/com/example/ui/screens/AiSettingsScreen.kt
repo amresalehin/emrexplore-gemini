@@ -93,7 +93,7 @@ fun AiSettingsScreen(
 
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-    var selectedProvider by remember { mutableStateOf(ProviderType.fromString(currentConfig.providerType)) }
+    var selectedProvider by remember { mutableStateOf(normalizeProvider(currentConfig.providerType)) }
     var apiKey by remember { mutableStateOf(currentConfig.apiKey) }
     var baseUrl by remember { mutableStateOf(currentConfig.baseUrl) }
     var chatModel by remember { mutableStateOf(currentConfig.chatModel) }
