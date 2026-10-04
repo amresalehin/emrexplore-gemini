@@ -254,6 +254,12 @@ interface KgDao {
     @Query("SELECT * FROM kg_nodes WHERE sourceFilePath = :path LIMIT 1")
     suspend fun getNodeByFilePath(path: String): KgNodeEntity?
 
+    @Query("SELECT * FROM kg_nodes WHERE id IN (:ids)")
+    suspend fun getNodes(ids: List<String>): List<KgNodeEntity>
+
+    @Query("UPDATE kg_nodes SET degree = (SELECT COUNT(*) FROM kg_edges WHERE sourceNodeId = kg_nodes.id OR targetNodeId = kg_nodes.id)")
+    suspend fun recomputeDegrees()
+
     @Query("SELECT * FROM kg_edges WHERE sourceNodeId = :nodeId OR targetNodeId = :nodeId")
     suspend fun getEdgesForNode(nodeId: String): List<KgEdgeEntity>
 
@@ -281,8 +287,14 @@ interface KgDao {
     @Query("DELETE FROM kg_nodes WHERE sourceFilePath = :filePath")
     suspend fun deleteNodeByFilePath(filePath: String)
 
+    @Query("DELETE FROM kg_nodes WHERE id IN (SELECT sourceNodeId FROM kg_edges WHERE targetNodeId IN (SELECT id FROM kg_nodes WHERE sourceFilePath = :filePath)) OR id IN (SELECT targetNodeId FROM kg_edges WHERE sourceNodeId IN (SELECT id FROM kg_nodes WHERE sourceFilePath = :filePath))")
+    suspend fun deleteOrphanedRelatedNodesForFile(filePath: String)
+
     @Query("DELETE FROM kg_edges WHERE sourceNodeId = :nodeId OR targetNodeId = :nodeId")
     suspend fun deleteEdgesForNode(nodeId: String)
+
+    @Query("SELECT COUNT(*) FROM kg_edges WHERE sourceNodeId = :nodeId OR targetNodeId = :nodeId")
+    suspend fun getDegree(nodeId: String): Int
 
     @Query("DELETE FROM kg_nodes")
     suspend fun clearAllNodes()
@@ -298,6 +310,9 @@ interface RagDao {
 
     @Query("SELECT * FROM rag_chunks WHERE filePath = :filePath ORDER BY chunkIndex ASC")
     suspend fun getChunksForFile(filePath: String): List<RagChunkEntity>
+
+    @Query("SELECT * FROM rag_chunks WHERE embeddingJson IS NOT NULL")
+    suspend fun getEmbeddedChunks(): List<RagChunkEntity>
 
     @Query("SELECT * FROM rag_chunks WHERE content LIKE '%' || :query || '%' OR tagsJson LIKE '%' || :query || '%' LIMIT :limit")
     suspend fun searchChunks(query: String, limit: Int = 20): List<RagChunkEntity>
