@@ -397,7 +397,7 @@ private fun AiSetupRequiredState(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Brain stays inactive until an AI provider is enabled and its API key is saved. Your files remain untouched.",
+                    text = "AI chat needs an enabled provider. Your persisted Brain graph remains available.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
