@@ -19,9 +19,13 @@ import androidx.room.RoomDatabase
         AiProviderConfigEntity::class,
         KgNodeEntity::class,
         KgEdgeEntity::class,
-        RagChunkEntity::class
+        RagChunkEntity::class,
+        MemoryFactEntity::class,
+        EntityMentionEntity::class,
+        IndexFingerprintEntity::class,
+        ModelRunEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -37,6 +41,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun aiProviderConfigDao(): AiProviderConfigDao
     abstract fun kgDao(): KgDao
     abstract fun ragDao(): RagDao
+
+    abstract fun memoryFactDao(): MemoryFactDao
+    abstract fun entityMentionDao(): EntityMentionDao
+    abstract fun indexFingerprintDao(): IndexFingerprintDao
+    abstract fun modelRunDao(): ModelRunDao
 
     companion object {
         @Volatile
