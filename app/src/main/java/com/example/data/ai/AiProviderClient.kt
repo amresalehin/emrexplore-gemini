@@ -11,7 +11,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.util.concurrent.TimeUnit
 
 class AiProviderClient {
@@ -35,17 +34,6 @@ class AiProviderClient {
     }
 
     private fun safeHttpError(provider: String, code: Int): RuntimeException = RuntimeException("$provider HTTP $code")
-
-    private fun validateEndpoint(raw: String, provider: ProviderType): okhttp3.HttpUrl {
-        val url = raw.toHttpUrlOrNull() ?: throw IllegalArgumentException("Invalid provider URL")
-        val host = url.host.lowercase()
-        val localOllama = provider == ProviderType.OLLAMA && host in setOf("localhost", "127.0.0.1", "10.0.2.2")
-        if (url.scheme != "https" && !localOllama) throw IllegalArgumentException("Provider endpoint must use HTTPS")
-        return url
-    }
-
-    private fun safeHttpError(provider: String, code: Int): RuntimeException =
-        RuntimeException("$provider HTTP $code")
 
     suspend fun testConnection(config: AiProviderConfigEntity): ConnectionTestResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
