@@ -153,6 +153,18 @@ data class AiProviderConfigEntity(
 )
 
 @Entity(
+    tableName = "brain_topics",
+    indices = [Index(value = ["updatedAt"])]
+)
+data class BrainTopicEntity(
+    @PrimaryKey val id: String,
+    val heading: String,
+    val description: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
     tableName = "kg_nodes",
     indices = [
         Index(value = ["label"]),
