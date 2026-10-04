@@ -704,7 +704,15 @@ class KnowledgeGraphRepository(private val context: Context) {
         val clean = question.trim()
         if (clean.isBlank()) return@withContext RagAnswer("Please enter a question.", isSuccessful = false)
         val config = getAiConfig()
-        val scored = brainEngine.search(clean, config, 8)
+        val scored = try {
+            brainEngine.search(clean, config, 8)
+        } catch (error: Exception) {
+            return@withContext RagAnswer(
+                "Semantic retrieval is unavailable: ${error.message ?: "embedding failed"}. No lexical fallback is used.",
+                isSuccessful = false,
+                latencyMs = System.currentTimeMillis() - started
+            )
+        }
         val matchedChunks = scored.map { it.chunk }
         val seedNodes = mutableListOf<KgNodeEntity>()
         tokenizeQuestion(clean).take(8).forEach { token -> seedNodes += kgDao.searchNodes(token).take(5) }
