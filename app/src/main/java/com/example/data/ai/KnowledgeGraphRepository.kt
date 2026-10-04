@@ -113,6 +113,8 @@ class KnowledgeGraphRepository(private val context: Context) {
     }
 
     suspend fun recomputeGraphDegrees() = withContext(Dispatchers.IO) {
+        // Expensive orphan cleanup happens once at the end of a sync, not once per file.
+        kgDao.deleteOrphanedNonFileNodes()
         kgDao.recomputeDegrees()
     }
 
@@ -204,10 +206,30 @@ class KnowledgeGraphRepository(private val context: Context) {
         if (!isImage && !isDoc) return@withContext
 
         val filePath = file.absolutePath
-        val hash = computeFileHash(file, uri)
         val modelVersion = brainIndexVersion + ":" + ProviderType.fromString(config.providerType).name + ":" + config.chatModel + ":" + config.visionModel + ":" + config.isEnabled
         val existing = fingerprintDao.get(filePath)
-        if (existing != null && existing.size == file.length() && existing.lastModified == file.lastModified() && existing.contentHash == hash && existing.modelVersion == modelVersion && existing.embeddingModel == config.embeddingModel) return@withContext
+
+        // For ordinary files, size + mtime let us skip a full SHA-256 read on every sync.
+        if (existing != null &&
+            canReadDirectly &&
+            existing.size == file.length() &&
+            existing.lastModified == file.lastModified() &&
+            existing.modelVersion == modelVersion &&
+            existing.embeddingModel == config.embeddingModel
+        ) {
+            return@withContext
+        }
+
+        val hash = computeFileHash(file, uri)
+        if (existing != null &&
+            existing.size == file.length() &&
+            existing.lastModified == file.lastModified() &&
+            existing.contentHash == hash &&
+            existing.modelVersion == modelVersion &&
+            existing.embeddingModel == config.embeddingModel
+        ) {
+            return@withContext
+        }
 
         val result = try {
             if (isDoc) indexDocumentInternal(file, uri, config) else indexImageInternal(file, uri, config)
@@ -221,13 +243,12 @@ class KnowledgeGraphRepository(private val context: Context) {
             return@withContext
         }
 
-        val persistedChunks = ragDao.getChunksForFile(filePath)
+        val chunkCount = ragDao.getChunkCountForFile(filePath)
         val indexed = kgDao.getNodeByFilePath(filePath) != null &&
-            (!result.hasSearchableContent || persistedChunks.isNotEmpty())
+            (!result.hasSearchableContent || chunkCount > 0)
         val embeddingsReady = !result.hasSearchableContent ||
             !requiresEmbeddings(config) ||
-            persistedChunks.all { !it.embeddingJson.isNullOrBlank() && it.embeddingModel == config.embeddingModel }
-
+            ragDao.getChunksMissingEmbeddings(filePath, config.embeddingModel) == 0
         if (indexed && embeddingsReady) {
             fingerprintDao.insert(IndexFingerprintEntity(filePath, file.length(), file.lastModified(), hash, modelVersion, config.embeddingModel))
         } else {
@@ -433,7 +454,7 @@ class KnowledgeGraphRepository(private val context: Context) {
 
         // 2. Call AI vision if enabled & key provided
         val base64Thumbnail = if (isAiReady(config)) {
-            getCompressedBase64(file, uri, maxDimension = 768)
+            getCompressedBase64(file, uri, maxDimension = 640)
         } else null
 
         val analysis = if (isAiReady(config)) {
@@ -807,12 +828,17 @@ class KnowledgeGraphRepository(private val context: Context) {
             openInput()?.use { BitmapFactory.decodeStream(it, null, boundsOptions) } ?: return null
             var sampleSize = 1
             while (boundsOptions.outWidth / sampleSize > maxDimension || boundsOptions.outHeight / sampleSize > maxDimension) sampleSize *= 2
-            val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.RGB_565
+            }
             val bitmap = openInput()?.use { BitmapFactory.decodeStream(it, null, decodeOptions) } ?: return null
             val stream = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 75, stream)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
             bitmap.recycle()
-            Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
+            val bytes = stream.toByteArray()
+            stream.close()
+            Base64.encodeToString(bytes, Base64.NO_WRAP)
         } catch (e: Exception) {
             Log.w("KGRepo", "Bitmap compress failed: ${e.message}")
             null
