@@ -128,7 +128,7 @@ class AiProviderClient {
         }
 
     private fun embedGemini(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> {
-        val baseUrl = config.baseUrl.trimEnd('/').ifBlank { "https://generativelanguage.googleapis.com" }
+        val baseUrl = validateEndpoint(config.baseUrl.trimEnd('/').ifBlank { "https://generativelanguage.googleapis.com" }, ProviderType.GEMINI).toString()
         val model = config.embeddingModel.trim().removePrefix("models/")
         val endpoint = if (baseUrl.endsWith("/v1beta") || baseUrl.endsWith("/v1")) baseUrl else "$baseUrl/v1beta"
         val url = "$endpoint/models/$model:batchEmbedContents"
