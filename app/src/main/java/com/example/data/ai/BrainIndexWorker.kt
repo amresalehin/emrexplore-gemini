@@ -26,7 +26,9 @@ class BrainIndexWorker(appContext: Context, params: WorkerParameters) : Coroutin
 
         val repository = KnowledgeGraphRepository(applicationContext)
         val candidates = repository.getBrainCandidates().filter {
-            it.extension.lowercase() in SUPPORTED_EXTENSIONS && !it.name.startsWith(".")
+            it.extension.lowercase() in SUPPORTED_EXTENSIONS &&
+                !it.name.startsWith(".") &&
+                !it.path.split(File.separatorChar).any { segment -> segment == ".trash" }
         }.map { File(it.path) }.filter { it.isFile && it.canRead() }
 
         if (candidates.isEmpty()) {
