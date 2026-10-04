@@ -1661,17 +1661,9 @@ class FileRepository(private val context: Context) {
         val isDir = src.isDirectory
 
         try {
-            val moved = src.renameTo(dest)
-            if (!moved) {
-                // Fallback copy & delete
-                if (src.isDirectory) {
-                    src.copyRecursively(dest, overwrite = true)
-                    src.deleteRecursively()
-                } else {
-                    src.copyTo(dest, overwrite = true)
-                    src.delete()
-                }
-            }
+            val moved = moveAcrossFilesystemsSafely(src, dest)
+            if (!moved) return@withContext false
+
             invalidateFolderCache(parent)
             invalidateFolderCache(targetDir)
             removeIndexedPath(sourcePath, isDir)
