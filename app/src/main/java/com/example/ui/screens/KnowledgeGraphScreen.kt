@@ -119,8 +119,8 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 enum class GraphScreenTab(val label: String) {
+    ASK_AI("Ask AI"),
     CANVAS("Network"),
-    ASK_AI("Search & Ask"),
     DOTS("Connections")
 }
 
