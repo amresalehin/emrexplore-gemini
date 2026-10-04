@@ -1432,7 +1432,7 @@ private fun AlbumsGrid(
     ) {
         items(
             items = albums,
-            key = { it.name },
+            key = { it.id },
             contentType = { "album" }
         ) { album ->
             AlbumCard(album = album, onClick = { onAlbumClick(album) })
