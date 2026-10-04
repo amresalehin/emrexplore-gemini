@@ -33,42 +33,67 @@ class AiProviderClient {
         return url
     }
 
-    private fun safeHttpError(provider: String, code: Int): RuntimeException = RuntimeException("$provider HTTP $code")
+    private class AiHttpException(
+        val provider: String,
+        val code: Int
+    ) : RuntimeException("$provider HTTP $code")
+
+    private fun safeHttpError(provider: String, code: Int): AiHttpException =
+        AiHttpException(provider, code)
 
     suspend fun testConnection(config: AiProviderConfigEntity): ConnectionTestResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         try {
-            val prompt = "Reply with 'OK' if you can read this."
-            val response = executePrompt(
-                prompt = prompt,
-                config = config,
-                isTest = true
-            )
+            val provider = ProviderType.fromString(config.providerType)
+            if (config.baseUrl.isBlank() && provider == ProviderType.CUSTOM) {
+                return@withContext ConnectionTestResult(false, "Enter a base URL first.", System.currentTimeMillis() - startTime)
+            }
+            if (provider != ProviderType.OLLAMA && config.apiKey.isBlank()) {
+                return@withContext ConnectionTestResult(false, "Enter an API key first.", System.currentTimeMillis() - startTime)
+            }
+            if (config.chatModel.isBlank()) {
+                return@withContext ConnectionTestResult(false, "Choose a chat model first. Tap Fetch models.", System.currentTimeMillis() - startTime)
+            }
+
+            if (provider != ProviderType.GEMINI && provider != ProviderType.OLLAMA) {
+                val listedModels = try {
+                    listOpenAiModels(config)
+                } catch (error: AiHttpException) {
+                    if (error.code == 404) null else throw error
+                }
+                if (listedModels != null && listedModels.isNotEmpty() && listedModels.none { it.id == config.chatModel.trim() }) {
+                    return@withContext ConnectionTestResult(
+                        false,
+                        "Endpoint is reachable, but ${config.chatModel.trim()} is not available. Tap Fetch models and choose an available model.",
+                        System.currentTimeMillis() - startTime
+                    )
+                }
+            }
+
+            val response = executePrompt(prompt = "Reply with OK only.", config = config, isTest = true)
             val duration = System.currentTimeMillis() - startTime
             if (response.isNotBlank()) {
-                ConnectionTestResult(
-                    success = true,
-                    message = "Connected successfully! Response: ${response.take(60)}",
-                    responseTimeMs = duration
-                )
+                ConnectionTestResult(true, "Connected · ${provider.displayName}", duration)
             } else {
-                ConnectionTestResult(
-                    success = false,
-                    message = "Received empty response from server",
-                    responseTimeMs = duration
-                )
+                ConnectionTestResult(false, "Server responded, but returned no text.", duration)
             }
-        } catch (e: Exception) {
+        } catch (error: AiHttpException) {
             val duration = System.currentTimeMillis() - startTime
-            Log.e("AiProviderClient", "Connection test failed: " + e.javaClass.simpleName)
-            ConnectionTestResult(
-                success = false,
-                message = e.localizedMessage?.take(120) ?: "Connection failed",
-                responseTimeMs = duration
-            )
+            Log.e("AiProviderClient", "Connection test failed: HTTP ${error.code}")
+            val provider = ProviderType.fromString(config.providerType)
+            val message = when {
+                error.code == 401 || error.code == 403 -> "The endpoint is reachable, but the API key was rejected (${error.code})."
+                error.code == 404 && config.baseUrl.contains("integrate.api.nvidia.com", ignoreCase = true) -> "NVIDIA returned 404 for this model or route. Fetch models and choose a current model. Deprecated models such as adept/fuyu-8b are no longer served here."
+                error.code == 404 -> "The endpoint is reachable, but the path or selected model was not found. Check Base URL and choose a model from Fetch."
+                else -> "${provider.displayName} returned HTTP ${error.code}."
+            }
+            ConnectionTestResult(false, message, duration)
+        } catch (error: Exception) {
+            val duration = System.currentTimeMillis() - startTime
+            Log.e("AiProviderClient", "Connection test failed: " + error.javaClass.simpleName)
+            ConnectionTestResult(false, error.localizedMessage?.take(160) ?: "Could not connect. Check the URL, key, and model.", duration)
         }
     }
-
     suspend fun analyzeDocument(
         text: String,
         fileName: String,
@@ -260,7 +285,10 @@ class AiProviderClient {
     }
 
     private fun listOpenAiModels(config: AiProviderConfigEntity): List<AvailableAiModel> {
-        val base = validateEndpoint(config.baseUrl.trimEnd('/').let { if (it.endsWith("/models")) it else "$it/models" }, ProviderType.fromString(config.providerType))
+        val raw = config.baseUrl.trimEnd('/').ifBlank { "https://api.openai.com/v1" }
+        val normalizedRaw = raw.removeSuffix("/chat/completions")
+        val modelsUrl = normalizedRaw.let { if (it.endsWith("/models")) it else "$it/models" }
+        val base = validateEndpoint(modelsUrl, ProviderType.fromString(config.providerType))
         val builder = Request.Builder().url(base).get()
         config.apiKey.trim().takeIf { it.isNotBlank() }?.let { builder.addHeader("Authorization", "Bearer $it") }
         applyCustomHeaders(builder, config)
@@ -282,7 +310,6 @@ class AiProviderClient {
             }.sortedBy { it.id }
         }
     }
-
     private fun applyCustomHeaders(builder: Request.Builder, config: AiProviderConfigEntity) {
         try {
             val headers = JSONObject(config.customHeadersJson.ifBlank { "{}" })
