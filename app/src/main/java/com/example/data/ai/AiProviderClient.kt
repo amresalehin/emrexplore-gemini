@@ -238,7 +238,7 @@ class AiProviderClient {
     }
 
     private fun listOllamaModels(config: AiProviderConfigEntity): List<AvailableAiModel> {
-        val base = config.baseUrl.trimEnd('/').removeSuffix("/v1")
+        val base = validateEndpoint(config.baseUrl.trimEnd('/').removeSuffix("/v1"), ProviderType.OLLAMA).toString().trimEnd('/')
         val request = Request.Builder().url("$base/api/tags").get().build()
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw RuntimeException("Ollama models HTTP ${response.code}: ${response.body?.string().orEmpty()}")
