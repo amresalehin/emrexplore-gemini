@@ -132,26 +132,74 @@ class AiProviderClient {
     }
 
 
-    suspend fun embedTexts(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> =
-        withContext(Dispatchers.IO) {
-            if (texts.isEmpty() || config.embeddingModel.isBlank()) return@withContext emptyList()
+    suspend fun embedTextPassages(
+        texts: List<String>,
+        config: AiProviderConfigEntity
+    ): List<FloatArray> = embedText(texts, config, config.textEmbeddingModel.ifBlank { config.embeddingModel }, "passage")
 
-            // Bound request size so long documents do not create a large JSON body or
-            // a large simultaneous provider response on memory-constrained devices.
-            val batches = texts.chunked(16)
-            try {
-                batches.flatMap { batch ->
-                    when (ProviderType.fromString(config.providerType)) {
-                        ProviderType.GEMINI -> embedGemini(batch, config)
-                        ProviderType.OLLAMA -> embedOllama(batch, config)
-                        else -> embedOpenAi(batch, config)
-                    }
-                }
-            } catch (error: Exception) {
-                Log.w("AiProviderClient", "Embedding request failed: " + error.javaClass.simpleName)
-                throw error
+    suspend fun embedTextQuery(
+        text: String,
+        config: AiProviderConfigEntity
+    ): FloatArray? = embedText(listOf(text), config, config.textEmbeddingModel.ifBlank { config.embeddingModel }, "query").firstOrNull()
+
+    suspend fun embedMultimodalQuery(
+        text: String,
+        config: AiProviderConfigEntity
+    ): FloatArray? = embedText(listOf(text), config, config.multimodalEmbeddingModel, "query").firstOrNull()
+
+    suspend fun embedMultimodalDocument(
+        base64Jpeg: String?,
+        text: String,
+        config: AiProviderConfigEntity
+    ): FloatArray? = withContext(Dispatchers.IO) {
+        val model = config.multimodalEmbeddingModel.trim()
+        if (model.isBlank() || base64Jpeg.isNullOrBlank()) return@withContext null
+        when (ProviderType.fromString(config.providerType)) {
+            ProviderType.GEMINI, ProviderType.OLLAMA ->
+                embedText(
+                    listOf(text),
+                    config,
+                    config.textEmbeddingModel.ifBlank { config.embeddingModel },
+                    "passage"
+                ).firstOrNull()
+            else ->
+                embedOpenAi(
+                    inputs = listOf("$text data:image/jpeg;base64,$base64Jpeg"),
+                    config = config,
+                    model = model,
+                    inputType = "passage",
+                    modality = "text_image"
+                ).firstOrNull()
+        }
+    }
+
+    private suspend fun embedText(
+        texts: List<String>,
+        config: AiProviderConfigEntity,
+        model: String,
+        inputType: String
+    ): List<FloatArray> = withContext(Dispatchers.IO) {
+        if (texts.isEmpty() || model.isBlank()) return@withContext emptyList()
+        val effectiveConfig = config.copy(embeddingModel = model)
+        texts.chunked(16).flatMap { batch ->
+            when (ProviderType.fromString(config.providerType)) {
+                ProviderType.GEMINI -> embedGemini(batch, effectiveConfig)
+                ProviderType.OLLAMA -> embedOllama(batch, effectiveConfig)
+                else -> embedOpenAi(
+                    inputs = batch,
+                    config = effectiveConfig,
+                    model = model,
+                    inputType = inputType,
+                    modality = "text"
+                )
             }
         }
+    }
+
+    private fun requiresNvidiaEmbeddingParams(model: String): Boolean {
+        val id = model.lowercase()
+        return id.startsWith("nvidia/") && id.contains("embed")
+    }
 
     private fun embedGemini(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> {
         val baseUrl = validateEndpoint(config.baseUrl.trimEnd('/').ifBlank { "https://generativelanguage.googleapis.com" }, ProviderType.GEMINI).toString()
@@ -204,20 +252,32 @@ class AiProviderClient {
         }
     }
 
-    private fun embedOpenAi(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> {
+    private fun embedOpenAi(
+        inputs: List<String>,
+        config: AiProviderConfigEntity,
+        model: String,
+        inputType: String? = null,
+        modality: String? = null
+    ): List<FloatArray> {
         val rawBase = config.baseUrl.trimEnd('/').ifBlank { "https://api.openai.com/v1" }
         val validatedBase = validateEndpoint(rawBase, ProviderType.fromString(config.providerType)).toString()
-        val url = if (validatedBase.endsWith("/embeddings")) validatedBase else "$validatedBase/embeddings"
+        val url = if (validatedBase.endsWith("/embeddings")) validatedBase else "\$validatedBase/embeddings"
         val root = JSONObject()
-            .put("model", config.embeddingModel)
-            .put("input", JSONArray().apply { texts.forEach { put(it.take(32000)) } })
+            .put("model", model)
+            .put("input", JSONArray().apply { inputs.forEach { put(it.take(120000)) } })
+            .put("encoding_format", "float")
+        if (inputType != null && requiresNvidiaEmbeddingParams(model)) root.put("input_type", inputType)
+        if (modality != null && requiresNvidiaEmbeddingParams(model)) root.put("modality", modality)
         val builder = Request.Builder().url(url).post(root.toString().toRequestBody(jsonMediaType))
         config.apiKey.trim().takeIf { it.isNotBlank() }?.let { builder.addHeader("Authorization", "Bearer $it") }
         applyCustomHeaders(builder, config)
         okHttpClient.newCall(builder.build()).execute().use { response ->
             if (!response.isSuccessful) throw safeHttpError("Embedding", response.code)
-            val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data") ?: throw RuntimeException("Embedding response missing data")
-            if (data.length() != texts.size) throw RuntimeException("Embedding response count ${data.length()} != request count ${texts.size}")
+            val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data")
+                ?: throw RuntimeException("Embedding response missing data")
+            if (data.length() != inputs.size) {
+                throw RuntimeException("Embedding response count ${data.length()} != request count ${inputs.size}")
+            }
             return (0 until data.length()).map { i ->
                 val item = data.optJSONObject(i) ?: throw RuntimeException("Embedding item $i is malformed")
                 val index = item.optInt("index", i)
@@ -227,7 +287,6 @@ class AiProviderClient {
             }.sortedBy { it.first }.map { it.second }
         }
     }
-
     suspend fun listModels(config: AiProviderConfigEntity): List<AvailableAiModel> = withContext(Dispatchers.IO) {
         try {
             when (ProviderType.fromString(config.providerType)) {
