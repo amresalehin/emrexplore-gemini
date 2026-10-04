@@ -1228,7 +1228,6 @@ fun HomeScreen(
                 }
             }
         }        }
-    }
 
     if (showEmptyConfirmDialog) {
         AlertDialog(
