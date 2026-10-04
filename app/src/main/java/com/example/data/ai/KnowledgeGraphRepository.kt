@@ -552,10 +552,16 @@ class KnowledgeGraphRepository(private val context: Context) {
             getCompressedBase64(file, uri, maxDimension = 640)
         } else null
 
-        val analysis = if (isAiReady(config)) {
-            client.analyzeImage(base64Thumbnail, metadataSummary, file.name, config)
-        } else {
-            createLocalImageAnalysis(file.name, metadataSummary, metadataReport)
+        val storedAi = mediaMetadataDao.getByPath(filePath)?.takeIf {
+            it.aiProcessedAt > 0L &&
+                it.aiModel == config.visionModel &&
+                it.size == file.length() &&
+                it.aiFileLastModified == file.lastModified()
+        }
+        val analysis = when {
+            storedAi != null -> analysisFromStoredAi(storedAi)
+            isAiReady(config) -> client.analyzeImage(base64Thumbnail, metadataSummary, file.name, config)
+            else -> createLocalImageAnalysis(file.name, metadataSummary, metadataReport)
         }
 
         // 3. Store RAG chunk for visual caption and OCR
@@ -719,6 +725,35 @@ class KnowledgeGraphRepository(private val context: Context) {
     private fun normalize(value: String): String = value.trim().lowercase().replace(Regex("\\s+"), " ")
 
     private fun embeddingToJson(vector: FloatArray): String = JSONArray().apply { vector.forEach { put(it.toDouble()) } }.toString()
+    private fun analysisFromStoredAi(metadata: com.example.data.local.MediaMetadataEntity): AnalysisResult {
+        val entities = try {
+            val array = JSONArray(metadata.aiEntitiesJson)
+            (0 until array.length()).mapNotNull { index ->
+                val obj = array.optJSONObject(index) ?: return@mapNotNull null
+                val name = obj.optString("name").trim()
+                if (name.isBlank()) return@mapNotNull null
+                ExtractedEntity(
+                    name = name,
+                    type = obj.optString("type").ifBlank { "TOPIC" },
+                    confidence = obj.optDouble("confidence", 0.5).toFloat().coerceIn(0f, 1f)
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val tags = try {
+            val array = JSONArray(metadata.aiTagsJson)
+            (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) }
+        } catch (_: Exception) {
+            emptyList()
+        }
+        return AnalysisResult(
+            summary = metadata.aiCaption.orEmpty(),
+            entities = entities,
+            tags = tags
+        )
+    }
+
 
     private fun computeFileHash(file: File, uri: android.net.Uri?): String {
         return try {
