@@ -418,16 +418,36 @@ class FileRepository(private val context: Context) {
 
 
     suspend fun getCachedFiles(dirPath: String, showHidden: Boolean): List<FileItem>? = withContext(Dispatchers.IO) {
+        val dir = File(dirPath)
+        if (!dir.exists() || !dir.isDirectory) {
+            folderCache.remove(dirPath)
+            return@withContext null
+        }
+
         val inMemory = folderCache[dirPath]
         if (inMemory != null) {
-            val valid = inMemory.filter { item ->
-                val file = File(item.path)
-                file.exists() && (!item.isDirectory || file.isDirectory)
+            // The filesystem is the source of truth. A cache can become stale when
+            // files are created, deleted, renamed, or moved outside the app.
+            // Reconcile the cached path set with the directory before serving it.
+            val actualPaths = dir.listFiles()
+                ?.asSequence()
+                ?.filter { showHidden || !it.name.startsWith(".") }
+                ?.map { it.absolutePath }
+                ?.toSet()
+            val cachedPaths = inMemory.map { it.path }.toSet()
+
+            if (actualPaths == null || actualPaths != cachedPaths) {
+                folderCache.remove(dirPath)
+            } else {
+                val valid = inMemory.filter { item ->
+                    val file = File(item.path)
+                    file.exists() && (!item.isDirectory || file.isDirectory)
+                }
+                if (valid.size != inMemory.size) {
+                    folderCache[dirPath] = valid
+                }
+                return@withContext if (showHidden) valid else valid.filter { !it.name.startsWith(".") }
             }
-            if (valid.size != inMemory.size) {
-                folderCache[dirPath] = valid
-            }
-            return@withContext if (showHidden) valid else valid.filter { !it.name.startsWith(".") }
         }
 
         try {
@@ -478,9 +498,20 @@ class FileRepository(private val context: Context) {
                 return@withContext PagedDirectoryResult(emptyList(), 0, page, pageSize, false)
             }
 
-            // 1. Check in-memory cache first if already populated
+            // 1. Check in-memory cache only when it still exactly matches the
+            // live directory. Never let stale cached folders/files leak into the UI.
             val cached = folderCache[dirPath]
-            if (cached != null) {
+            val cacheMatchesDisk = if (cached != null) {
+                val actualPaths = dir.listFiles()
+                    ?.asSequence()
+                    ?.filter { showHidden || !it.name.startsWith(".") }
+                    ?.map { it.absolutePath }
+                    ?.toSet()
+                actualPaths != null && actualPaths == cached.map { it.path }.toSet()
+            } else {
+                false
+            }
+            if (cached != null && cacheMatchesDisk) {
                 PerformanceMonitor.recordFolderCacheHit()
                 val filtered = if (showHidden) cached else cached.filter { !it.name.startsWith(".") }
                 val refreshed = filtered.map { item ->
@@ -509,7 +540,8 @@ class FileRepository(private val context: Context) {
                 )
             }
 
-            // 2. Check Room DB if fully indexed
+            // 2. Check Room DB only when it exactly matches the live directory.
+            // Room is an index/cache, never the source of truth for explorer contents.
             try {
                 val roomCount = fileIndexDao.getCountByParent(dirPath)
                 val actualChildPaths = dir.list()
