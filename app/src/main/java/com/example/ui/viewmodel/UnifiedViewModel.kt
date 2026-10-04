@@ -586,6 +586,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
+    }
 
     fun setTab(tab: MainTab) {
         _uiState.update { it.copy(currentTab = tab) }
