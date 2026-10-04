@@ -652,7 +652,8 @@ fun AiSettingsScreen(
                         ProviderType.OPENAI_COMPATIBLE -> listOf("gpt-4o-mini", "gpt-4o")
                         ProviderType.OLLAMA -> listOf("llama3.2:latest", "mistral:latest", "qwen2.5:latest")
                         ProviderType.OPENROUTER -> listOf("meta-llama/llama-3.2-11b-vision-instruct", "anthropic/claude-3.5-sonnet")
-                        ProviderType.GROQ -> listOf("llama-3.2-11b-vision-preview", "llama-3.3-70b-versatile")
+                        ProviderType.CUSTOM -> emptyList()
+                        ProviderType.GROQ -> listOf("qwen/qwen3.8-27b")
                     }
 
                     LazyRow(
