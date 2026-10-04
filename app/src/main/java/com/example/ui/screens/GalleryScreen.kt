@@ -598,7 +598,7 @@ fun GalleryScreen(
             }
         }
 
-        if (uiState.isGalleryAiProcessing) {
+        if (uiState.isGalleryAiProcessing || uiState.isGalleryAiPaused) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -608,13 +608,30 @@ fun GalleryScreen(
                     progress = { uiState.galleryAiProgress },
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text(
-                    uiState.galleryAiStatus,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        uiState.galleryAiStatus,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(
+                        onClick = {
+                            if (uiState.isGalleryAiPaused) {
+                                viewModel.resumeGalleryAi()
+                            } else {
+                                viewModel.pauseGalleryAi()
+                            }
+                        }
+                    ) {
+                        Text(if (uiState.isGalleryAiPaused) "Resume" else "Pause")
+                    }
+                }
             }
         }
 
