@@ -497,51 +497,50 @@ class BrainRepository(private val context: Context) {
         val config = getAiConfig()
         val retrieval = retriever.retrieve(clean, config, 8)
         if (!retrieval.hasMatch) {
-            if (isAiReady(config)) {
-                return@withContext try {
-                    val answer = client.chatGeneral(clean, null, chatHistory, config)
-                    RagAnswer(
-                        answer = answer,
-                        isSuccessful = true,
-                        latencyMs = System.currentTimeMillis() - started
-                    )
-                } catch (error: Exception) {
-                    RagAnswer(
-                        answer = "No indexed Brain source matched this question, and the AI provider was unavailable.",
-                        isSuccessful = false,
-                        latencyMs = System.currentTimeMillis() - started
-                    )
-                }
-            }
             return@withContext RagAnswer(
-                answer = "No indexed Brain sources matched \"" + clean + "\". Sync Brain first or configure an AI provider.",
+                answer = "No indexed Brain sources matched \"" + clean + "\". Sync Brain first or attach a specific file.",
                 isSuccessful = false,
                 latencyMs = System.currentTimeMillis() - started
             )
         }
 
         val (context, evidence) = retriever.buildContext(retrieval, config)
-        val answer = if (isAiReady(config)) {
+        if (context.isBlank()) {
+            return@withContext RagAnswer(
+                answer = "The Brain index matched sources, but their files are no longer readable. Sync Brain to refresh the index.",
+                sourceChunks = retrieval.hits.map { it.chunk },
+                connectedNodes = retrieval.relatedNodes,
+                isSuccessful = false,
+                latencyMs = System.currentTimeMillis() - started
+            )
+        }
+
+        val answer: String
+        val successful: Boolean
+        if (isAiReady(config)) {
             try {
-                client.generateRagAnswer(
+                answer = client.generateRagAnswer(
                     question = clean,
                     contextText = context,
                     graphContext = evidence,
                     chatHistory = chatHistory,
                     config = config
-                ) to true
-            } catch (error: Exception) {
-                localRagAnswer(retrieval) to false
+                )
+                successful = true
+            } catch (_: Exception) {
+                answer = localRagAnswer(retrieval)
+                successful = false
             }
         } else {
-            localRagAnswer(retrieval) to true
+            answer = localRagAnswer(retrieval)
+            successful = true
         }
 
         RagAnswer(
-            answer = answer.first,
+            answer = answer,
             sourceChunks = retrieval.hits.map { it.chunk },
             connectedNodes = retrieval.relatedNodes,
-            isSuccessful = answer.second,
+            isSuccessful = successful,
             latencyMs = System.currentTimeMillis() - started
         )
     }
