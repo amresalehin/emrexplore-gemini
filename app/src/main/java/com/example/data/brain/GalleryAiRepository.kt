@@ -3,12 +3,15 @@ package com.example.data.brain
 import com.example.data.ai.AiProviderClient
 import com.example.data.ai.AnalysisResult
 import com.example.data.ai.isKeylessAiConfig
+import com.example.data.ai.ProviderType
 import com.example.data.local.AiProviderConfigEntity
 import com.example.data.media.MediaMetadataRepository
 import com.example.data.model.MediaItem
 import com.example.data.metadata.MetadataWriter
 import java.io.File
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -17,6 +20,17 @@ class GalleryAiRepository(private val context: android.content.Context) {
     private val client = AiProviderClient()
     private val contentReader = BrainContentReader(appContext)
     private val mediaMetadataRepository = MediaMetadataRepository(appContext)
+
+    private fun normalizeAiConfig(config: AiProviderConfigEntity): AiProviderConfigEntity {
+        val provider = ProviderType.fromString(config.providerType)
+        val explicitTextEmbedding = config.textEmbeddingModel.trim()
+        val legacyEmbedding = config.embeddingModel.trim()
+        return config.copy(
+            providerType = provider.name,
+            textEmbeddingModel = explicitTextEmbedding.ifBlank { legacyEmbedding },
+            embeddingModel = legacyEmbedding
+        )
+    }
 
     suspend fun enrichGalleryImage(
         file: File,
