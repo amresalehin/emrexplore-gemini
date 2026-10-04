@@ -410,6 +410,12 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             testResult = uiState.aiTestResult,
             onSaveConfig = { viewModel.saveAiConfig(it) },
             onTestConnection = { viewModel.testAiConnection(it) },
+            availableModels = uiState.aiModels,
+            availableVisionModels = uiState.aiVisionModels,
+            availableEmbeddingModels = uiState.aiEmbeddingModels,
+            isFetchingModels = uiState.isFetchingAiModels,
+            modelFetchError = uiState.aiModelFetchError,
+            onFetchModels = { viewModel.fetchAiModels(it) },
             onReindexAll = { viewModel.indexAllFilesForKnowledgeGraph() },
             onClearGraph = { viewModel.clearKnowledgeGraph() },
             onNavigateBack = { viewModel.setShowAiSettings(false) }
