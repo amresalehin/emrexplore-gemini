@@ -265,7 +265,7 @@ class AiProviderClient {
         config.apiKey.trim().takeIf { it.isNotBlank() }?.let { builder.addHeader("Authorization", "Bearer $it") }
         applyCustomHeaders(builder, config)
         okHttpClient.newCall(builder.build()).execute().use { response ->
-            if (!response.isSuccessful) throw RuntimeException("Models HTTP ${response.code}: ${response.body?.string().orEmpty()}")
+            if (!response.isSuccessful) throw safeHttpError("Models", response.code)
             val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data") ?: return emptyList()
             return (0 until data.length()).mapNotNull { i ->
                 val item = data.optJSONObject(i) ?: return@mapNotNull null
