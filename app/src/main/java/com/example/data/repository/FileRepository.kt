@@ -281,7 +281,7 @@ class FileRepository(private val context: Context) {
             var indexedTotal = 0
 
             for (target in targets) {
-                scanDirForIndexing(target, batch, maxDepth = Int.MAX_VALUE, currentDepth = 0) { count ->
+                scanDirForIndexing(target, batch, maxDepth = Int.MAX_VALUE, currentDepth = 0, onBatchFlushed = { count ->
                     indexedTotal += count
                     indexStatusDao.updateStatus(
                         IndexStatusEntity(
@@ -292,7 +292,7 @@ class FileRepository(private val context: Context) {
                             statusMessage = "Indexing files ($indexedTotal)..."
                         )
                     )
-                }
+                })
             }
 
             if (batch.isNotEmpty()) {
@@ -1522,7 +1522,7 @@ class FileRepository(private val context: Context) {
             indexFileOrDir(newFile)
             if (isDir) {
                 val batch = mutableListOf<IndexedFileEntity>()
-                scanDirForIndexing(newFile, batch, Int.MAX_VALUE, 0, onBatchFlushed = {}
+                scanDirForIndexing(newFile, batch, Int.MAX_VALUE, 0, onBatchFlushed = {})
                 if (batch.isNotEmpty()) {
                     fileIndexDao.insertAll(batch)
                 }
@@ -1638,7 +1638,7 @@ class FileRepository(private val context: Context) {
             indexFileOrDir(dest)
             if (dest.isDirectory) {
                 val batch = mutableListOf<IndexedFileEntity>()
-                scanDirForIndexing(dest, batch, Int.MAX_VALUE, 0, onBatchFlushed = {}
+                scanDirForIndexing(dest, batch, Int.MAX_VALUE, 0, onBatchFlushed = {})
                 if (batch.isNotEmpty()) fileIndexDao.insertAll(batch)
             }
             true
@@ -1673,7 +1673,7 @@ class FileRepository(private val context: Context) {
             indexFileOrDir(dest)
             if (dest.isDirectory) {
                 val batch = mutableListOf<IndexedFileEntity>()
-                scanDirForIndexing(dest, batch, Int.MAX_VALUE, 0, onBatchFlushed = {}
+                scanDirForIndexing(dest, batch, Int.MAX_VALUE, 0, onBatchFlushed = {})
                 if (batch.isNotEmpty()) fileIndexDao.insertAll(batch)
             }
             true
@@ -1766,7 +1766,7 @@ class FileRepository(private val context: Context) {
                 }
             }
             val batch = mutableListOf<IndexedFileEntity>()
-            scanDirForIndexing(target, batch, Int.MAX_VALUE, 0, onBatchFlushed = {}
+            scanDirForIndexing(target, batch, Int.MAX_VALUE, 0, onBatchFlushed = {})
             if (batch.isNotEmpty()) fileIndexDao.insertAll(batch)
             invalidateFolderCache(destDir)
             true
