@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,6 +48,11 @@ class FileOperationManager(
     private var lastSourcePaths: List<String> = emptyList()
     private var lastTargetDir: String = ""
     private var lastToTrash: Boolean = true
+
+    fun shutdown() {
+        currentJob?.cancel()
+        scope.cancel()
+    }
 
     fun startCopy(sourcePaths: List<String>, targetDir: String) {
         startOperation(OperationType.COPY, sourcePaths, targetDir, toTrash = false)
