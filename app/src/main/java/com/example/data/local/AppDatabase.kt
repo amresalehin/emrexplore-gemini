@@ -74,8 +74,8 @@ abstract class AppDatabase : RoomDatabase() {
 
         private val MIGRATION_9_10 = object : Migration(9, 10) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE ai_provider_config ADD COLUMN textEmbeddingModel TEXT NOT NULL DEFAULT 'nvidia/nv-embedqa-e5-v5'")
-                db.execSQL("ALTER TABLE ai_provider_config ADD COLUMN multimodalEmbeddingModel TEXT NOT NULL DEFAULT 'nvidia/llama-nemotron-embed-vl-1b-v2'")
+                db.execSQL("ALTER TABLE ai_provider_config ADD COLUMN textEmbeddingModel TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE ai_provider_config ADD COLUMN multimodalEmbeddingModel TEXT NOT NULL DEFAULT ''")
             }
         }
 
