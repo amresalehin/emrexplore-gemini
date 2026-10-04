@@ -13,6 +13,9 @@ import com.example.data.local.KgNodeEntity
 import com.example.data.local.IndexFingerprintEntity
 import com.example.data.local.RagChunkEntity
 import com.example.data.metadata.MetadataExtractor
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import org.apache.pdfbox.pdmodel.PDDocument
+import org.apache.pdfbox.text.PDFTextStripper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
@@ -182,12 +185,36 @@ class KnowledgeGraphRepository(private val context: Context) {
         else fingerprintDao.delete(filePath)
     }
 
+    private fun extractPdfText(file: File, uri: android.net.Uri?): String {
+        return try {
+            PDFBoxResourceLoader.init(context.applicationContext)
+            val document = if (file.exists() && file.canRead()) {
+                PDDocument.load(file)
+            } else {
+                val input = uri?.let { context.contentResolver.openInputStream(it) } ?: return ""
+                input.use { PDDocument.load(it) }
+            }
+            document.use { pdf ->
+                if (pdf.isEncrypted) return ""
+                val stripper = PDFTextStripper().apply {
+                    startPage = 1
+                    endPage = minOf(numberOfPages, 120)
+                }
+                stripper.getText(pdf).take(50000)
+            }
+        } catch (e: Exception) {
+            Log.w("KGRepo", "Could not extract PDF text: ${e.message}")
+            ""
+        }
+    }
+
+
     private suspend fun indexDocumentInternal(file: File, uri: android.net.Uri?, config: AiProviderConfigEntity) {
         val filePath = file.absolutePath
         val contentText = try {
-            if (file.exists() && file.canRead()) {
-                file.bufferedReader().use { it.readText().take(50000) }
-            } else if (uri != null) {
+            if (file.extension.equals("pdf", ignoreCase = true)) {
+                extractPdfText(file, uri)
+            } else if (file.exists() && file.canRead()) {
                 context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText().take(50000) }.orEmpty()
             } else ""
         } catch (e: Exception) {
