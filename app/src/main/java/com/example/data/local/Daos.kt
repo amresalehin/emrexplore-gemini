@@ -87,6 +87,11 @@ data class CategoryStatTuple(
     val totalSize: Long?
 )
 
+data class RagEmbeddingRow(
+    val chunkId: String,
+    val embeddingJson: String?
+)
+
 @Dao
 interface FileIndexDao {
     @Query("SELECT * FROM indexed_files ORDER BY lastModified DESC LIMIT 100")
