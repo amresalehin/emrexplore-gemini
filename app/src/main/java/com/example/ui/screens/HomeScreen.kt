@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -1081,50 +1082,57 @@ fun HomeScreen(
                 }
             }
         } else {
-            // Modern Home Dashboard: Storage Hero + Quick Actions + Recent Items + Quick Tiles
+            // Minimal dashboard: real storage summary, four useful shortcuts, recent files,
+            // and a compact two-column category grid.
             LazyColumn(
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                // 1. Storage Status Hero Card
-                item(key = "home_storage_card") {
-                    StorageOverviewCard(
+                item(key = "home_storage_summary") {
+                    StorageSummary(
                         storageStats = uiState.storageStats,
-                        onManageClick = {
+                        onBrowse = {
                             viewModel.setTab(MainTab.FILES)
                             viewModel.jumpToFolder(viewModel.rootPath)
                         }
                     )
                 }
 
-                // 2. Quick Action Shortcuts Row
-                item(key = "home_quick_actions") {
-                    HomeQuickActionChips(
+                item(key = "home_shortcuts") {
+                    HomeShortcutRow(
                         onOpenStorage = {
                             viewModel.setTab(MainTab.FILES)
                             viewModel.jumpToFolder(viewModel.rootPath)
                         },
                         onOpenDcim = {
-                            viewModel.setTab(MainTab.FILES)
-                            viewModel.jumpToFolder(File(viewModel.rootPath, "DCIM").absolutePath)
+                            val dcim = File(viewModel.rootPath, "DCIM")
+                            if (dcim.isDirectory) {
+                                viewModel.setTab(MainTab.FILES)
+                                viewModel.jumpToFolder(dcim.absolutePath)
+                            }
                         },
                         onOpenDownloads = {
-                            viewModel.selectCategory(CategoryType.DOWNLOADS)
+                            val downloads = listOf(
+                                File(viewModel.rootPath, "Download"),
+                                File(viewModel.rootPath, "Downloads")
+                            ).firstOrNull { it.isDirectory }
+                            if (downloads != null) {
+                                viewModel.setTab(MainTab.FILES)
+                                viewModel.jumpToFolder(downloads.absolutePath)
+                            }
                         },
-                        onOpenRecycleBin = {
-                            viewModel.openRecycleBin()
-                        },
+                        onOpenRecycleBin = { viewModel.openRecycleBin() },
                         trashCount = uiState.trashList.size
                     )
                 }
 
-                // 3. Recent Items
                 if (uiState.recentsList.isNotEmpty()) {
                     item(key = "home_recent_items") {
-                        val recentFileItems = remember(uiState.recentsList, recentsSortOption) {
-                            val mapped = uiState.recentsList.map { recent ->
-                                FileItem(
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            HomeSectionTitle(title = "Recent")
+                            uiState.recentsList.take(4).forEach { recent ->
+                                val item = FileItem(
                                     name = recent.name,
                                     path = recent.path,
                                     size = recent.size,
@@ -1132,142 +1140,43 @@ fun HomeScreen(
                                     isDirectory = false,
                                     mimeType = recent.mimeType
                                 )
-                            }
-                            sortFiles(mapped, recentsSortOption)
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.History,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(
-                                    text = "Recent Items",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                SortMenuButton(
-                                    currentSort = recentsSortOption,
-                                    onSortSelected = { recentsSortOption = it }
-                                )
-                                GroupByMenuButton(
-                                    currentGroupBy = recentsGroupBy,
-                                    onGroupBySelected = { recentsGroupBy = it }
-                                )
-                                ViewModeToggleButton(
-                                    currentViewMode = recentsViewMode,
-                                    onViewModeChanged = { recentsViewMode = it }
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        if (recentsViewMode == ViewMode.GRID) {
-                            val groupedRecents = remember(recentFileItems, recentsGroupBy) {
-                                groupFiles(recentFileItems, recentsGroupBy)
-                            }
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                groupedRecents.forEach { (header, itemsInGroup) ->
-                                    if (header.isNotBlank()) {
-                                        Text(
-                                            text = "$header (${itemsInGroup.size})",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surface,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(
+                                            1.dp,
+                                            MaterialTheme.colorScheme.outlineVariant,
+                                            RoundedCornerShape(12.dp)
                                         )
-                                    }
-                                    itemsInGroup.chunked(2).forEach { rowItems ->
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            rowItems.forEach { recentItem ->
-                                                Box(modifier = Modifier.weight(1f)) {
-                                                    CategoryFileGridCard(
-                                                        item = recentItem,
-                                                        onClick = { viewModel.openFile(recentItem) }
-                                                    )
-                                                }
-                                            }
-                                            if (rowItems.size == 1) {
-                                                Spacer(modifier = Modifier.weight(1f))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        } else if (recentsViewMode == ViewMode.DETAILED_LIST) {
-                            val groupedRecents = remember(recentFileItems, recentsGroupBy) {
-                                groupFiles(recentFileItems, recentsGroupBy)
-                            }
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                groupedRecents.forEach { (header, itemsInGroup) ->
-                                    if (header.isNotBlank()) {
-                                        Text(
-                                            text = "$header (${itemsInGroup.size})",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    itemsInGroup.forEach { recentItem ->
-                                        CategoryFileCard(
-                                            item = recentItem,
-                                            onClick = { viewModel.openFile(recentItem) }
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            // Compact horizontal row
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("home_recent_items")
-                            ) {
-                                items(
-                                    items = recentFileItems,
-                                    key = { it.path }
-                                ) { recent ->
-                                    Card(
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                        ),
-                                        modifier = Modifier
-                                            .width(180.dp)
-                                            .clickable { viewModel.openFile(recent) }
+                                        .clickable { viewModel.openFile(item) }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
+                                        FileTypeIconBadge(item = item, modifier = Modifier.size(34.dp))
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = recent.name,
-                                                style = MaterialTheme.typography.bodyMedium.copy(
-                                                    fontWeight = FontWeight.SemiBold
-                                                ),
+                                                text = item.name,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            Spacer(modifier = Modifier.height(4.dp))
                                             Text(
-                                                text = formatDate(recent.lastModified),
+                                                text = formatDate(item.lastModified),
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
+                                        Icon(
+                                            imageVector = Icons.Default.ChevronRight,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
                                 }
                             }
@@ -1275,311 +1184,43 @@ fun HomeScreen(
                     }
                 }
 
-                // 4. Categories Quick Tiles
-                item(key = "home_quick_tiles") {
-                    val recycleBinColor = MaterialTheme.colorScheme.error
-                    val quickTiles = remember(uiState.categoryCounts, uiState.categorySizes, uiState.trashList.size, recycleBinColor) {
-                        val trashBytes = uiState.trashList.sumOf { it.size }
-                        listOf(
-                            QuickTileEntry(
-                                title = CategoryType.IMAGES.displayName,
-                                count = uiState.categoryCounts[CategoryType.IMAGES] ?: 0,
-                                sizeBytes = uiState.categorySizes[CategoryType.IMAGES] ?: 0L,
-                                icon = Icons.Default.Image,
-                                tint = ColorImages,
-                                description = "Photos, screenshots & illustrations",
-                                onClick = { viewModel.selectCategory(CategoryType.IMAGES) }
-                            ),
-                            QuickTileEntry(
-                                title = CategoryType.VIDEOS.displayName,
-                                count = uiState.categoryCounts[CategoryType.VIDEOS] ?: 0,
-                                sizeBytes = uiState.categorySizes[CategoryType.VIDEOS] ?: 0L,
-                                icon = Icons.Default.Movie,
-                                tint = ColorVideos,
-                                description = "Movies, camera recordings & clips",
-                                onClick = { viewModel.selectCategory(CategoryType.VIDEOS) }
-                            ),
-                            QuickTileEntry(
-                                title = CategoryType.AUDIO.displayName,
-                                count = uiState.categoryCounts[CategoryType.AUDIO] ?: 0,
-                                sizeBytes = uiState.categorySizes[CategoryType.AUDIO] ?: 0L,
-                                icon = Icons.Default.AudioFile,
-                                tint = ColorAudio,
-                                description = "Music, voice recordings & podcasts",
-                                onClick = { viewModel.selectCategory(CategoryType.AUDIO) }
-                            ),
-                            QuickTileEntry(
-                                title = CategoryType.DOCUMENTS.displayName,
-                                count = uiState.categoryCounts[CategoryType.DOCUMENTS] ?: 0,
-                                sizeBytes = uiState.categorySizes[CategoryType.DOCUMENTS] ?: 0L,
-                                icon = Icons.Default.Description,
-                                tint = ColorDocuments,
-                                description = "PDF, Word, Excel, text & ebooks",
-                                onClick = { viewModel.selectCategory(CategoryType.DOCUMENTS) }
-                            ),
-                            QuickTileEntry(
-                                title = CategoryType.ARCHIVES.displayName,
-                                count = uiState.categoryCounts[CategoryType.ARCHIVES] ?: 0,
-                                sizeBytes = uiState.categorySizes[CategoryType.ARCHIVES] ?: 0L,
-                                icon = Icons.Default.Archive,
-                                tint = ColorArchives,
-                                description = "ZIP, RAR, 7Z & tarball files",
-                                onClick = { viewModel.selectCategory(CategoryType.ARCHIVES) }
-                            ),
-                            QuickTileEntry(
-                                title = CategoryType.APKS.displayName,
-                                count = uiState.categoryCounts[CategoryType.APKS] ?: 0,
-                                sizeBytes = uiState.categorySizes[CategoryType.APKS] ?: 0L,
-                                icon = Icons.Default.VideogameAsset,
-                                tint = ColorApks,
-                                description = "Android app installer packages",
-                                onClick = { viewModel.selectCategory(CategoryType.APKS) }
-                            ),
-                            QuickTileEntry(
-                                title = CategoryType.DOWNLOADS.displayName,
-                                count = uiState.categoryCounts[CategoryType.DOWNLOADS] ?: 0,
-                                sizeBytes = uiState.categorySizes[CategoryType.DOWNLOADS] ?: 0L,
-                                icon = Icons.Default.Download,
-                                tint = ColorDownloads,
-                                description = "Downloaded files & browser items",
-                                onClick = { viewModel.selectCategory(CategoryType.DOWNLOADS) }
-                            ),
-                            QuickTileEntry(
-                                title = "Recycle Bin",
-                                count = uiState.trashList.size,
-                                sizeBytes = trashBytes,
-                                icon = Icons.Default.Delete,
-                                tint = recycleBinColor,
-                                description = "Safely recoverable deleted files",
-                                onClick = { viewModel.openRecycleBin() }
-                            )
+                item(key = "home_categories") {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HomeSectionTitle(title = "Categories")
+                        val categories = listOf(
+                            CategoryType.IMAGES,
+                            CategoryType.VIDEOS,
+                            CategoryType.AUDIO,
+                            CategoryType.DOCUMENTS,
+                            CategoryType.ARCHIVES,
+                            CategoryType.APKS
                         )
-                    }
-
-                    val filteredTiles = remember(quickTiles, homeTileFilter) {
-                        when (homeTileFilter) {
-                            TileFilterOption.ALL -> quickTiles
-                            TileFilterOption.HAS_FILES -> quickTiles.filter { it.count > 0 }
-                            TileFilterOption.MEDIA -> quickTiles.filter { it.title in listOf("Images", "Videos", "Audio") }
-                            TileFilterOption.DOCUMENTS -> quickTiles.filter { it.title in listOf("Documents", "Archives", "APKs") }
-                            TileFilterOption.SYSTEM -> quickTiles.filter { it.title in listOf("Downloads", "Recycle Bin") }
-                        }
-                    }
-
-                    val sortedTiles = remember(filteredTiles, homeTileSortOption) {
-                        when (homeTileSortOption) {
-                            TileSortOption.DEFAULT -> filteredTiles
-                            TileSortOption.NAME_ASC -> filteredTiles.sortedBy { it.title }
-                            TileSortOption.NAME_DESC -> filteredTiles.sortedByDescending { it.title }
-                            TileSortOption.COUNT_DESC -> filteredTiles.sortedByDescending { it.count }
-                            TileSortOption.COUNT_ASC -> filteredTiles.sortedBy { it.count }
-                        }
-                    }
-
-                    val groupedTiles = remember(sortedTiles, homeTileGroupBy) {
-                        when (homeTileGroupBy) {
-                            TileGroupByOption.NONE -> mapOf("" to sortedTiles)
-                            TileGroupByOption.CATEGORY -> sortedTiles.groupBy { tile ->
-                                when (tile.title) {
-                                    "Images", "Videos", "Audio" -> "Media"
-                                    "Documents", "Archives", "APKs" -> "Documents & Archives"
-                                    "Downloads", "Recycle Bin" -> "System & Storage"
-                                    else -> "Other"
-                                }
-                            }
-                            TileGroupByOption.HAS_FILES -> sortedTiles.groupBy { tile ->
-                                if (tile.count > 0) "Active Categories" else "Empty Categories"
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "Categories",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primaryContainer
+                        categories.chunked(2).forEach { rowItems ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Text(
-                                    text = "${filteredTiles.size}",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            TileSortMenuButton(
-                                currentSort = homeTileSortOption,
-                                onSortSelected = { homeTileSortOption = it }
-                            )
-                            TileGroupByMenuButton(
-                                currentGroupBy = homeTileGroupBy,
-                                onGroupBySelected = { homeTileGroupBy = it }
-                            )
-                            FilterToggleButton(
-                                isFilterBarVisible = homeTileFilterVisible,
-                                hasActiveFilters = homeTileFilter != TileFilterOption.ALL,
-                                onToggle = { homeTileFilterVisible = !homeTileFilterVisible }
-                            )
-                            ViewModeToggleButton(
-                                currentViewMode = homeTileViewMode,
-                                onViewModeChanged = { homeTileViewMode = it }
-                            )
-                        }
-                    }
-
-                    if (homeTileFilterVisible || homeTileFilter != TileFilterOption.ALL) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        HomeFilterChipsBar(
-                            currentFilter = homeTileFilter,
-                            onFilterChanged = { homeTileFilter = it },
-                            onReset = { homeTileFilter = TileFilterOption.ALL }
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    if (filteredTiles.isEmpty()) {
-                        Card(
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "No tiles match current filter",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                TextButton(onClick = { homeTileFilter = TileFilterOption.ALL }) {
-                                    Text("Show All Tiles")
-                                }
-                            }
-                        }
-                    } else if (homeTileViewMode == ViewMode.GRID) {
-                        // 2-Column Grid
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            groupedTiles.forEach { (header, tilesInGroup) ->
-                                if (header.isNotBlank()) {
-                                    Text(
-                                        text = "$header (${tilesInGroup.size})",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    )
-                                }
-                                tilesInGroup.chunked(2).forEach { rowItems ->
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        rowItems.forEach { tile ->
-                                            Box(modifier = Modifier.weight(1f)) {
-                                                CategoryCard(
-                                                    title = tile.title,
-                                                    count = tile.count,
-                                                    sizeBytes = tile.sizeBytes,
-                                                    icon = tile.icon,
-                                                    tint = tile.tint,
-                                                    onClick = tile.onClick
-                                                )
-                                            }
-                                        }
-                                        if (rowItems.size == 1) {
-                                            Spacer(modifier = Modifier.weight(1f))
-                                        }
+                                rowItems.forEach { category ->
+                                    val count = uiState.categoryCounts[category] ?: 0
+                                    val sizeBytes = uiState.categorySizes[category] ?: 0L
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        HomeCategoryCard(
+                                            category = category,
+                                            count = count,
+                                            sizeBytes = sizeBytes,
+                                            onClick = { viewModel.selectCategory(category) }
+                                        )
                                     }
                                 }
-                            }
-                        }
-                    } else if (homeTileViewMode == ViewMode.COMPACT_LIST) {
-                        // 4-Column Compact Grid
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            groupedTiles.forEach { (header, tilesInGroup) ->
-                                if (header.isNotBlank()) {
-                                    Text(
-                                        text = "$header (${tilesInGroup.size})",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    )
-                                }
-                                tilesInGroup.chunked(4).forEach { rowItems ->
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        rowItems.forEach { tile ->
-                                            Box(modifier = Modifier.weight(1f)) {
-                                                CategoryCompactCard(
-                                                    title = tile.title,
-                                                    count = tile.count,
-                                                    sizeBytes = tile.sizeBytes,
-                                                    icon = tile.icon,
-                                                    tint = tile.tint,
-                                                    onClick = tile.onClick
-                                                )
-                                            }
-                                        }
-                                        repeat(4 - rowItems.size) {
-                                            Spacer(modifier = Modifier.weight(1f))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        // Detailed List
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            groupedTiles.forEach { (header, tilesInGroup) ->
-                                if (header.isNotBlank()) {
-                                    Text(
-                                        text = "$header (${tilesInGroup.size})",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    )
-                                }
-                                tilesInGroup.forEach { tile ->
-                                    CategoryDetailedListCard(
-                                        title = tile.title,
-                                        count = tile.count,
-                                        sizeBytes = tile.sizeBytes,
-                                        icon = tile.icon,
-                                        tint = tile.tint,
-                                        description = tile.description,
-                                        onClick = tile.onClick
-                                    )
+                                repeat(2 - rowItems.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
                                 }
                             }
                         }
                     }
                 }
             }
-        }
+        }        }
     }
 
     if (showEmptyConfirmDialog) {
