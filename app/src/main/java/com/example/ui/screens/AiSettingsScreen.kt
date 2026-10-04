@@ -101,6 +101,7 @@ fun AiSettingsScreen(
     var embeddingModel by remember { mutableStateOf(currentConfig.embeddingModel) }
     var isEnabled by remember { mutableStateOf(currentConfig.isEnabled) }
     var autoSync by remember { mutableStateOf(currentConfig.autoSync) }
+    var freeOnly by remember { mutableStateOf(false) }
     var showApiKey by remember { mutableStateOf(false) }
     var showProviderPicker by remember { mutableStateOf(false) }
     var showChatPicker by remember { mutableStateOf(false) }
@@ -121,33 +122,24 @@ fun AiSettingsScreen(
 
     fun selectProvider(provider: ProviderType) {
         selectedProvider = provider
-        if (provider == ProviderType.CUSTOM) {
-            if (currentConfig.providerType == provider.name) {
-                baseUrl = currentConfig.baseUrl
-                chatModel = currentConfig.chatModel
-                visionModel = currentConfig.visionModel
-                embeddingModel = currentConfig.embeddingModel
-            } else {
-                baseUrl = ""
-                chatModel = ""
-                visionModel = ""
-                embeddingModel = ""
-            }
+        if (normalizeProvider(currentConfig.providerType) == provider) {
+            baseUrl = currentConfig.baseUrl
+            chatModel = currentConfig.chatModel
+            visionModel = currentConfig.visionModel
+            embeddingModel = currentConfig.embeddingModel
+            apiKey = currentConfig.apiKey
         } else {
             baseUrl = provider.defaultBaseUrl
-            chatModel = provider.defaultModel
-            visionModel = provider.defaultVisionModel
-            embeddingModel = provider.defaultEmbeddingModel
+            chatModel = ""
+            visionModel = ""
+            embeddingModel = ""
+            apiKey = ""
         }
         showProviderPicker = false
     }
 
-    fun isDeprecatedNvidiaModel(id: String): Boolean =
-        baseUrl.contains("integrate.api.nvidia.com", ignoreCase = true) &&
-            id.equals("adept/fuyu-8b", ignoreCase = true)
-
     fun usableModels(models: List<AvailableAiModel>): List<AvailableAiModel> =
-        models.filterNot { isDeprecatedNvidiaModel(it.id) }
+        models.filter { !freeOnly || it.isFree }.distinctBy { it.id }
 
     fun firstUsable(models: List<AvailableAiModel>, current: String): String =
         usableModels(models).firstOrNull { it.id == current }?.id
@@ -288,35 +280,16 @@ fun AiSettingsScreen(
                     )
                 }
 
-                if (selectedProvider == ProviderType.CUSTOM) {
+                if (selectedProvider == ProviderType.OPENAI_COMPATIBLE) {
                     OutlinedTextField(
                         value = baseUrl,
                         onValueChange = { baseUrl = it },
                         modifier = Modifier.fillMaxWidth().testTag("ai_endpoint_url_field"),
                         label = { Text("Base URL") },
-                        placeholder = { Text("https://.../v1") },
+                        placeholder = { Text("https://your-server/v1") },
                         singleLine = true
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        PresetChip("NVIDIA NIM") {
-                            baseUrl = "https://integrate.api.nvidia.com/v1"
-                            chatModel = "nvidia/llama-3.3-nemotron-super-49b-v1"
-                            visionModel = "meta/llama-3.2-11b-vision-instruct"
-                            embeddingModel = "nvidia/embed-qa-4"
-                        }
-                        PresetChip("OpenAI") {
-                            baseUrl = "https://api.openai.com/v1"
-                            chatModel = "gpt-4o-mini"
-                            visionModel = "gpt-4o-mini"
-                            embeddingModel = "text-embedding-3-small"
-                        }
-                        PresetChip("OpenRouter") {
-                            baseUrl = "https://openrouter.ai/api/v1"
-                            chatModel = "meta-llama/llama-3.2-11b-vision-instruct"
-                            visionModel = "meta-llama/llama-3.2-11b-vision-instruct"
-                            embeddingModel = ""
-                        }
-                    }
+                    CompactInfo("Works with OpenAI-compatible endpoints such as OpenAI, NVIDIA NIM, Groq, or your own server. Fetch models after changing it.")
                 } else if (selectedProvider == ProviderType.OLLAMA) {
                     CompactInfo("No API key is required for Ollama. Use localhost or 10.0.2.2 for local connections.")
                 } else {
@@ -324,15 +297,25 @@ fun AiSettingsScreen(
                 }
 
                 SectionTitle("MODELS")
-                OutlinedButton(
-                    onClick = { onFetchModels(draftConfig()) },
-                    enabled = !isFetchingModels,
-                    modifier = Modifier.fillMaxWidth().testTag("ai_fetch_models_btn")
-                ) {
-                    if (isFetchingModels) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    else Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Fetch from provider", fontWeight = FontWeight.SemiBold)
+                        Text("Only models compatible with Brain are shown", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(
+                        onClick = { onFetchModels(draftConfig()) },
+                        enabled = !isFetchingModels,
+                        modifier = Modifier.testTag("ai_fetch_models_btn")
+                    ) {
+                        if (isFetchingModels) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Default.Refresh, contentDescription = "Fetch models")
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Free models only", fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (isFetchingModels) "Fetching…" else "Fetch available models")
+                    Text("No cost metadata is assumed; only explicitly free models pass this filter.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    Switch(checked = freeOnly, onCheckedChange = { freeOnly = it })
                 }
                 modelFetchError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
@@ -386,15 +369,6 @@ fun AiSettingsScreen(
                         }
                         Switch(checked = autoSync, onCheckedChange = { autoSync = it })
                     }
-                    if (selectedProvider != ProviderType.CUSTOM) {
-                        OutlinedTextField(
-                            value = baseUrl,
-                            onValueChange = { baseUrl = it },
-                            modifier = Modifier.fillMaxWidth().testTag("ai_advanced_endpoint_field"),
-                            label = { Text("Base URL") },
-                            singleLine = true
-                        )
-                    }
                     Text(
                         "API keys stay in private app storage. Cloud providers receive data required for the AI operation.",
                         style = MaterialTheme.typography.bodySmall,
@@ -410,6 +384,11 @@ fun AiSettingsScreen(
     if (showChatPicker) ModelPickerDialog("Choose chat model", chats, chatModel, { chatModel = it; showChatPicker = false }) { showChatPicker = false }
     if (showVisionPicker) ModelPickerDialog("Choose vision model", visions, visionModel, { visionModel = it; showVisionPicker = false }) { showVisionPicker = false }
     if (showEmbeddingPicker) ModelPickerDialog("Choose embedding model", embeddings, embeddingModel, { embeddingModel = it; showEmbeddingPicker = false }) { showEmbeddingPicker = false }
+}
+
+private fun normalizeProvider(value: String): ProviderType = when (ProviderType.fromString(value)) {
+    ProviderType.GROQ, ProviderType.CUSTOM -> ProviderType.OPENAI_COMPATIBLE
+    else -> ProviderType.fromString(value)
 }
 
 @Composable
@@ -463,7 +442,12 @@ private fun ProviderPickerDialog(selected: ProviderType, onSelect: (ProviderType
         title = { Text("Choose provider") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                ProviderType.entries.forEach { provider ->
+                listOf(
+                    ProviderType.GEMINI,
+                    ProviderType.OPENAI_COMPATIBLE,
+                    ProviderType.OLLAMA,
+                    ProviderType.OPENROUTER
+                ).forEach { provider ->
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable { onSelect(provider) },
                         color = if (provider == selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
