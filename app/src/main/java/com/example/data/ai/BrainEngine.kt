@@ -22,7 +22,7 @@ class BrainEngine(
         }
 
         val semanticAvailable = config.isEnabled &&
-            (ProviderType.fromString(config.providerType) in setOf(ProviderType.OLLAMA, ProviderType.OPENAI_COMPATIBLE) || config.apiKey.isNotBlank()) &&
+            (ProviderType.fromString(config.providerType) in setOf(ProviderType.OLLAMA, ProviderType.OPENAI_COMPATIBLE, ProviderType.CUSTOM) || config.apiKey.isNotBlank()) &&
             config.embeddingModel.isNotBlank()
         val queryEmbedding = if (semanticAvailable) client.embedTexts(listOf(question), config).firstOrNull() else null
         val candidates = linkedMapOf<String, Float>()
