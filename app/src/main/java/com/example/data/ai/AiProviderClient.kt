@@ -92,6 +92,68 @@ class AiProviderClient {
         }
     }
 
+
+    suspend fun embedTexts(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> =
+        withContext(Dispatchers.IO) {
+            if (texts.isEmpty()) return@withContext emptyList()
+            try {
+                when (ProviderType.fromString(config.providerType)) {
+                    ProviderType.GEMINI -> embedGemini(texts, config)
+                    else -> embedOpenAi(texts, config)
+                }
+            } catch (error: Exception) {
+                Log.w("AiProviderClient", "Embedding request failed: ${error.message}")
+                emptyList()
+            }
+        }
+
+    private fun embedGemini(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> {
+        val baseUrl = config.baseUrl.trimEnd('/').ifBlank { "https://generativelanguage.googleapis.com" }
+        val model = config.embeddingModel.ifBlank { "gemini-embedding-2-preview" }
+        val url = "$baseUrl/v1beta/models/$model:batchEmbedContents?key=${config.apiKey.trim()}"
+        val requests = JSONArray()
+        texts.forEach { value ->
+            requests.put(
+                JSONObject()
+                    .put("model", "models/$model")
+                    .put("content", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", value.take(8000)))))
+            )
+        )
+        val request = Request.Builder().url(url)
+            .post(JSONObject().put("requests", requests).toString().toRequestBody(jsonMediaType))
+            .build()
+        okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw RuntimeException("Gemini embedding HTTP ${response.code}: ${response.body?.string().orEmpty()}")
+            val embeddings = JSONObject(response.body?.string().orEmpty()).optJSONArray("embeddings") ?: return emptyList()
+            return (0 until embeddings.length()).mapNotNull { i ->
+                val values = embeddings.optJSONObject(i)?.optJSONArray("values") ?: return@mapNotNull null
+                FloatArray(values.length()) { idx -> values.optDouble(idx, 0.0).toFloat() }
+            }
+        }
+    }
+
+    private fun embedOpenAi(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> {
+        val rawBase = config.baseUrl.trimEnd('/').ifBlank { "https://api.openai.com/v1" }
+        val url = if (rawBase.endsWith("/embeddings")) rawBase else "$rawBase/embeddings"
+        val root = JSONObject()
+            .put("model", config.embeddingModel.ifBlank { "text-embedding-3-small" })
+            .put("input", JSONArray().apply { texts.forEach { put(it.take(8000)) } })
+        val builder = Request.Builder().url(url).post(root.toString().toRequestBody(jsonMediaType))
+        config.apiKey.trim().takeIf { it.isNotBlank() }?.let { builder.addHeader("Authorization", "Bearer $it") }
+        try {
+            val headers = JSONObject(config.customHeadersJson.ifBlank { "{}" })
+            headers.keys().forEach { key -> builder.addHeader(key, headers.optString(key)) }
+        } catch (_: Exception) {}
+        okHttpClient.newCall(builder.build()).execute().use { response ->
+            if (!response.isSuccessful) throw RuntimeException("Embedding HTTP ${response.code}: ${response.body?.string().orEmpty()}")
+            val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data") ?: return emptyList()
+            return (0 until data.length()).mapNotNull { i ->
+                val values = data.optJSONObject(i)?.optJSONArray("embedding") ?: return@mapNotNull null
+                FloatArray(values.length()) { idx -> values.optDouble(idx, 0.0).toFloat() }
+            }
+        }
+    }
+
     suspend fun analyzeImage(
         base64Jpeg: String?,
         metadataSummary: String,
@@ -198,7 +260,7 @@ class AiProviderClient {
         config: AiProviderConfigEntity
     ): String {
         val baseUrl = if (config.baseUrl.isNotBlank()) config.baseUrl.trimEnd('/') else "https://generativelanguage.googleapis.com"
-        val model = if (config.chatModel.isNotBlank()) config.chatModel else "gemini-3.5-flash"
+        val model = if (config.visionModel.isNotBlank()) config.visionModel else if (config.chatModel.isNotBlank()) config.chatModel else "gemini-3.5-flash"
         val apiKey = config.apiKey.trim()
 
         val url = "$baseUrl/v1beta/models/$model:generateContent?key=$apiKey"
