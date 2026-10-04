@@ -71,7 +71,7 @@ class BrainRepository(private val context: Context) {
         chunkDao = brainChunkDao,
         nodeDao = brainNodeDao,
         edgeDao = brainEdgeDao,
-        client = client
+        client = brainAi
     )
     private val fileRepository = FileRepository(appContext)
     private val mediaMetadataRepository = MediaMetadataRepository(appContext)
