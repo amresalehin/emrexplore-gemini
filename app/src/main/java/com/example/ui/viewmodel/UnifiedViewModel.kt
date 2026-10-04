@@ -2483,10 +2483,10 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(
                         brainTopicRelevantFiles = files,
                         isBrainTopicLoading = false,
-                        brainTopicStatus = when {
-                            files.isNotEmpty() -> "${files.size} relevant files found"
-                            !config.isEnabled || config.embeddingModel.isBlank() -> "Set an enabled embedding model to find files semantically"
-                            else -> "No semantic matches found"
+                        brainTopicStatus = if (files.isNotEmpty()) {
+                            "${files.size} relevant files found"
+                        } else {
+                            "No Brain matches found"
                         }
                     )
                 }
@@ -2496,7 +2496,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(
                         brainTopicRelevantFiles = emptyList(),
                         isBrainTopicLoading = false,
-                        brainTopicStatus = "Semantic matching unavailable: ${error.message ?: "embedding failed"}"
+                        brainTopicStatus = "Brain topic search failed: ${error.message ?: "unknown error"}"
                     )
                 }
             }
