@@ -60,7 +60,7 @@ class AiProviderClient {
             }
         } catch (e: Exception) {
             val duration = System.currentTimeMillis() - startTime
-            Log.e("AiProviderClient", "Connection test failed", e)
+            Log.e("AiProviderClient", "Connection test failed: " + e.javaClass.simpleName)
             ConnectionTestResult(
                 success = false,
                 message = e.localizedMessage ?: e.message ?: "Connection failed",
