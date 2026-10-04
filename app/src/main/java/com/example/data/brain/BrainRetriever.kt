@@ -1,6 +1,5 @@
 package com.example.data.brain
 
-import com.example.data.ai.AiProviderClient
 import com.example.data.ai.OfflineEmbeddingEngine
 import com.example.data.ai.ProviderType
 import com.example.data.ai.isKeylessAiConfig
@@ -29,7 +28,7 @@ class BrainRetriever(
     private val chunkDao: BrainChunkDao,
     private val nodeDao: BrainNodeDao,
     private val edgeDao: BrainEdgeDao,
-    private val client: AiProviderClient
+    private val client: BrainAiGateway
 ) {
     suspend fun retrieve(
         question: String,
