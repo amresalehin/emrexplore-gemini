@@ -28,6 +28,10 @@ class KnowledgeGraphRepository(private val context: Context) {
     private val aiConfigDao = db.aiProviderConfigDao()
     private val fileIndexDao = db.fileIndexDao()
     private val mediaMetadataDao = db.mediaMetadataDao()
+    private val fingerprintDao = db.indexFingerprintDao()
+    private val factDao = db.memoryFactDao()
+    private val mentionDao = db.entityMentionDao()
+    private val modelRunDao = db.modelRunDao()
     private val client = AiProviderClient()
     private val metadataExtractor = MetadataExtractor(context)
 
@@ -56,6 +60,8 @@ class KnowledgeGraphRepository(private val context: Context) {
         kgDao.clearAllNodes()
         kgDao.clearAllEdges()
         ragDao.clearAllChunks()
+        factDao.clearAll()
+        fingerprintDao.clearAll()
     }
 
     /**
@@ -148,12 +154,6 @@ class KnowledgeGraphRepository(private val context: Context) {
 
         val filePath = file.absolutePath
 
-        // Clean existing graph nodes & chunks for this file
-        kgDao.deleteNodeByFilePath(filePath)
-        kgDao.deleteEdgesForNode("doc:$filePath")
-        kgDao.deleteEdgesForNode("img:$filePath")
-        ragDao.deleteChunksForFile(filePath)
-
         if (isDoc) {
             indexDocumentInternal(file, uri, config)
         } else {
@@ -207,14 +207,15 @@ class KnowledgeGraphRepository(private val context: Context) {
             nodeType = "DOCUMENT",
             sourceFilePath = filePath,
             summary = analysis.summary,
-            degree = analysis.entities.size
+            degree = 0,
+            confidence = 1f
         )
         nodesToInsert.add(docNode)
 
         // Link with folder if available
         val parentDir = file.parentFile?.name
         if (!parentDir.isNullOrBlank() && parentDir !in setOf("/", "0", "emulated", "storage")) {
-            val folderId = "folder:${parentDir.lowercase()}"
+            val folderId = "folder:${hashKey(filePath.substringBeforeLast(File.separator))}"
             nodesToInsert.add(
                 KgNodeEntity(
                     id = folderId,
@@ -234,12 +235,13 @@ class KnowledgeGraphRepository(private val context: Context) {
         }
 
         for (ent in analysis.entities) {
-            val entId = "ent:${ent.name.trim().lowercase()}"
+            val entId = "ent:${hashKey(normalize(ent.name))}"
             val entNode = KgNodeEntity(
                 id = entId,
                 label = ent.name.trim(),
                 nodeType = ent.type.ifBlank { "TOPIC" },
-                summary = "Entity in ${file.name}"
+                summary = "Observed in ${file.name}",
+                confidence = ent.confidence.coerceIn(0f, 1f)
             )
             nodesToInsert.add(entNode)
 
@@ -248,20 +250,22 @@ class KnowledgeGraphRepository(private val context: Context) {
                     sourceNodeId = docNodeId,
                     targetNodeId = entId,
                     relation = "MENTIONS",
-                    evidenceSnippet = "Mentioned in ${file.name}"
+                    evidenceSnippet = "Mentioned in ${file.name}",
+                    evidenceSource = filePath
                 )
             )
         }
 
         for (rel in analysis.relations) {
-            val sourceId = if (rel.source.equals(file.name, ignoreCase = true)) docNodeId else "ent:${rel.source.lowercase()}"
-            val targetId = "ent:${rel.target.lowercase()}"
+            val sourceId = if (rel.source.equals(file.name, ignoreCase = true)) docNodeId else "ent:${hashKey(normalize(rel.source))}"
+            val targetId = "ent:${hashKey(normalize(rel.target))}"
             edgesToInsert.add(
                 KgEdgeEntity(
                     sourceNodeId = sourceId,
                     targetNodeId = targetId,
                     relation = rel.relation,
-                    evidenceSnippet = rel.evidence
+                    evidenceSnippet = rel.evidence,
+                    evidenceSource = filePath
                 )
             )
         }
