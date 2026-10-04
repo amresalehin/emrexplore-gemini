@@ -1221,7 +1221,16 @@ fun FileExplorerScreen(
                                         try {
                                             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                                 type = item.mimeType
-                                                putExtra(Intent.EXTRA_STREAM, item.uri)
+                                                val shareUri = try {
+                                                 androidx.core.content.FileProvider.getUriForFile(
+                                                     context,
+                                                     context.packageName + ".fileprovider",
+                                                     File(item.path)
+                                                 )
+                                             } catch (_: Exception) {
+                                                 item.uri
+                                             }
+                                             putExtra(Intent.EXTRA_STREAM, shareUri)
                                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                             }
                                             context.startActivity(Intent.createChooser(shareIntent, "Share File"))
