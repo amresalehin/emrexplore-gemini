@@ -2148,8 +2148,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 val all = kgRepository.listAiModels(config)
                 _uiState.update {
                     it.copy(
-                        aiModels = all.filter { model -> !model.supportsEmbedding },
-                        aiVisionModels = all.filter { model -> model.supportsVision },
+                        aiModels = all.filter { model -> model.supportsChat },
+                        aiVisionModels = all.filter { model -> model.supportsChat && model.supportsVision },
                         aiEmbeddingModels = all.filter { model -> model.supportsEmbedding },
                         isFetchingAiModels = false
                     )
