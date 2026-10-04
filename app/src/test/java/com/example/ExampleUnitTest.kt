@@ -25,9 +25,9 @@ class ExampleUnitTest {
 
     @Test
     fun fileItem_classifies_common_extensions() {
-        val image = FileItem("photo.jpg", "/tmp/photo.jpg", 1, 1, false)
-        val audio = FileItem("voice.m4a", "/tmp/voice.m4a", 1, 1, false)
-        val document = FileItem("notes.md", "/tmp/notes.md", 1, 1, false)
+        val image = FileItem("photo.jpg", "/tmp/photo.jpg", 1, 1, false, extension = "jpg")
+        val audio = FileItem("voice.m4a", "/tmp/voice.m4a", 1, 1, false, extension = "m4a")
+        val document = FileItem("notes.md", "/tmp/notes.md", 1, 1, false, extension = "md")
 
         assertTrue(image.isImage)
         assertTrue(audio.isAudio)
