@@ -100,7 +100,7 @@ class AiProviderClient {
             )
             parseAnalysisJson(responseText, fileName)
         } catch (e: Exception) {
-            Log.e("AiProviderClient", "Document analysis failed: ${e.message}")
+            Log.e("AiProviderClient", "Document analysis failed: " + e.javaClass.simpleName)
             fallbackAnalysis(fileName, text)
         }
     }
