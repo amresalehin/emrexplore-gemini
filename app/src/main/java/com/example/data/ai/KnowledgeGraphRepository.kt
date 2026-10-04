@@ -74,6 +74,7 @@ class KnowledgeGraphRepository(private val context: Context) {
     private fun multimodalEmbeddingModel(config: AiProviderConfigEntity): String =
         config.multimodalEmbeddingModel.ifBlank {
             ProviderType.fromString(config.providerType).defaultMultimodalEmbeddingModel
+                .ifBlank { textEmbeddingModel(config) }
         }
 
     private fun embeddingSignature(config: AiProviderConfigEntity): String =
