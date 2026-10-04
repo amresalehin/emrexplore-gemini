@@ -1466,7 +1466,7 @@ class FileRepository(private val context: Context) {
     private fun countFilesWithExtensions(dir: File, exts: Set<String>): Int {
         if (!dir.exists()) return 0
         var count = 0
-        dir.walkTopDown().maxDepth(3).forEach { f ->
+        dir.walkTopDown().maxDepth(Int.MAX_VALUE).forEach { f ->
             if (f.isFile && f.extension.lowercase() in exts) count++
         }
         return count
