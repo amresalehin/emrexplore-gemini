@@ -1041,9 +1041,10 @@ class FileRepository(private val context: Context) {
         } else {
             fileIndexDao.searchFiles(q, limit = 150)
         }
-        entities.map { entity ->
-            val file = File(entity.path)
-            FileItem(
+        entities.asSequence()
+            .map { entity -> entity to File(entity.path) }
+            .filter { (_, file) -> file.exists() && file.isDirectory == (itOrFalse = false) }
+
                 name = entity.name,
                 path = entity.path,
                 size = entity.size,
