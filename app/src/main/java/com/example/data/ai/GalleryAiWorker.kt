@@ -1,7 +1,6 @@
 package com.example.data.ai
 
 import android.content.Context
-import android.net.Uri
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -14,48 +13,133 @@ class GalleryAiWorker(appContext: Context, params: WorkerParameters) : Coroutine
     companion object {
         const val UNIQUE_NAME = "emrexplore-gallery-ai"
     }
+
     override suspend fun doWork(): Result {
-        val paths = inputData.getStringArray("paths")?.toList().orEmpty()
-        if (paths.isEmpty()) return Result.success(workDataOf("processed" to 0))
+        val store = GalleryAiOperationStore(applicationContext)
+
+        if (store.isPaused()) {
+            return Result.success(
+                workDataOf(
+                    "processed" to store.completedCount(),
+                    "total" to store.totalCount(),
+                    "paused" to true
+                )
+            )
+        }
 
         val db = AppDatabase.getDatabase(applicationContext)
         val rawConfig = db.aiProviderConfigDao().getConfig()
             ?: return Result.failure(workDataOf("error" to "AI provider is not configured"))
-        val config = rawConfig.copy(apiKey = com.example.data.security.ApiKeyProtector.decrypt(rawConfig.apiKey))
+        val config = rawConfig.copy(
+            apiKey = com.example.data.security.ApiKeyProtector.decrypt(rawConfig.apiKey)
+        )
         if (!config.isEnabled || (!isKeylessAiConfig(config) && config.apiKey.isBlank())) {
             return Result.failure(workDataOf("error" to "Configure and save an AI provider first"))
         }
 
         val repository = KnowledgeGraphRepository(applicationContext)
-        var processed = 0
-        var failed = 0
-        for ((index, path) in paths.withIndex()) {
+        var failedThisAttempt = 0
+
+        while (true) {
             currentCoroutineContext().ensureActive()
-            val file = File(path)
-            setProgress(workDataOf("current" to index + 1, "total" to paths.size, "path" to path))
-            if (!file.exists() || !file.isFile || !file.canRead()) {
-                failed++
-                continue
+            if (store.isPaused()) {
+                return Result.success(
+                    workDataOf(
+                        "processed" to store.completedCount(),
+                        "total" to store.totalCount(),
+                        "paused" to true
+                    )
+                )
             }
-            try {
-                val uri = Uri.fromFile(file)
-                if (repository.enrichGalleryImage(file, uri, config) &&
-                    repository.indexFile(file, uri, config)
-                ) {
-                    processed++
-                } else {
-                    failed++
+
+            val paths = store.pendingPaths()
+            if (paths.isEmpty()) {
+                store.clear()
+                return Result.success(
+                    workDataOf(
+                        "processed" to store.completedCount(),
+                        "total" to store.totalCount(),
+                        "failed" to 0
+                    )
+                )
+            }
+
+            val total = store.totalCount()
+            for (path in paths) {
+                currentCoroutineContext().ensureActive()
+
+                if (store.isPaused()) {
+                    return Result.success(
+                        workDataOf(
+                            "processed" to store.completedCount(),
+                            "total" to store.totalCount(),
+                            "paused" to true
+                        )
+                    )
                 }
-            } catch (_: Exception) {
-                failed++
+
+                val completed = store.completedCount()
+                setProgress(
+                    workDataOf(
+                        "current" to completed,
+                        "total" to total,
+                        "path" to path
+                    )
+                )
+
+                val file = File(path)
+                if (!file.exists() || !file.isFile || !file.canRead()) {
+                    store.markCompleted(path)
+                    continue
+                }
+
+                try {
+                    val uri = android.net.Uri.fromFile(file)
+                    val force = store.isForce(path)
+                    val enriched = repository.enrichGalleryImage(file, uri, config, force = force)
+                    val indexed = enriched && repository.indexFile(file, uri, config)
+                    if (indexed) {
+                        store.markCompleted(path)
+                        setProgress(
+                            workDataOf(
+                                "current" to store.completedCount(),
+                                "total" to total,
+                                "path" to path
+                            )
+                        )
+                    } else {
+                        failedThisAttempt++
+                    }
+                } catch (error: Exception) {
+                    failedThisAttempt++
+                }
             }
-        }
-        return if (failed == 0) {
-            Result.success(workDataOf("processed" to processed, "failed" to 0))
-        } else if (runAttemptCount < 2) {
-            Result.retry()
-        } else {
-            Result.failure(workDataOf("processed" to processed, "failed" to failed))
+
+            if (!store.hasPendingWork()) {
+                val completed = store.completedCount()
+                store.clear()
+                return Result.success(
+                    workDataOf(
+                        "processed" to completed,
+                        "total" to total,
+                        "failed" to failedThisAttempt
+                    )
+                )
+            }
+
+            if (failedThisAttempt > 0) {
+                return if (runAttemptCount < 2) {
+                    Result.retry()
+                } else {
+                    Result.failure(
+                        workDataOf(
+                            "processed" to store.completedCount(),
+                            "total" to store.totalCount(),
+                            "failed" to store.pendingPaths().size
+                        )
+                    )
+                }
+            }
         }
     }
 }
