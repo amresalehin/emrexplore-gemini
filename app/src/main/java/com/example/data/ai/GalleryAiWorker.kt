@@ -11,6 +11,9 @@ import kotlinx.coroutines.ensureActive
 import java.io.File
 
 class GalleryAiWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
+    companion object {
+        const val UNIQUE_NAME = "emrexplore-gallery-ai"
+    }
     override suspend fun doWork(): Result {
         val paths = inputData.getStringArray("paths")?.toList().orEmpty()
         if (paths.isEmpty()) return Result.success(workDataOf("processed" to 0))
