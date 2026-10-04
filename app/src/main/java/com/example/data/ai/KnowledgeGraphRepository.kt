@@ -17,6 +17,9 @@ import com.example.data.local.ModelRunEntity
 import com.example.data.local.IndexFingerprintEntity
 import com.example.data.local.RagChunkEntity
 import com.example.data.metadata.MetadataExtractor
+import com.example.data.metadata.MetadataWriter
+import com.example.data.media.MediaMetadataRepository
+import com.example.data.model.MediaItem
 import com.example.data.security.ApiKeyProtector
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -49,6 +52,7 @@ class KnowledgeGraphRepository(private val context: Context) {
     private data class IndexResult(val success: Boolean, val hasSearchableContent: Boolean)
 
     private val metadataExtractor = MetadataExtractor(context)
+    private val mediaMetadataRepository = MediaMetadataRepository(context)
 
     private val brainIndexVersion = "brain-v3"
 
@@ -211,6 +215,71 @@ class KnowledgeGraphRepository(private val context: Context) {
     /**
      * Analyzes and indexes a single document or image into the Knowledge Graph & RAG store.
      */
+    suspend fun enrichGalleryImage(
+        file: File,
+        uri: android.net.Uri,
+        config: AiProviderConfigEntity
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!isAiReady(config) || !file.exists() || !file.isFile || !file.canRead()) return@withContext false
+        val ext = file.extension.lowercase()
+        if (ext !in setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp")) return@withContext false
+
+        val existing = mediaMetadataDao.getByPath(file.absolutePath)
+        if (existing != null &&
+            existing.aiProcessedAt > 0L &&
+            existing.aiModel == config.visionModel &&
+            existing.size == file.length() &&
+            existing.aiFileLastModified == file.lastModified()
+        ) {
+            return@withContext true
+        }
+
+        val report = try { metadataExtractor.extract(file) } catch (_: Exception) { null }
+        val metadataSummary = buildString {
+            report?.summary?.let { meta ->
+                if (!meta.make.isNullOrBlank()) append("Camera: ${meta.make} ${meta.model.orEmpty()}. ")
+                if (!meta.city.isNullOrBlank()) append("Location: ${meta.city}, ${meta.country.orEmpty()}. ")
+                if (!meta.dateTimeOriginal.isNullOrBlank()) append("Date: ${meta.dateTimeOriginal}. ")
+                if (meta.description?.isNotBlank() == true) append("Caption: ${meta.description}. ")
+                if (meta.keywords.isNotEmpty()) append("Keywords: ${meta.keywords.joinToString()}. ")
+            }
+        }
+
+        val item = MediaItem(
+            id = file.absolutePath.hashCode().toLong(),
+            uri = uri,
+            name = file.name,
+            path = file.absolutePath,
+            size = file.length(),
+            dateAdded = file.lastModified(),
+            mimeType = "image/$ext",
+            isVideo = false
+        )
+        val base64 = getCompressedBase64(file, uri, maxDimension = 1024)
+        val analysis = client.analyzeImage(base64, metadataSummary, file.name, config)
+        val tags = analysis.tags.map { it.trim() }.filter { it.isNotBlank() }.distinct().take(50)
+        val tagsJson = JSONArray(tags).toString()
+        val entitiesJson = JSONArray().apply {
+            analysis.entities.forEach { entity ->
+                put(org.json.JSONObject().apply {
+                    put("name", entity.name.trim())
+                    put("type", entity.type.ifBlank { "TOPIC" })
+                    put("confidence", entity.confidence.coerceIn(0f, 1f))
+                })
+            }
+        }.toString()
+
+        mediaMetadataRepository.getOrRead(item, requireOriginalLocation = false)
+        mediaMetadataRepository.saveAiEnrichment(
+            item = item,
+            caption = analysis.summary.trim(),
+            tagsJson = tagsJson,
+            entitiesJson = entitiesJson,
+            model = config.visionModel
+        )
+        MetadataWriter.writeAiMetadata(file, analysis.summary.trim(), tags)
+        true
+    }
     suspend fun indexFile(file: File, config: AiProviderConfigEntity): Boolean =
         indexFile(file, null, config)
 
