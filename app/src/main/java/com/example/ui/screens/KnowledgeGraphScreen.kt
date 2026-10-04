@@ -176,7 +176,7 @@ fun KnowledgeGraphScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -201,31 +201,11 @@ fun KnowledgeGraphScreen(
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "The Brain",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                val providerName = if (aiConfig?.isEnabled == true && aiConfig.apiKey.isNotBlank()) {
-                                    aiConfig.providerType.replace("_", " ").take(10)
-                                } else {
-                                    "Local"
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant
-                                ) {
-                                    Text(
-                                        text = providerName,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
+                            Text(
+                                text = "Brain",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
                             Text(
                                 text = if (nodes.isEmpty()) {
                                     if (isIndexing) "Connecting storage..." else "Not connected to storage"
