@@ -175,7 +175,7 @@ class BrainRepository(private val context: Context) {
         brainNodeDao.recomputeDegrees()
 
         BrainSyncResult(
-            total = candidates.size,
+            total = total,
             indexed = indexed,
             skipped = skipped,
             failed = failed
