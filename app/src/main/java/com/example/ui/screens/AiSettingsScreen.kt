@@ -105,6 +105,12 @@ fun AiSettingsScreen(
     testResult: ConnectionTestResult?,
     onSaveConfig: (AiProviderConfigEntity) -> Unit,
     onTestConnection: (AiProviderConfigEntity) -> Unit,
+    availableModels: List<com.example.data.ai.AvailableAiModel> = emptyList(),
+    availableVisionModels: List<com.example.data.ai.AvailableAiModel> = emptyList(),
+    availableEmbeddingModels: List<com.example.data.ai.AvailableAiModel> = emptyList(),
+    isFetchingModels: Boolean = false,
+    modelFetchError: String? = null,
+    onFetchModels: (AiProviderConfigEntity) -> Unit = {},
     onReindexAll: () -> Unit,
     onClearGraph: () -> Unit,
     onNavigateBack: () -> Unit,
@@ -120,6 +126,7 @@ fun AiSettingsScreen(
     var baseUrl by remember { mutableStateOf(currentConfig.baseUrl) }
     var chatModel by remember { mutableStateOf(currentConfig.chatModel) }
     var visionModel by remember { mutableStateOf(currentConfig.visionModel) }
+    var embeddingModel by remember { mutableStateOf(currentConfig.embeddingModel) }
     var temperature by remember { mutableFloatStateOf(currentConfig.temperature) }
     var isEnabled by remember { mutableStateOf(currentConfig.isEnabled) }
     var autoSync by remember { mutableStateOf(currentConfig.autoSync) }
@@ -689,6 +696,97 @@ fun AiSettingsScreen(
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp)
                     )
+                }
+            }
+
+            // Live provider model discovery
+            OutlinedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Provider models", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Fetch the models currently exposed by this endpoint. Select separate chat, vision, and embedding models.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                onFetchModels(
+                                    currentConfig.copy(
+                                        providerType = selectedProvider.name,
+                                        apiKey = apiKey.trim(),
+                                        baseUrl = baseUrl.trim(),
+                                        chatModel = chatModel.trim(),
+                                        visionModel = visionModel.trim(),
+                                        embeddingModel = embeddingModel.trim(),
+                                        temperature = temperature,
+                                        isEnabled = isEnabled,
+                                        autoSync = autoSync
+                                    )
+                                )
+                            },
+                            enabled = !isFetchingModels
+                        ) {
+                            if (isFetchingModels) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (isFetchingModels) "Fetching…" else "Fetch")
+                        }
+                    }
+                    modelFetchError?.let {
+                        Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                    }
+                    if (availableModels.isNotEmpty()) {
+                        Text("Chat / reasoning", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(availableModels.take(50)) { model ->
+                                FilterChip(
+                                    selected = chatModel == model.id,
+                                    onClick = { chatModel = model.id; markChanged() },
+                                    label = { Text(model.id, fontSize = 10.sp) }
+                                )
+                            }
+                        }
+                    }
+                    if (availableVisionModels.isNotEmpty()) {
+                        Text("Vision", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(availableVisionModels.take(50)) { model ->
+                                FilterChip(
+                                    selected = visionModel == model.id,
+                                    onClick = { visionModel = model.id; markChanged() },
+                                    label = { Text(model.id, fontSize = 10.sp) }
+                                )
+                            }
+                        }
+                    }
+                    if (availableEmbeddingModels.isNotEmpty()) {
+                        Text("Embedding", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(availableEmbeddingModels.take(50)) { model ->
+                                FilterChip(
+                                    selected = embeddingModel == model.id,
+                                    onClick = { embeddingModel = model.id; markChanged() },
+                                    label = { Text(model.id, fontSize = 10.sp) }
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
