@@ -60,6 +60,9 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
@@ -2014,78 +2017,58 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         if (_uiState.value.isKgIndexing) return
         val config = _uiState.value.aiConfig
         if (!isBrainAiConfigured(config)) {
-            _uiState.update { it.copy(kgIndexingStatus = "Configure and save an AI provider API key first") }
+            _uiState.update { it.copy(kgIndexingStatus = "Configure and save an AI provider first") }
             return
         }
+        _uiState.update {
+            it.copy(
+                isKgIndexing = true,
+                kgIndexingProgress = 0f,
+                kgIndexingStatus = "Brain indexing queued..."
+            )
+        }
+        val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>().build()
+        WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
+            com.example.data.ai.BrainIndexWorker.UNIQUE_NAME,
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
         viewModelScope.launch {
-
-            _uiState.update {
-                it.copy(
-                    isKgIndexing = true,
-                    kgIndexingProgress = 0.05f,
-                    kgIndexingStatus = "Connecting storage files & photos..."
-                )
-            }
-            try {
-                val config = kgRepository.getAiConfig()
-                data class FileCandidate(val file: File, val uri: Uri?)
-                val candidateMap = mutableMapOf<String, FileCandidate>()
-
-                val supportedBrainExtensions = setOf(
-                    "jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp",
-                    "txt", "md", "json", "csv", "xml", "html", "htm", "log", "kt", "java", "py", "js", "ts",
-                    "c", "cpp", "properties", "sql", "yaml", "yml", "pdf", "conf", "ini", "tsv", "gradle", "kts", "env"
-                )
-                // FileRepository owns the canonical filesystem index. Brain no longer
-                // performs a second recursive storage traversal with different rules.
-                withContext(Dispatchers.IO) {
-                    kgRepository.getBrainCandidates()
-                        .asSequence()
-                        .filter { it.extension.lowercase() in supportedBrainExtensions && !it.name.startsWith(".") }
-                        .map { item ->
-                            val file = File(item.path)
-                            file to Uri.fromFile(file)
+            WorkManager.getInstance(getApplication<Application>())
+                .getWorkInfoByIdFlow(request.id)
+                .collectLatest { info ->
+                    if (info == null) return@collectLatest
+                    val progress = info.progress
+                    val total = progress.getInt("total", 0)
+                    val current = progress.getInt("current", 0)
+                    val path = progress.getString("path").orEmpty()
+                    when (info.state) {
+                        androidx.work.WorkInfo.State.RUNNING -> _uiState.update { state ->
+                            state.copy(
+                                isKgIndexing = true,
+                                kgIndexingProgress = if (total > 0) current.toFloat() / total else 0f,
+                                kgIndexingStatus = if (path.isBlank()) "Indexing Brain..." else "Connecting dots: ${File(path).name} ($current/$total)"
+                            )
                         }
-                        .filter { (file, _) -> file.exists() && file.isFile && file.canRead() }
-                        .forEach { (file, uri) -> candidateMap[file.absolutePath] = FileCandidate(file, uri) }
-                }
-                // Keep explicitly selected/recent/favorite files even when outside the standard roots.
-                for (item in _uiState.value.files) if (!item.isDirectory) candidateMap[item.path] = FileCandidate(File(item.path), item.uri)
-                for (recent in _uiState.value.recentsList) candidateMap[recent.path] = FileCandidate(File(recent.path), Uri.fromFile(File(recent.path)))
-                for (fav in _uiState.value.favoritesList) candidateMap[fav.path] = FileCandidate(File(fav.path), Uri.fromFile(File(fav.path)))
-
-                val distinctCandidates = candidateMap.values.toList()
-                val total = distinctCandidates.size.coerceAtLeast(1)
-
-                distinctCandidates.forEachIndexed { index, candidate ->
-                    val progress = ((index + 1).toFloat() / total.toFloat()).coerceIn(0.1f, 0.95f)
-                    _uiState.update {
-                        it.copy(
-                            kgIndexingProgress = progress,
-                            kgIndexingStatus = "Connecting dots: ${candidate.file.name} (${index + 1}/$total)"
-                        )
+                        androidx.work.WorkInfo.State.SUCCEEDED -> {
+                            val suggestions = try { kgRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
+                            _uiState.update { state ->
+                                state.copy(isKgIndexing = false, kgIndexingProgress = 1f, kgIndexingStatus = "Brain indexing complete", kgSmartSuggestions = suggestions)
+                            }
+                            return@collectLatest
+                        }
+                        androidx.work.WorkInfo.State.FAILED -> {
+                            val error = info.outputData.getString("error") ?: "Brain indexing failed"
+                            _uiState.update { state -> state.copy(isKgIndexing = false, kgIndexingStatus = error) }
+                            return@collectLatest
+                        }
+                        androidx.work.WorkInfo.State.CANCELLED -> {
+                            _uiState.update { state -> state.copy(isKgIndexing = false, kgIndexingStatus = "Brain indexing cancelled") }
+                            return@collectLatest
+                        }
+                        else -> Unit
                     }
-                    kgRepository.indexFile(candidate.file, candidate.uri, config)
                 }
-                kgRepository.recomputeGraphDegrees()
-
-                val suggestions = try { kgRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
-                _uiState.update {
-                    it.copy(
-                        isKgIndexing = false,
-                        kgIndexingProgress = 1f,
-                        kgIndexingStatus = "Connected ${distinctCandidates.size} files in Brain",
-                        kgSmartSuggestions = suggestions
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isKgIndexing = false,
-                        kgIndexingStatus = "Indexing error: ${e.message}"
-                    )
-                }
-            }
         }
     }
 
