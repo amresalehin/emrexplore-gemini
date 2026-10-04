@@ -66,8 +66,21 @@ class KnowledgeGraphRepository(private val context: Context) {
     private fun isAiReady(config: AiProviderConfigEntity): Boolean =
         config.isEnabled && (ProviderType.fromString(config.providerType) in setOf(ProviderType.OLLAMA, ProviderType.OPENAI_COMPATIBLE, ProviderType.CUSTOM) || config.apiKey.isNotBlank())
 
+    private fun textEmbeddingModel(config: AiProviderConfigEntity): String =
+        config.textEmbeddingModel.ifBlank {
+            config.embeddingModel.ifBlank { ProviderType.fromString(config.providerType).defaultTextEmbeddingModel }
+        }
+
+    private fun multimodalEmbeddingModel(config: AiProviderConfigEntity): String =
+        config.multimodalEmbeddingModel.ifBlank {
+            ProviderType.fromString(config.providerType).defaultMultimodalEmbeddingModel
+        }
+
+    private fun embeddingSignature(config: AiProviderConfigEntity): String =
+        "text=" + textEmbeddingModel(config) + "|multi=" + multimodalEmbeddingModel(config)
+
     private fun requiresEmbeddings(config: AiProviderConfigEntity): Boolean =
-        isAiReady(config) && config.embeddingModel.isNotBlank()
+        isAiReady(config) && (textEmbeddingModel(config).isNotBlank() || multimodalEmbeddingModel(config).isNotBlank())
 
     val allNodesFlow: Flow<List<KgNodeEntity>> = kgDao.getAllNodesFlow()
     val allEdgesFlow: Flow<List<KgEdgeEntity>> = kgDao.getAllEdgesFlow()
@@ -78,10 +91,19 @@ class KnowledgeGraphRepository(private val context: Context) {
     val brainTopicsFlow: Flow<List<BrainTopicEntity>> = brainTopicDao.getAllFlow()
 
     private fun normalizeAiConfig(config: AiProviderConfigEntity): AiProviderConfigEntity {
-        if (config.embeddingModel != "gemini-embedding-2-preview") return config
         val provider = ProviderType.fromString(config.providerType)
-        val replacement = provider.defaultEmbeddingModel
-        return if (replacement.isNotBlank()) config.copy(embeddingModel = replacement) else config.copy(embeddingModel = "")
+        val legacy = config.embeddingModel.trim()
+        val text = config.textEmbeddingModel.trim().ifBlank {
+            legacy.ifBlank { provider.defaultTextEmbeddingModel }
+        }
+        val multi = config.multimodalEmbeddingModel.trim().ifBlank {
+            provider.defaultMultimodalEmbeddingModel
+        }
+        return config.copy(
+            providerType = provider.name,
+            textEmbeddingModel = text,
+            multimodalEmbeddingModel = multi
+        )
     }
 
     private fun decryptConfig(config: AiProviderConfigEntity): AiProviderConfigEntity =
@@ -440,6 +462,9 @@ class KnowledgeGraphRepository(private val context: Context) {
             return@withContext false
         }
     }
+
+    private fun isImageFile(file: File): Boolean =
+        file.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp")
 
     private fun extractPdfText(file: File, uri: android.net.Uri?): String {
         return try {
