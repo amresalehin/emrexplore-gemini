@@ -27,6 +27,7 @@ import org.json.JSONArray
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
+import java.util.UUID
 
 class KnowledgeGraphRepository(private val context: Context) {
 
@@ -221,6 +222,8 @@ class KnowledgeGraphRepository(private val context: Context) {
         if (!isImage && !isDoc) return@withContext
 
         val filePath = file.absolutePath
+        val runId = UUID.randomUUID().toString()
+        val runStartedAt = System.currentTimeMillis()
         val modelVersion = brainIndexVersion + ":" + ProviderType.fromString(config.providerType).name + ":" + config.chatModel + ":" + config.visionModel + ":" + config.isEnabled
         val existing = fingerprintDao.get(filePath)
 
@@ -255,6 +258,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             }
         } catch (error: Exception) {
             Log.w("KGRepo", "Indexing failed; existing Brain data was preserved for $filePath: ${error.message}")
+            modelRunDao.insert(ModelRunEntity(runId, filePath, "INDEX", config.chatModel.ifBlank { "local" }, false, error.message, runStartedAt, System.currentTimeMillis()))
             return@withContext
         }
 
@@ -266,8 +270,10 @@ class KnowledgeGraphRepository(private val context: Context) {
             ragDao.getChunksMissingEmbeddings(filePath, config.embeddingModel) == 0
         if (indexed && embeddingsReady) {
             fingerprintDao.insert(IndexFingerprintEntity(filePath, file.length(), file.lastModified(), hash, modelVersion, config.embeddingModel))
+            modelRunDao.insert(ModelRunEntity(runId, filePath, "INDEX", config.chatModel.ifBlank { "local" }, true, null, runStartedAt, System.currentTimeMillis()))
         } else {
             fingerprintDao.delete(filePath)
+            modelRunDao.insert(ModelRunEntity(runId, filePath, "INDEX", config.chatModel.ifBlank { "local" }, false, "Embeddings or indexed source incomplete", runStartedAt, System.currentTimeMillis()))
         }
     }
 
