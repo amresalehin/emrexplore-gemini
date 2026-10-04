@@ -1,16 +1,13 @@
 package com.example.data.brain
 
 import com.example.data.ai.AnalysisResult
-import com.example.data.ai.AiProviderClient
 import com.example.data.ai.ExtractedEntity
 import com.example.data.ai.ExtractedRelation
 import com.example.data.ai.ProviderType
 import com.example.data.ai.isKeylessAiConfig
 import com.example.data.ai.OfflineEmbeddingEngine
 import com.example.data.local.AiProviderConfigEntity
-import com.example.data.local.BrainTopicEntity
 import java.io.File
-import java.security.MessageDigest
 import java.util.Locale
 
 data class BrainIndexOutcome(
@@ -26,7 +23,7 @@ class BrainIndexer(
     private val nodeDao: BrainNodeDao,
     private val edgeDao: BrainEdgeDao,
     private val runDao: BrainRunDao,
-    private val client: AiProviderClient
+    private val client: BrainAiGateway
 ) {
     private val reader = BrainContentReader(context)
 
@@ -76,7 +73,7 @@ class BrainIndexer(
 
             val now = System.currentTimeMillis()
             val fileNode = BrainNodeEntity(
-                id = fileNodeId(path),
+                id = BrainIdentity.fileNodeId(path),
                 label = file.name,
                 nodeType = if (input.isImage) "IMAGE" else "DOCUMENT",
                 sourceFilePath = path,
@@ -94,7 +91,7 @@ class BrainIndexer(
             fun entityNode(name: String, type: String, confidence: Float = 0.6f): BrainNodeEntity {
                 val cleanName = name.trim()
                 val cleanType = normalizeType(type)
-                val id = entityNodeId(cleanType, cleanName)
+                val id = BrainIdentity.entityNodeId(cleanType, cleanName)
                 return entities.getOrPut(id) {
                     BrainNodeEntity(
                         id = id,
@@ -182,7 +179,7 @@ class BrainIndexer(
 
             val chunks = chunkTexts.mapIndexed { index, text ->
                 BrainChunkEntity(
-                    id = chunkId(path, index),
+                    id = BrainIdentity.chunkId(path, index),
                     filePath = path,
                     chunkIndex = index,
                     content = text,
@@ -297,7 +294,7 @@ class BrainIndexer(
                 }.take(MAX_CHUNK_CHARS)
             )
         } else {
-            chunkText(input.text)
+            BrainChunker.chunk(input.text, MAX_CHUNK_CHARS, CHUNK_OVERLAP, MAX_CHUNKS)
         }
     }
 
@@ -334,20 +331,6 @@ class BrainIndexer(
         }
 
         return EmbeddingBundle(offline, OfflineEmbeddingEngine.MODEL_NAME, offline)
-    }
-
-    private fun chunkText(text: String): List<String> {
-        if (text.isBlank()) return emptyList()
-        val result = mutableListOf<String>()
-        var start = 0
-        while (start < text.length && result.size < MAX_CHUNKS) {
-            val end = (start + MAX_CHUNK_CHARS).coerceAtMost(text.length)
-            val chunk = text.substring(start, end).trim()
-            if (chunk.isNotBlank()) result += chunk
-            if (end == text.length) break
-            start += (MAX_CHUNK_CHARS - CHUNK_OVERLAP).coerceAtLeast(1)
-        }
-        return result
     }
 
     private fun localAnalysis(input: BrainFileContent): AnalysisResult {
@@ -409,9 +392,6 @@ class BrainIndexer(
             .replace(Regex("[^A-Z0-9_]"), "_")
             .ifBlank { "TOPIC" }
 
-    private fun normalize(value: String): String =
-        value.trim().lowercase(Locale.US).replace(Regex("\\s+"), " ")
-
     private fun modelSignature(config: AiProviderConfigEntity): String =
         listOf(
             MODEL_VERSION,
@@ -423,7 +403,7 @@ class BrainIndexer(
         ).joinToString("|")
 
     private fun sha256(file: File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input ->
             val buffer = ByteArray(64 * 1024)
             while (true) {
@@ -433,15 +413,6 @@ class BrainIndexer(
             }
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
-    }
-
-    private fun fileNodeId(path: String): String = "file:" + stableKey(path)
-    private fun entityNodeId(type: String, name: String): String = "entity:" + type + ":" + stableKey(normalize(name))
-    private fun chunkId(path: String, index: Int): String = "chunk:" + stableKey(path) + ":" + index
-
-    private fun stableKey(value: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }.take(24)
     }
 
     private fun tokenize(text: String): List<String> =
