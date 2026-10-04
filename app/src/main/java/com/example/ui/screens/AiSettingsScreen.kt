@@ -445,8 +445,7 @@ private fun ProviderPickerDialog(selected: ProviderType, onSelect: (ProviderType
                 listOf(
                     ProviderType.GEMINI,
                     ProviderType.OPENAI_COMPATIBLE,
-                    ProviderType.OLLAMA,
-                    ProviderType.OPENROUTER
+                    ProviderType.OLLAMA
                 ).forEach { provider ->
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable { onSelect(provider) },
