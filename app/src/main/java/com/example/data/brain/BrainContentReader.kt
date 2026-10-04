@@ -39,7 +39,11 @@ class BrainContentReader(
         val extension = file.extension.lowercase(Locale.US)
         val isImage = extension in IMAGE_EXTENSIONS
         val mimeType = inferMime(extension, isImage)
-        val metadata = if (isImage) runCatching { metadataExtractor.extract(file) }.getOrNull() else null
+        val metadata = if (isImage && file.length() <= MAX_METADATA_FILE_BYTES) {
+            runCatching { metadataExtractor.extract(file) }.getOrNull()
+        } else {
+            null
+        }
         val metadataSummary = buildMetadataSummary(file, metadata, config)
 
         return when {
@@ -203,6 +207,7 @@ class BrainContentReader(
         const val MAX_TEXT_CHARS = 50_000
         const val MAX_PDF_PAGES = 120
         const val MAX_IMAGE_DIMENSION = 1024
+        const val MAX_METADATA_FILE_BYTES = 25L * 1024L * 1024L
 
         val IMAGE_EXTENSIONS = setOf(
             "jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp"
