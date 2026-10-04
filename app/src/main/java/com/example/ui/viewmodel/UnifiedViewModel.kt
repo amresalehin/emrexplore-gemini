@@ -607,30 +607,6 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             MainTab.BRAIN -> {
                 // Brain work is explicitly started by the user after AI setup.
             }
-            }
-        }
-    }
-
-    fun setTab(tab: MainTab) {
-        _uiState.update { it.copy(currentTab = tab) }
-        when (tab) {
-            MainTab.HOME -> {
-                loadStorageStats()
-                calculateCategoryCounts()
-            }
-            MainTab.FILES -> {
-                if (_uiState.value.files.isEmpty()) {
-                    loadFiles(_uiState.value.currentPath)
-                }
-            }
-            MainTab.GALLERY -> {
-                // Timeline is backed by Paging and starts loading only when the UI
-                // collects galleryPagingFlow. Albums/favorites retain their legacy
-                // path temporarily and are loaded only when explicitly needed.
-            }
-            MainTab.BRAIN -> {
-                // Brain work is explicitly started by the user after AI setup.
-            }
         }
     }
 
