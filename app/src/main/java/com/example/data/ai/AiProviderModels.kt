@@ -126,6 +126,14 @@ data class ConnectedDotsItem(
 )
 
 
+fun isKeylessAiConfig(config: com.example.data.local.AiProviderConfigEntity): Boolean {
+    val provider = ProviderType.fromString(config.providerType)
+    if (provider == ProviderType.OLLAMA) return true
+    if (provider != ProviderType.OPENAI_COMPATIBLE) return false
+    val url = config.baseUrl.trim().lowercase()
+    return url.contains("localhost") || url.contains("127.0.0.1") || url.contains("10.0.2.2")
+}
+
 data class AvailableAiModel(
     val id: String,
     val supportsChat: Boolean = true,
