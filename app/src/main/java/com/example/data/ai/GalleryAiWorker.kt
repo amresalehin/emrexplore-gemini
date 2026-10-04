@@ -17,6 +17,12 @@ class GalleryAiWorker(appContext: Context, params: WorkerParameters) : Coroutine
     override suspend fun doWork(): Result {
         val store = GalleryAiOperationStore(applicationContext)
 
+        // Migrate any work queued by an older app build into the durable checkpoint store.
+        val legacyPaths = inputData.getStringArray("paths").orEmpty().toList()
+        if (legacyPaths.isNotEmpty() && !store.hasPendingWork()) {
+            store.addPaths(legacyPaths)
+        }
+
         if (store.isPaused()) {
             return Result.success(
                 workDataOf(
