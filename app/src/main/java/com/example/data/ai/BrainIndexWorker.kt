@@ -1,7 +1,9 @@
 package com.example.data.ai
 
 import android.content.Context
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.NetworkType
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import kotlinx.coroutines.currentCoroutineContext
