@@ -63,7 +63,7 @@ class AiProviderClient {
             Log.e("AiProviderClient", "Connection test failed: " + e.javaClass.simpleName)
             ConnectionTestResult(
                 success = false,
-                message = e.localizedMessage ?: e.message ?: "Connection failed",
+                message = e.localizedMessage?.take(120) ?: "Connection failed",
                 responseTimeMs = duration
             )
         }
