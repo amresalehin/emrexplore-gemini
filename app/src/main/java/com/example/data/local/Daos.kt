@@ -217,6 +217,9 @@ interface MediaMetadataDao {
     @Query("SELECT * FROM media_metadata WHERE uri = :uri LIMIT 1")
     suspend fun get(uri: String): MediaMetadataEntity?
 
+    @Query("SELECT * FROM media_metadata WHERE path = :path ORDER BY indexedAt DESC LIMIT 1")
+    suspend fun getByPath(path: String): MediaMetadataEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(metadata: MediaMetadataEntity)
 
