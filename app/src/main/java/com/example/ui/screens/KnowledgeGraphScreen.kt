@@ -151,11 +151,6 @@ fun KnowledgeGraphScreen(
     var selectedNode by remember { mutableStateOf<KgNodeEntity?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    if (!apiConfigured) {
-        AiSetupRequiredState(onOpenAiSettings = onOpenAiSettings)
-        return
-    }
-
     val syncRotation = if (isIndexing) {
         val transition = rememberInfiniteTransition(label = "sync_anim")
         transition.animateFloat(
@@ -328,6 +323,8 @@ fun KnowledgeGraphScreen(
                         ragAnswer = ragAnswer,
                         isQuerying = isRagQuerying,
                         smartSuggestions = smartSuggestions,
+                        apiConfigured = apiConfigured,
+                        onOpenAiSettings = onOpenAiSettings,
                         onQuery = onQueryRag,
                         onOpenFile = onOpenFile,
                         onOpenImage = onOpenImage
@@ -1427,10 +1424,17 @@ fun DeclutteredAskAiView(
     ragAnswer: RagAnswer?,
     isQuerying: Boolean,
     smartSuggestions: List<String>,
+    apiConfigured: Boolean,
+    onOpenAiSettings: () -> Unit,
     onQuery: (String) -> Unit,
     onOpenFile: (File) -> Unit,
     onOpenImage: (File) -> Unit
 ) {
+    if (!apiConfigured) {
+        AiSetupRequiredState(onOpenAiSettings = onOpenAiSettings)
+        return
+    }
+
     var queryText by remember { mutableStateOf("") }
     val context = LocalContext.current
 
