@@ -398,6 +398,7 @@ class AiProviderClient {
         modelOverride: String = ""
     ): String {
         val rawBase = config.baseUrl.trimEnd('/').ifBlank { "https://generativelanguage.googleapis.com" }
+        val validatedBase = validateEndpoint(rawBase, ProviderType.GEMINI).toString()
         val baseUrl = rawBase.removeSuffix("/v1beta").removeSuffix("/v1")
         val model = modelOverride.ifBlank { config.chatModel.ifBlank { "gemini-3.8-flash" } }.removePrefix("models/")
         val apiKey = config.apiKey.trim()
