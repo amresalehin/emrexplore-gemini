@@ -6,6 +6,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.example.data.local.AppDatabase
 import com.example.data.brain.GalleryAiRepository
+import com.example.data.brain.BrainRepository
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.io.File
@@ -44,7 +45,8 @@ class GalleryAiWorker(appContext: Context, params: WorkerParameters) : Coroutine
             return Result.failure(workDataOf("error" to "Configure and save an AI provider first"))
         }
 
-        val repository = GalleryAiRepository(applicationContext)
+        val galleryRepository = GalleryAiRepository(applicationContext)
+        val brainRepository = BrainRepository(applicationContext)
         var failedThisAttempt = 0
 
         while (true) {
@@ -105,8 +107,8 @@ class GalleryAiWorker(appContext: Context, params: WorkerParameters) : Coroutine
                 try {
                     val uri = android.net.Uri.fromFile(file)
                     val force = store.isForce(path)
-                    val enriched = repository.enrichGalleryImage(file, uri, config, force = force)
-                    val indexed = enriched && repository.indexFile(file, uri, config)
+                    val enriched = galleryRepository.enrichGalleryImage(file, uri, config, force = force)
+                    val indexed = enriched && brainRepository.indexFile(file, uri, config)
                     if (indexed) {
                         store.markCompleted(path)
                         setProgress(
