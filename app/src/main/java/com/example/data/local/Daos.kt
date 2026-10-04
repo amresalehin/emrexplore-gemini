@@ -124,6 +124,9 @@ interface FileIndexDao {
     @Query("SELECT COUNT(*) FROM indexed_files WHERE parentPath = :parentPath")
     suspend fun getCountByParent(parentPath: String): Int
 
+    @Query("SELECT path FROM indexed_files WHERE parentPath = :parentPath")
+    suspend fun getPathsByParent(parentPath: String): List<String>
+
     @Query("SELECT * FROM indexed_files WHERE parentPath = :parentPath ORDER BY isDirectory DESC, name ASC")
     fun getFilesByParentFlow(parentPath: String): Flow<List<IndexedFileEntity>>
 
