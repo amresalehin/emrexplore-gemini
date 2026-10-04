@@ -113,11 +113,12 @@ fun FullscreenMediaViewer(
     var offsetY by remember { mutableFloatStateOf(0f) }
 
     // Reset zoom when index changes
-    LaunchedEffect(currentItem.path) {
+    LaunchedEffect(currentItem?.path) {
+        val item = currentItem ?: return@LaunchedEffect
         showAiSheet = false
         isLoadingAiMetadata = true
         aiMetadata = try {
-            onLoadAiMetadata(currentItem)
+            onLoadAiMetadata(item)
         } catch (_: Exception) {
             null
         }
@@ -546,7 +547,7 @@ fun FullscreenMediaViewer(
                             color = MaterialTheme.colorScheme.primary
                         )
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(tags, key = { it }) { tag ->
+                            itemsIndexed(tags, key = { _, tag -> tag }) { _, tag ->
                                 AssistChip(
                                     onClick = {},
                                     label = { Text("#$tag") },
