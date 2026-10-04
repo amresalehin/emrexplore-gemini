@@ -313,6 +313,10 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                             nodes = uiState.kgNodes,
                             edges = uiState.kgEdges,
                             aiConfig = uiState.aiConfig,
+                            apiConfigured = uiState.aiConfig.isEnabled &&
+                                (com.example.data.ai.ProviderType.fromString(uiState.aiConfig.providerType) ==
+                                    com.example.data.ai.ProviderType.OLLAMA ||
+                                    uiState.aiConfig.apiKey.isNotBlank()),
                             isIndexing = uiState.isKgIndexing,
                             indexingProgress = uiState.kgIndexingProgress,
                             indexingStatus = uiState.kgIndexingStatus,
