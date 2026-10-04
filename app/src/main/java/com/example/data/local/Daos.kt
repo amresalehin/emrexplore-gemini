@@ -97,6 +97,9 @@ interface FileIndexDao {
     @Query("SELECT * FROM indexed_files ORDER BY lastModified DESC LIMIT 100")
     fun getAllIndexedFiles(): Flow<List<IndexedFileEntity>>
 
+    @Query("SELECT * FROM indexed_files WHERE isDirectory = 0")
+    suspend fun getAllIndexedFilesForBrain(): List<IndexedFileEntity>
+
     @Query("SELECT * FROM indexed_files WHERE name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
     suspend fun searchFiles(query: String, limit: Int = 100): List<IndexedFileEntity>
 
@@ -247,7 +250,7 @@ interface KgDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNodes(nodes: List<KgNodeEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEdges(edges: List<KgEdgeEntity>)
 
     // The Brain canvas is a preview, not a database dump. Keep large libraries from
