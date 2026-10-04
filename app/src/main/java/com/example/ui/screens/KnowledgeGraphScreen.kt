@@ -135,8 +135,8 @@ fun KnowledgeGraphScreen(
     indexingStatus: String,
     ragAnswer: RagAnswer?,
     isRagQuerying: Boolean,
-    smartSuggestions: List<String> = emptyList(
-    apiConfigured: Boolean = false,),
+    smartSuggestions: List<String> = emptyList(),
+    apiConfigured: Boolean = false,
     onQueryRag: (String) -> Unit,
     onIndexAllFiles: () -> Unit,
     onOpenAiSettings: () -> Unit,
