@@ -61,14 +61,26 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
+      - name: Detect release signing
+        env:
+          KEYSTORE_B64: ${{ secrets.EMREXPLORE_RELEASE_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.EMREXPLORE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.EMREXPLORE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "HAS_RELEASE_SIGNING=true" >> "$GITHUB_ENV"
+          else
+            echo "HAS_RELEASE_SIGNING=false" >> "$GITHUB_ENV"
+          fi
+
       - name: Configure release signing
+        if: env.HAS_RELEASE_SIGNING == 'true'
         env:
           KEYSTORE_B64: ${{ secrets.EMREXPLORE_RELEASE_KEYSTORE_B64 }}
           STORE_PASSWORD: ${{ secrets.EMREXPLORE_STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.EMREXPLORE_KEY_PASSWORD }}
         run: |
           set -e
-          test -n "$KEYSTORE_B64"
           echo "$KEYSTORE_B64" | base64 --decode > release.keystore
           echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/release.keystore" >> "$GITHUB_ENV"
           echo "STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
@@ -84,20 +96,29 @@ jobs:
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 
       - name: Build release APK
-        run: gradle :app:assembleRelease --stacktrace --no-daemon
+        if: env.HAS_RELEASE_SIGNING == 'true'
 
       - name: Verify APK
         shell: bash
         run: |
           set -e
-          ls -lh app/build/outputs/apk/debug/*.apk app/build/outputs/apk/release/*.apk
-          file app/build/outputs/apk/debug/*.apk app/build/outputs/apk/release/*.apk
-
+          ls -lh app/build/outputs/apk/debug/*.apk
+          file app/build/outputs/apk/debug/*.apk
+          if [ "$HAS_RELEASE_SIGNING" = "true" ]; then
+            ls -lh app/build/outputs/apk/release/*.apk
+            file app/build/outputs/apk/release/*.apk
+          fi
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: emrexplore-debug-apk
-          path: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload release APK
+        if: env.HAS_RELEASE_SIGNING == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: emrexplore-release-apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
