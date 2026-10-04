@@ -147,16 +147,18 @@ fun KnowledgeGraphScreen(
     var selectedNode by remember { mutableStateOf<KgNodeEntity?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    val infiniteTransition = rememberInfiniteTransition(label = "sync_anim")
-    val syncRotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "sync_rot"
-    )
+    val syncRotation = if (isIndexing) {
+        val transition = rememberInfiniteTransition(label = "sync_anim")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "sync_rot"
+        ).value
+    } else 0f
 
     Column(
         modifier = modifier
@@ -460,26 +462,32 @@ fun DeclutteredCanvasView(
         }
     }
 
-    // Animated energy pulses along active edges
-    val infiniteTransition = rememberInfiniteTransition(label = "graph_energy")
-    val pulsePhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "pulse_phase"
-    )
-    val haloPulse by infiniteTransition.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 1.35f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "halo_pulse"
-    )
+    // Avoid a frame-driven animation loop while the graph is idle.
+    val animateGraph = activeNode != null || searchMatches.isNotEmpty()
+    val pulsePhase = if (animateGraph) {
+        val transition = rememberInfiniteTransition(label = "graph_energy")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2200, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "pulse_phase"
+        ).value
+    } else 0f
+    val haloPulse = if (animateGraph) {
+        val transition = rememberInfiniteTransition(label = "graph_halo")
+        transition.animateFloat(
+            initialValue = 0.85f,
+            targetValue = 1.35f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1200, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "halo_pulse"
+        ).value
+    } else 1f
 
     val textMeasurer = rememberTextMeasurer()
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -1274,7 +1282,13 @@ fun computeOrganicGraphLayout(
     val k = 110f
     val kSq = k * k
     val tempMax = 20f
-    val iterations = 45
+    // Layout cost grows quadratically with node count. Fewer iterations keep
+    // larger real-world libraries responsive while preserving a readable layout.
+    val iterations = when {
+        count <= 80 -> 30
+        count <= 160 -> 20
+        else -> 12
+    }
 
     val currentX = positions.mapValues { it.value.x }.toMutableMap()
     val currentY = positions.mapValues { it.value.y }.toMutableMap()
