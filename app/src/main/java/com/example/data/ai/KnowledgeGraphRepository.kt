@@ -712,7 +712,7 @@ class KnowledgeGraphRepository(private val context: Context) {
         } else null
         ragDao.insertChunks(listOf(chunk.copy(
             embeddingJson = vector?.let { embeddingToJson(it) },
-            embeddingModel = vector?.let { config.embeddingModel }
+            embeddingModel = vector?.let { multimodalEmbeddingModel(config) }
         )))
 
         // 4. Build Knowledge Graph nodes & edges
