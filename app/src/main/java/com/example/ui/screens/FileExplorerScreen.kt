@@ -1221,16 +1221,16 @@ fun FileExplorerScreen(
                                         try {
                                             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                                 type = item.mimeType
-                                                val shareUri = try {
-                                                 androidx.core.content.FileProvider.getUriForFile(
-                                                     context,
-                                                     context.packageName + ".fileprovider",
-                                                     File(item.path)
-                                                 )
-                                             } catch (_: Exception) {
-                                                 item.uri
+                                                val shareDir = File(context.cacheDir, "share").apply { mkdirs() }
+                                             val shareCopy = File(shareDir, item.name).also {
+                                                 File(item.path).copyTo(it, overwrite = true)
                                              }
-                                             putExtra(Intent.EXTRA_STREAM, shareUri)
+                                             val shareUri = androidx.core.content.FileProvider.getUriForFile(
+                                                 context,
+                                                 context.packageName + ".fileprovider",
+                                                 shareCopy
+                                             )
+                                                                                          putExtra(Intent.EXTRA_STREAM, shareUri)
                                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                             }
                                             context.startActivity(Intent.createChooser(shareIntent, "Share File"))
