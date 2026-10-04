@@ -112,6 +112,10 @@ class KnowledgeGraphRepository(private val context: Context) {
         kgDao.recomputeDegrees()
     }
 
+    suspend fun getBrainCandidates(): List<com.example.data.local.IndexedFileEntity> = withContext(Dispatchers.IO) {
+        fileIndexDao.getAllIndexedFilesForBrain()
+    }
+
     suspend fun recomputeGraphDegrees() = withContext(Dispatchers.IO) {
         // Expensive orphan cleanup happens once at the end of a sync, not once per file.
         kgDao.deleteOrphanedNonFileNodes()
@@ -232,14 +236,14 @@ class KnowledgeGraphRepository(private val context: Context) {
         }
 
         val result = try {
-            if (isDoc) indexDocumentInternal(file, uri, config) else indexImageInternal(file, uri, config)
+            db.withTransaction {
+                replaceSourceData(filePath)
+                val staged = if (isDoc) indexDocumentInternal(file, uri, config) else indexImageInternal(file, uri, config)
+                if (!staged.success) throw IllegalStateException("Brain indexing failed for $filePath")
+                staged
+            }
         } catch (error: Exception) {
-            Log.w("KGRepo", "Indexing failed for $filePath: ${error.message}")
-            IndexResult(success = false, hasSearchableContent = false)
-        }
-
-        if (!result.success) {
-            fingerprintDao.delete(filePath)
+            Log.w("KGRepo", "Indexing failed; existing Brain data was preserved for $filePath: ${error.message}")
             return@withContext
         }
 
@@ -294,7 +298,6 @@ class KnowledgeGraphRepository(private val context: Context) {
         }
 
         if (contentText.isBlank()) {
-            replaceSourceData(filePath)
             kgDao.insertNodes(listOf(
                 KgNodeEntity(
                     id = "doc:$filePath",
@@ -307,7 +310,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             return IndexResult(success = true, hasSearchableContent = false)
         }
 
-        replaceSourceData(filePath)
+        // Source data was cleared atomically by indexFile() before this stage.
         // 1. Chunk document
         val structuredChunks = chunkStructuredText(contentText)
         val chunks = structuredChunks.map { it.first }
