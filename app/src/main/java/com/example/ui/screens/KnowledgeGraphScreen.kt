@@ -461,16 +461,6 @@ fun DeclutteredCanvasView(
     onDeleteBrainTopic: (String) -> Unit,
     onAskAiForFile: (KgNodeEntity) -> Unit
 ) {
-    if (nodes.isEmpty()) {
-        DeclutteredEmptyState(
-            title = "Connect Your Files",
-            message = "Scan your device photos and documents to discover connections between files by location, camera, and content.",
-            actionLabel = "Scan Device Storage",
-            onAction = onIndexFiles
-        )
-        return
-    }
-
     var selectedFilter by remember { mutableStateOf("ALL") }
     var activeNode by remember { mutableStateOf<KgNodeEntity?>(null) }
     var searchQuery by remember { mutableStateOf("") }
@@ -741,6 +731,47 @@ fun DeclutteredCanvasView(
                 }
                 .testTag("interactive_graph_canvas")
         ) {
+            if (filteredNodes.isEmpty()) {
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(24.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Psychology,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(30.dp)
+                        )
+                        Text(
+                            "No indexed files yet",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "Sync Brain to populate the network. Your topics can still be created above.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Button(
+                            onClick = onIndexFiles,
+                            enabled = !isIndexing
+                        ) {
+                            Text(if (isIndexing) "Indexing…" else "Sync Brain")
+                        }
+                    }
+                }
+            }
+
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val centerOffset = Offset(size.width / 2f, size.height / 2f)
 
