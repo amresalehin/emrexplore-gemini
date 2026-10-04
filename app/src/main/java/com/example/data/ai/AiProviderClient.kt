@@ -189,7 +189,7 @@ class AiProviderClient {
         config.apiKey.trim().takeIf { it.isNotBlank() }?.let { builder.addHeader("Authorization", "Bearer $it") }
         applyCustomHeaders(builder, config)
         okHttpClient.newCall(builder.build()).execute().use { response ->
-            if (!response.isSuccessful) throw RuntimeException("Embedding HTTP ${response.code}: ${response.body?.string().orEmpty()}")
+            if (!response.isSuccessful) throw safeHttpError("Embedding", response.code)
             val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data") ?: throw RuntimeException("Embedding response missing data")
             if (data.length() != texts.size) throw RuntimeException("Embedding response count ${data.length()} != request count ${texts.size}")
             return (0 until data.length()).map { i ->
