@@ -210,7 +210,7 @@ class AiProviderClient {
                 else -> listOpenAiModels(config)
             }
         } catch (error: Exception) {
-            Log.w("AiProviderClient", "Model discovery failed: ${error.message}")
+            Log.w("AiProviderClient", "Model discovery failed: " + error.javaClass.simpleName)
             throw error
         }
     }
