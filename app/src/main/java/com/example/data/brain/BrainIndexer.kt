@@ -1,5 +1,7 @@
 package com.example.data.brain
 
+import androidx.room.withTransaction
+
 import com.example.data.ai.AnalysisResult
 import com.example.data.ai.ExtractedEntity
 import com.example.data.ai.ExtractedRelation
@@ -378,8 +380,8 @@ class BrainIndexer(
         edge.sourceNodeId + "|" + edge.targetNodeId + "|" + edge.relation
 
     private fun sameFileName(value: String, file: File): Boolean {
-        return normalize(value) == normalize(file.name) ||
-            normalize(value) == normalize(file.absolutePath)
+        return BrainIdentity.normalize(value) == BrainIdentity.normalize(file.name) ||
+            BrainIdentity.normalize(value) == BrainIdentity.normalize(file.absolutePath)
     }
 
     private fun typeFromRelation(relation: ExtractedRelation): String {
