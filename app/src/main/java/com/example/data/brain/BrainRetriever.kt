@@ -67,6 +67,13 @@ class BrainRetriever(
             bestHits = mergeLexicalFallback(clean, bestHits, limit)
         }
 
+        bestHits = bestHits
+            .filter { hit ->
+                val file = File(hit.chunk.filePath)
+                file.isFile && file.canRead()
+            }
+            .take(limit)
+
         val paths = bestHits.map { it.chunk.filePath }.distinct().take(MAX_FILE_SOURCES)
         val fileNodes = if (paths.isEmpty()) {
             emptyList()
