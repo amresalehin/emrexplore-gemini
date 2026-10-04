@@ -47,7 +47,7 @@ class KnowledgeGraphRepository(private val context: Context) {
     private val brainIndexVersion = "brain-v3"
 
     private fun isAiReady(config: AiProviderConfigEntity): Boolean =
-        config.isEnabled && (ProviderType.fromString(config.providerType) in setOf(ProviderType.OLLAMA, ProviderType.OPENAI_COMPATIBLE) || config.apiKey.isNotBlank())
+        config.isEnabled && (ProviderType.fromString(config.providerType) in setOf(ProviderType.OLLAMA, ProviderType.OPENAI_COMPATIBLE, ProviderType.CUSTOM) || config.apiKey.isNotBlank())
 
     private fun requiresEmbeddings(config: AiProviderConfigEntity): Boolean =
         isAiReady(config) && config.embeddingModel.isNotBlank()
