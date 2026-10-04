@@ -2,7 +2,6 @@ package com.example.data.brain
 
 import android.content.Context
 import androidx.room.withTransaction
-import com.example.data.ai.AnalysisResult
 import com.example.data.ai.AiProviderClient
 import com.example.data.brain.AttachedAiFile
 import com.example.data.ai.AvailableAiModel
@@ -19,17 +18,12 @@ import com.example.data.brain.BrainNodeEntity
 import com.example.data.brain.BrainChunkEntity
 import com.example.data.local.IndexedFileEntity
 import com.example.data.local.AppDatabase
-import com.example.data.media.MediaMetadataRepository
-import com.example.data.model.MediaItem
-import com.example.data.metadata.MetadataWriter
 import com.example.data.repository.FileRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.util.Locale
 import java.util.UUID
@@ -73,7 +67,6 @@ class BrainRepository(private val context: Context) {
         client = brainAi
     )
     private val fileRepository = FileRepository(appContext)
-    private val mediaMetadataRepository = MediaMetadataRepository(appContext)
 
     val allNodesFlow: Flow<List<BrainNodeEntity>> = brainNodeDao.observePreview().map { it }
     val allEdgesFlow: Flow<List<BrainEdgeEntity>> = brainNodeDao.observeEdges().map { it }
@@ -363,83 +356,6 @@ class BrainRepository(private val context: Context) {
             suggestions += "Taken with " + node.label
         }
         suggestions.distinct().take(12)
-    }
-
-    suspend fun enrichGalleryImage(
-        file: File,
-        uri: android.net.Uri?,
-        config: AiProviderConfigEntity,
-        force: Boolean = false
-    ): Boolean = withContext(Dispatchers.IO) {
-        if (!file.exists() || !file.isFile || !BrainContentReader.IMAGE_EXTENSIONS.contains(file.extension.lowercase(Locale.US))) {
-            return@withContext false
-        }
-
-        val normalized = normalizeAiConfig(config)
-        val input = runCatching { contentReader.read(file, normalized) }.getOrNull() ?: return@withContext false
-        val metadata = mediaMetadataRepository.getFreshAiEnrichment(
-            file.absolutePath,
-            file.length(),
-            file.lastModified(),
-            normalized.visionModel
-        )
-
-        if (!force && metadata != null) return@withContext true
-
-        val analysis = if (
-            normalized.isEnabled &&
-            (isKeylessAiConfig(normalized) || normalized.apiKey.isNotBlank())
-        ) {
-            client.analyzeImage(input.imageBase64, input.metadataSummary, file.name, normalized)
-        } else {
-            AnalysisResult(
-                summary = input.metadataSummary.ifBlank { "Image " + file.name },
-                tags = input.metadata?.summary?.keywords.orEmpty().take(8)
-            )
-        }
-
-        val item = MediaItem(
-            id = file.absolutePath.hashCode().toLong(),
-            uri = uri ?: android.net.Uri.fromFile(file),
-            name = file.name,
-            path = file.absolutePath,
-            size = file.length(),
-            dateAdded = file.lastModified(),
-            mimeType = input.mimeType,
-            isVideo = false
-        )
-        val tagsJson = JSONArray(analysis.tags).toString()
-        val entitiesJson = JSONArray().apply {
-            analysis.entities.forEach {
-                put(JSONObject().apply {
-                    put("name", it.name.trim())
-                    put("type", it.type.trim().uppercase(Locale.US))
-                    put("confidence", it.confidence)
-                })
-            }
-        }.toString()
-        val relationsJson = JSONArray().apply {
-            analysis.relations.forEach {
-                put(JSONObject().apply {
-                    put("source", it.source.trim())
-                    put("relation", it.relation.trim())
-                    put("target", it.target.trim())
-                    put("evidence", it.evidence.trim())
-                })
-            }
-        }.toString()
-
-        MetadataWriter.writeAiMetadata(file, analysis.summary.trim(), analysis.tags)
-        mediaMetadataRepository.getOrRead(item, requireOriginalLocation = false)
-        mediaMetadataRepository.saveAiEnrichment(
-            item = item,
-            caption = analysis.summary.trim(),
-            tagsJson = tagsJson,
-            entitiesJson = entitiesJson,
-            relationsJson = relationsJson,
-            model = normalized.visionModel
-        )
-        true
     }
 
     suspend fun queryFileSpecifically(
