@@ -148,7 +148,7 @@ data class AiProviderConfigEntity(
     val customHeadersJson: String = "{}",
     val temperature: Float = 0.2f,
     val isEnabled: Boolean = false,
-    val autoSync: Boolean = true,
+    val autoSync: Boolean = false,
     val lastSyncTimestamp: Long = 0L
 )
 
