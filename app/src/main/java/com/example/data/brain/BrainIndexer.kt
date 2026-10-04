@@ -250,6 +250,19 @@ class BrainIndexer(
     }
 
     private suspend fun fail(path: String, message: String, startedAt: Long): BrainIndexOutcome {
+        documentDao.insert(
+            BrainDocumentEntity(
+                path = path,
+                name = File(path).name,
+                size = File(path).length(),
+                lastModified = File(path).lastModified(),
+                contentHash = "",
+                modelSignature = "",
+                state = BrainIndexStates.FAILED,
+                error = message.take(500),
+                indexedAt = System.currentTimeMillis()
+            )
+        )
         runDao.insert(
             BrainRunEntity(
                 id = java.util.UUID.randomUUID().toString(),
