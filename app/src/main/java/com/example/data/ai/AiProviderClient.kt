@@ -237,8 +237,8 @@ class AiProviderClient {
     ): String {
         val provider = ProviderType.fromString(config.providerType)
         return when (provider) {
-            ProviderType.GEMINI -> executeGemini(prompt, null, config)
-            else -> executeOpenAi(prompt, null, config)
+            ProviderType.GEMINI -> executeGemini(prompt, null, config, config.chatModel)
+            else -> executeOpenAi(prompt, null, config, config.chatModel)
         }
     }
 
@@ -248,19 +248,21 @@ class AiProviderClient {
         config: AiProviderConfigEntity
     ): String {
         val provider = ProviderType.fromString(config.providerType)
+        val model = config.visionModel.ifBlank { config.chatModel }
         return when (provider) {
-            ProviderType.GEMINI -> executeGemini(prompt, base64Jpeg, config)
-            else -> executeOpenAi(prompt, base64Jpeg, config)
+            ProviderType.GEMINI -> executeGemini(prompt, base64Jpeg, config, model)
+            else -> executeOpenAi(prompt, base64Jpeg, config, model)
         }
     }
 
     private fun executeGemini(
         prompt: String,
         base64Jpeg: String?,
-        config: AiProviderConfigEntity
+        config: AiProviderConfigEntity,
+        modelOverride: String = ""
     ): String {
         val baseUrl = if (config.baseUrl.isNotBlank()) config.baseUrl.trimEnd('/') else "https://generativelanguage.googleapis.com"
-        val model = if (config.visionModel.isNotBlank()) config.visionModel else if (config.chatModel.isNotBlank()) config.chatModel else "gemini-3.5-flash"
+        val model = modelOverride.ifBlank { config.chatModel.ifBlank { "gemini-3.5-flash" } }
         val apiKey = config.apiKey.trim()
 
         val url = "$baseUrl/v1beta/models/$model:generateContent?key=$apiKey"
@@ -308,11 +310,12 @@ class AiProviderClient {
     private fun executeOpenAi(
         prompt: String,
         base64Jpeg: String?,
-        config: AiProviderConfigEntity
+        config: AiProviderConfigEntity,
+        modelOverride: String = ""
     ): String {
         val rawBase = if (config.baseUrl.isNotBlank()) config.baseUrl.trimEnd('/') else "https://api.openai.com/v1"
         val url = if (rawBase.endsWith("/chat/completions")) rawBase else "$rawBase/chat/completions"
-        val model = if (config.chatModel.isNotBlank()) config.chatModel else "gpt-4o-mini"
+        val model = modelOverride.ifBlank { config.chatModel.ifBlank { "gpt-4o-mini" } }
         val apiKey = config.apiKey.trim()
 
         val messagesArray = JSONArray()
