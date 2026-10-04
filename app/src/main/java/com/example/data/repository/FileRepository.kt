@@ -516,14 +516,14 @@ class FileRepository(private val context: Context) {
                     ?.toSet()
                     ?: emptySet()
                 if (roomCount > 0 && roomCount == actualChildPaths.size) {
-                    val entities = fileIndexDao.getFilesByParent(dirPath, limit = pageSize, offset = page * pageSize)
-                    val entityCountMatchesFilesystem = entities.all { entity ->
-                        entity.path in actualChildPaths && File(entity.path).exists()
-                    }
-                    if (!entityCountMatchesFilesystem) {
-                        // Stale Room index: fall through to the direct filesystem path.
-                    } else {
-                    val favSet = try { favoriteDao.getAllFavoritePathsSync().toHashSet() } catch (e: Exception) { emptySet() }
+                    val indexedPaths = fileIndexDao.getPathsByParent(dirPath).map { File(it).absolutePath }.toSet()
+                    if (indexedPaths == actualChildPaths) {
+                        val entities = fileIndexDao.getFilesByParentPaged(
+                            dirPath,
+                            limit = pageSize,
+                            offset = page * pageSize
+                        )
+                        val favSet = try { favoriteDao.getAllFavoritePathsSync().toHashSet() } catch (e: Exception) { emptySet() }
                     val items = entities
                         .filter { showHidden || !it.name.startsWith(".") }
                         .map { entity ->
