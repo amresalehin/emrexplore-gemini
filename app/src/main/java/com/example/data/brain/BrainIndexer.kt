@@ -62,9 +62,14 @@ class BrainIndexer(
                 return fail(path, "No indexable chunks could be created", startedAt)
             }
 
-            val (embeddings, embeddingModel) = embed(chunkTexts, config)
+            val embeddingBundle = embed(chunkTexts, config)
+            val embeddings = embeddingBundle.primary
+            val embeddingModel = embeddingBundle.primaryModel
             if (chunkTexts.isNotEmpty() &&
-                (embeddings.size != chunkTexts.size || embeddings.any { it.isEmpty() })
+                (embeddings.size != chunkTexts.size ||
+                    embeddings.any { it.isEmpty() } ||
+                    embeddingBundle.offline.size != chunkTexts.size ||
+                    embeddingBundle.offline.any { it.isEmpty() })
             ) {
                 return fail(path, "Embedding generation returned incomplete vectors", startedAt)
             }
@@ -183,6 +188,7 @@ class BrainIndexer(
                     content = text,
                     embeddingJson = OfflineEmbeddingEngine.embeddingToJson(embeddings[index]),
                     embeddingModel = embeddingModel,
+                    offlineEmbeddingJson = OfflineEmbeddingEngine.embeddingToJson(embeddingBundle.offline[index]),
                     locator = if (input.isImage) file.name else "chunk-" + index,
                     pageNumber = null,
                     indexedAt = now
@@ -295,26 +301,39 @@ class BrainIndexer(
         }
     }
 
+    private data class EmbeddingBundle(
+        val primary: List<FloatArray>,
+        val primaryModel: String,
+        val offline: List<FloatArray>
+    )
+
     private suspend fun embed(
         texts: List<String>,
         config: AiProviderConfigEntity
-    ): Pair<List<FloatArray>, String> {
-        if (texts.isEmpty()) return emptyList<FloatArray>() to OfflineEmbeddingEngine.MODEL_NAME
+    ): EmbeddingBundle {
+        if (texts.isEmpty()) {
+            return EmbeddingBundle(emptyList(), OfflineEmbeddingEngine.MODEL_NAME, emptyList())
+        }
+
+        val offline = OfflineEmbeddingEngine.embedTextPassages(texts)
         val configuredModel = config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() }
+
         if (config.isEnabled && configuredModel.isNotBlank() &&
             (isKeylessAiConfig(config) || config.apiKey.isNotBlank())
         ) {
             val online = runCatching {
                 client.embedTextPassages(texts, config)
             }.getOrNull()
+
             if (online != null &&
                 online.size == texts.size &&
                 online.all { it.isNotEmpty() }
             ) {
-                return online to configuredModel
+                return EmbeddingBundle(online, configuredModel, offline)
             }
         }
-        return OfflineEmbeddingEngine.embedTextPassages(texts) to OfflineEmbeddingEngine.MODEL_NAME
+
+        return EmbeddingBundle(offline, OfflineEmbeddingEngine.MODEL_NAME, offline)
     }
 
     private fun chunkText(text: String): List<String> {
