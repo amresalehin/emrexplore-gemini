@@ -29,8 +29,8 @@ import com.example.data.media.MediaRepository
 import com.example.data.media.FullscreenMediaSource
 import com.example.data.media.MediaViewerWindow
 import com.example.data.media.MediaMetadataRepository
-import com.example.data.ai.KnowledgeGraphRepository
 import com.example.data.ai.GalleryAiOperationStore
+import com.example.data.brain.BrainRepository
 import com.example.data.ai.AvailableAiModel
 import com.example.data.ai.ConnectedDotsItem
 import com.example.data.ai.ConnectionTestResult
@@ -281,7 +281,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     private val metadataExtractor = MetadataExtractor(application.applicationContext)
     private val mediaRepository = MediaRepository(application)
     private val mediaMetadataRepository = MediaMetadataRepository(application.applicationContext)
-    private val kgRepository = KnowledgeGraphRepository(application)
+    private val brainRepository = KnowledgeGraphRepository(application)
     private val galleryAiStore = GalleryAiOperationStore(application.applicationContext)
     private val galleryFilterFlow = MutableStateFlow<MediaFilter?>(MediaFilter.ALL)
     private val galleryDateFilterFlow = MutableStateFlow(GalleryDateFilter.ALL)
@@ -416,7 +416,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         // Collect Room Database Flows
         // Suggestions are stable during a sync; refresh once at startup and again after indexing completes.
         viewModelScope.launch(Dispatchers.IO) {
-            val suggestions = try { kgRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
+            val suggestions = try { brainRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
             _uiState.update { it.copy(kgSmartSuggestions = suggestions) }
         }
         viewModelScope.launch {
@@ -585,17 +585,17 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
         // Collect Knowledge Graph and AI config flows
         viewModelScope.launch {
-            kgRepository.allNodesFlow.collectLatest { nodes ->
+            brainRepository.allNodesFlow.collectLatest { nodes ->
                 _uiState.update { it.copy(kgNodes = nodes) }
             }
         }
         viewModelScope.launch {
-            kgRepository.allEdgesFlow.collectLatest { edges ->
+            brainRepository.allEdgesFlow.collectLatest { edges ->
                 _uiState.update { it.copy(kgEdges = edges) }
             }
         }
         viewModelScope.launch {
-            kgRepository.brainTopicsFlow.collectLatest { topics ->
+            brainRepository.brainTopicsFlow.collectLatest { topics ->
                 val previousId = _uiState.value.selectedBrainTopicId
                 val selectedId = previousId?.takeIf { id -> topics.any { it.id == id } }
                     ?: topics.firstOrNull()?.id
@@ -612,7 +612,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
 
         viewModelScope.launch {
-            kgRepository.aiConfigFlow.collectLatest { config ->
+            brainRepository.aiConfigFlow.collectLatest { config ->
                 val selectedTopicId = _uiState.value.selectedBrainTopicId
                 _uiState.update {
                     it.copy(
@@ -626,17 +626,17 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         viewModelScope.launch {
-            kgRepository.chunkCountFlow.collectLatest { count ->
+            brainRepository.chunkCountFlow.collectLatest { count ->
                 _uiState.update { it.copy(kgChunkCount = count) }
             }
         }
         viewModelScope.launch {
-            kgRepository.nodeCountFlow.collectLatest { count ->
+            brainRepository.nodeCountFlow.collectLatest { count ->
                 _uiState.update { it.copy(kgNodeCount = count) }
             }
         }
         viewModelScope.launch {
-            kgRepository.edgeCountFlow.collectLatest { count ->
+            brainRepository.edgeCountFlow.collectLatest { count ->
                 _uiState.update { it.copy(kgEdgeCount = count) }
             }
         }
@@ -1388,7 +1388,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val ok = repository.renameFile(oldPath, newName.trim())
             if (ok) {
-                kgRepository.removeIndexedSource(oldPath)
+                val newPath = File(File(oldPath).parentFile, newName).absolutePath
+                brainRepository.onFileRenamed(oldPath, newPath)
                 showMessage("Renamed to '$newName'")
                 loadFiles()
                 refreshGallery()
@@ -1402,7 +1403,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val ok = repository.deleteFile(path, toTrash)
             if (ok) {
-                kgRepository.removeIndexedSource(path)
+                brainRepository.removeIndexedSource(path)
                 showMessage(if (toTrash) "Moved to Recycle Bin" else "Permanently deleted")
                 loadFiles()
                 refreshGallery()
@@ -1419,7 +1420,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             var count = 0
             for (p in selected) {
                 if (repository.deleteFile(p, toTrash)) {
-                    kgRepository.removeIndexedSource(p)
+                    brainRepository.removeIndexedSource(p)
                     count++
                 }
             }
@@ -2028,11 +2029,19 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val ok = repository.writeText(file.path, content)
             if (ok) {
-                showMessage("Saved changes to ${file.name}")
+                val reindexed = brainRepository.indexFile(
+                    File(file.path),
+                    config = brainRepository.getAiConfig(),
+                    force = true
+                )
+                showMessage(
+                    if (reindexed) "Saved changes to " + file.name
+                    else "Saved " + file.name + "; Brain reindex failed"
+                )
                 _uiState.update { it.copy(isEditingText = false) }
                 loadFiles()
             } else {
-                showMessage("Failed to save ${file.name}")
+                showMessage("Failed to save " + file.name)
             }
         }
     }
@@ -2209,6 +2218,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val ok = repository.restoreTrashItem(trashEntity)
             if (ok) {
+                brainRepository.indexPath(File(trashEntity.originalPath))
                 showMessage("Restored ${trashEntity.name}")
                 loadFiles()
                 loadStorageStats()
@@ -2256,7 +2266,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 apiKey = config.apiKey.trim(),
                 baseUrl = config.baseUrl.trim()
             )
-            kgRepository.saveAiConfig(saved)
+            brainRepository.saveAiConfig(saved)
             _uiState.update { it.copy(aiConfig = saved, aiConfigLoaded = true) }
             showMessage("AI settings saved")
         }
@@ -2266,7 +2276,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _uiState.update { it.copy(isFetchingAiModels = true, aiModelFetchError = null) }
             try {
-                val all = kgRepository.listAiModels(config)
+                val all = brainRepository.listAiModels(config)
                 _uiState.update {
                     it.copy(
                         aiModels = all.filter { model -> model.supportsChat },
@@ -2286,14 +2296,14 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     fun testAiConnection(config: AiProviderConfigEntity) {
         viewModelScope.launch {
             _uiState.update { it.copy(isTestingAiConnection = true, aiTestResult = null) }
-            val result = kgRepository.testConnection(config)
+            val result = brainRepository.testConnection(config)
             _uiState.update { it.copy(isTestingAiConnection = false, aiTestResult = result) }
         }
     }
 
     fun clearKnowledgeGraph() {
         viewModelScope.launch {
-            kgRepository.clearGraph()
+            brainRepository.clearGraph()
             _uiState.update { it.copy(ragAnswer = null, activeFileConnectedDots = emptyList()) }
             showMessage("Knowledge Graph cleared")
         }
@@ -2362,9 +2372,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 .map { if (it.isUser) "User" to it.text else "AI" to it.text }
 
             val answer = if (attached != null && attached.file.exists()) {
-                kgRepository.queryFileSpecifically(attached.file, question.trim(), history)
+                brainRepository.queryFileSpecifically(attached.file, question.trim(), history)
             } else {
-                kgRepository.queryRag(question.trim(), history)
+                brainRepository.queryRag(question.trim(), history)
             }
 
             val aiMsg = AskAiChatMessage(
@@ -2402,7 +2412,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     fun saveBrainTopic(heading: String, description: String, existingId: String?) {
         viewModelScope.launch {
             try {
-                val saved = kgRepository.saveBrainTopic(existingId, heading, description)
+                val saved = brainRepository.saveBrainTopic(existingId, heading, description)
                 _uiState.update {
                     it.copy(
                         selectedBrainTopicId = saved.id,
@@ -2419,7 +2429,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun deleteBrainTopic(topicId: String) {
         viewModelScope.launch {
-            kgRepository.deleteBrainTopic(topicId)
+            brainRepository.deleteBrainTopic(topicId)
             val remaining = _uiState.value.brainTopics.filterNot { it.id == topicId }
             val nextId = remaining.firstOrNull()?.id
             _uiState.update {
@@ -2459,7 +2469,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 )
             }
             try {
-                val files = kgRepository.getRelevantFilesForBrainTopic(topic, _uiState.value.aiConfig, 12)
+                val files = brainRepository.getRelevantFilesForBrainTopic(topic, _uiState.value.aiConfig, 12)
                 val config = _uiState.value.aiConfig
                 _uiState.update {
                     it.copy(
@@ -2486,28 +2496,13 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
     fun loadConnectedDotsForFile(filePath: String) {
         viewModelScope.launch {
-            val dots = kgRepository.getConnectedDotsForFile(filePath)
+            val dots = brainRepository.getConnectedDotsForFile(filePath)
             _uiState.update { it.copy(activeFileConnectedDots = dots) }
         }
     }
 
-    private fun isBrainAiConfigured(config: AiProviderConfigEntity): Boolean {
-        val provider = com.example.data.ai.ProviderType.fromString(config.providerType)
-        val keylessProvider = provider in setOf(
-            com.example.data.ai.ProviderType.OLLAMA,
-            com.example.data.ai.ProviderType.OPENAI_COMPATIBLE,
-            com.example.data.ai.ProviderType.CUSTOM
-        )
-        return config.isEnabled && (keylessProvider || config.apiKey.isNotBlank())
-    }
-
     fun indexAllFilesForKnowledgeGraph() {
         if (_uiState.value.isKgIndexing) return
-        val config = _uiState.value.aiConfig
-        if (!isBrainAiConfigured(config)) {
-            _uiState.update { it.copy(kgIndexingStatus = "Configure and save an AI provider first") }
-            return
-        }
         _uiState.update {
             it.copy(
                 isKgIndexing = true,
@@ -2516,7 +2511,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>()
-            .setInputData(androidx.work.workDataOf("manual" to true))
+            .setInputData(androidx.work.workDataOf("force" to true))
             .build()
         WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
             com.example.data.ai.BrainIndexWorker.UNIQUE_NAME,
@@ -2537,13 +2532,21 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                             state.copy(
                                 isKgIndexing = true,
                                 kgIndexingProgress = if (total > 0) current.toFloat() / total else 0f,
-                                kgIndexingStatus = if (path.isBlank()) "Indexing Brain..." else "Connecting dots: ${File(path).name} ($current/$total)"
+                                kgIndexingStatus = if (path.isBlank()) "Indexing Brain..." else "Indexing: " + File(path).name + " (" + current + "/" + total + ")"
                             )
                         }
                         androidx.work.WorkInfo.State.SUCCEEDED -> {
-                            val suggestions = try { kgRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
+                            val indexed = info.outputData.getInt("indexed", 0)
+                            val skipped = info.outputData.getInt("skipped", 0)
+                            val failed = info.outputData.getInt("failed", 0)
+                            val suggestions = try { brainRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
                             _uiState.update { state ->
-                                state.copy(isKgIndexing = false, kgIndexingProgress = 1f, kgIndexingStatus = "Brain indexing complete", kgSmartSuggestions = suggestions)
+                                state.copy(
+                                    isKgIndexing = false,
+                                    kgIndexingProgress = 1f,
+                                    kgIndexingStatus = "Brain ready — " + indexed + " indexed, " + skipped + " skipped, " + failed + " failed",
+                                    kgSmartSuggestions = suggestions
+                                )
                             }
                             return@collectLatest
                         }
