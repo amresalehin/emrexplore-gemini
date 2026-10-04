@@ -4,13 +4,13 @@ import android.content.Context
 import androidx.room.withTransaction
 import com.example.data.ai.AnalysisResult
 import com.example.data.ai.AiProviderClient
-import com.example.data.ai.AskAiChatMessage
 import com.example.data.ai.AttachedAiFile
 import com.example.data.ai.AvailableAiModel
 import com.example.data.ai.ConnectedDotsItem
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.ai.ExtractedEntity
 import com.example.data.ai.ProviderType
+import com.example.data.ai.BrainTopicFile
 import com.example.data.ai.RagAnswer
 import com.example.data.ai.isKeylessAiConfig
 import com.example.data.local.AiProviderConfigEntity
@@ -34,11 +34,6 @@ import org.json.JSONObject
 import java.io.File
 import java.util.Locale
 import java.util.UUID
-
-data class BrainTopicFile(
-    val node: KgNodeEntity,
-    val score: Float
-)
 
 data class BrainSyncResult(
     val total: Int,
@@ -83,12 +78,7 @@ class BrainRepository(private val context: Context) {
     val allNodesFlow: Flow<List<KgNodeEntity>> = brainNodeDao.observePreview().map { it }
     val allEdgesFlow: Flow<List<KgEdgeEntity>> = brainNodeDao.observeEdges().map { it }
     val nodeCountFlow: Flow<Int> = brainNodeDao.countFlow()
-    val edgeCountFlow: Flow<Int> = kotlinx.coroutines.flow.flow {
-        while (true) {
-            emit(brainEdgeDaoCount())
-            kotlinx.coroutines.delay(250)
-        }
-    }
+    val edgeCountFlow: Flow<Int> = brainEdgeDao.countFlow()
     val chunkCountFlow: Flow<Int> = brainChunkDao.countFlow()
 
     val aiConfigFlow: Flow<AiProviderConfigEntity?> = aiConfigDao.getConfigFlow().map {
@@ -140,6 +130,7 @@ class BrainRepository(private val context: Context) {
         // Refresh the filesystem index first so newly created/moved files can be seen.
         runCatching { fileRepository.indexStorage(force = false) }
 
+        val config = getAiConfig()
         val candidates = fileIndexDao.getAllIndexedFilesForBrain()
             .filter { it.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS }
             .filterNot { it.name.startsWith(".") }
@@ -164,7 +155,7 @@ class BrainRepository(private val context: Context) {
                 continue
             }
 
-            val outcome = indexer.index(File(candidate.path), getAiConfig(), force)
+            val outcome = indexer.index(File(candidate.path), config, force)
             when {
                 outcome.success && outcome.skipped -> skipped++
                 outcome.success -> indexed++
@@ -611,10 +602,6 @@ class BrainRepository(private val context: Context) {
 
     private fun encryptConfig(config: AiProviderConfigEntity): AiProviderConfigEntity =
         config.copy(apiKey = com.example.data.security.ApiKeyProtector.encrypt(config.apiKey))
-
-    private suspend fun brainEdgeDaoCount(): Int {
-        return brainEdgeDao.forNodes(emptyList()).size
-    }
 
     private fun fileNodeId(path: String): String = "file:" + stableKey(path)
 
