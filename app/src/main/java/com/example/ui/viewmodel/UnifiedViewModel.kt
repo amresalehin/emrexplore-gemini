@@ -2126,7 +2126,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     // --- Knowledge Graph & RAG Actions ---
 
     fun setShowAiSettings(show: Boolean) {
-        _uiState.update { it.copy(isAiSettingsScreenOpen = show, showAiSettingsDialog = show) }
+        _uiState.update { it.copy(isAiSettingsScreenOpen = show, showAiSettingsDialog = false) }
     }
 
     fun saveAiConfig(config: AiProviderConfigEntity) {
