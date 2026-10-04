@@ -44,7 +44,13 @@ class BrainEngine(
         // the high-value recall path for paraphrases and concepts that do not share
         // exact words with the query. The scan itself remains bounded for resource use.
         val queryEmbedding = if (semanticAvailable && question.isNotBlank()) {
-            client.embedTexts(listOf(question), config).firstOrNull()
+            try {
+                client.embedTexts(listOf(question), config).firstOrNull()
+            } catch (_: Exception) {
+                // Semantic retrieval is optional at query time. Fall back to lexical retrieval
+                // when the embedding provider is temporarily unavailable.
+                null
+            }
         } else null
 
         val candidates = linkedMapOf<String, Float>()
