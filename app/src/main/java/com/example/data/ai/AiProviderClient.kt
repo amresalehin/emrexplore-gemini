@@ -157,7 +157,7 @@ class AiProviderClient {
     }
 
     private fun embedOllama(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> {
-        val base = config.baseUrl.trimEnd('/').removeSuffix("/v1")
+        val base = validateEndpoint(config.baseUrl.trimEnd('/').removeSuffix("/v1"), ProviderType.OLLAMA).toString()
         val url = "$base/api/embed"
         val root = JSONObject()
             .put("model", config.embeddingModel)
