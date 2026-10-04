@@ -290,6 +290,8 @@ class KnowledgeGraphRepository(private val context: Context) {
             relationsJson = relationsJson,
             model = config.visionModel
         )
+        // Force Brain to rebuild its derived representation from the newly enriched image.
+        fingerprintDao.delete(file.absolutePath)
         true
     }
     suspend fun indexFile(file: File, config: AiProviderConfigEntity): Boolean =
