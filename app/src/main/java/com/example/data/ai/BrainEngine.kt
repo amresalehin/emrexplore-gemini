@@ -31,26 +31,28 @@ class BrainEngine(
         }
 
         val textModel = config.textEmbeddingModel.ifBlank { config.embeddingModel }
-        val multimodalModel = config.multimodalEmbeddingModel.ifBlank { textModel }
+        val multimodalModel = config.multimodalEmbeddingModel
         if (textModel.isBlank() && multimodalModel.isBlank()) {
             throw IllegalStateException("Semantic retrieval requires at least one embedding model")
         }
 
         val perModelLimit = (limit * 3).coerceAtLeast(8)
-        val textResults = if (textModel.isNotBlank()) {
-            runCatching {
-                val queryEmbedding = client.embedTextQuery(question, config)
-                    ?: throw IllegalStateException("Text embedding provider returned no query embedding")
-                retrieveByModel(queryEmbedding, textModel, "DOCUMENT", perModelLimit)
-            }.getOrElse { emptyList() }
+        val textEmbedding = if (textModel.isNotBlank()) {
+            runCatching { client.embedTextQuery(question, config) }.getOrNull()
+        } else null
+
+        val textResults = if (textEmbedding != null && textModel.isNotBlank()) {
+            retrieveByModel(textEmbedding, textModel, setOf("DOCUMENT"), perModelLimit)
         } else emptyList()
 
-        val multimodalResults = if (multimodalModel.isNotBlank()) {
-            runCatching {
-                val queryEmbedding = client.embedMultimodalQuery(question, config)
-                    ?: throw IllegalStateException("Multimodal embedding provider returned no query embedding")
-                retrieveByModel(queryEmbedding, multimodalModel, "IMAGE", perModelLimit)
-            }.getOrElse { emptyList() }
+        val multimodalEmbedding = when {
+            multimodalModel.isBlank() -> null
+            multimodalModel == textModel && textEmbedding != null -> textEmbedding
+            else -> runCatching { client.embedMultimodalQuery(question, config) }.getOrNull()
+        }
+
+        val multimodalResults = if (multimodalEmbedding != null && multimodalModel.isNotBlank()) {
+            retrieveByModel(multimodalEmbedding, multimodalModel, setOf("IMAGE"), perModelLimit)
         } else emptyList()
 
         if (textResults.isEmpty() && multimodalResults.isEmpty()) {
@@ -67,9 +69,11 @@ class BrainEngine(
         addResults(textResults, 0.55f)
         addResults(multimodalResults, 0.45f)
 
-        val ids = fused.entries.sortedByDescending { it.value }
+        val ids = fused.entries
+            .sortedByDescending { it.value }
             .take((limit * 4).coerceAtLeast(limit))
             .map { it.key }
+
         ragDao.getChunksByIds(ids)
             .sortedByDescending { fused[it.chunkId] ?: 0f }
             .take(limit)
@@ -79,7 +83,7 @@ class BrainEngine(
     private suspend fun retrieveByModel(
         queryEmbedding: FloatArray,
         embeddingModel: String,
-        fileType: String,
+        fileTypes: Set<String>,
         limit: Int
     ): List<ScoredChunk> {
         val candidates = linkedMapOf<String, Float>()
@@ -87,7 +91,8 @@ class BrainEngine(
         var offset = 0
         var scanned = 0
 
-        while (scanned < MAX_SEMANTIC_ROWS &&
+        while (
+            scanned < MAX_SEMANTIC_ROWS &&
             (System.nanoTime() - startedAt) / 1_000_000L < SEMANTIC_TIME_BUDGET_MS
         ) {
             val pageLimit = minOf(SEMANTIC_PAGE_SIZE, MAX_SEMANTIC_ROWS - scanned)
@@ -108,15 +113,19 @@ class BrainEngine(
         }
 
         if (candidates.isEmpty()) return emptyList()
-        val topIds = candidates.entries.sortedByDescending { it.value }
+
+        val topIds = candidates.entries
+            .sortedByDescending { it.value }
             .take((limit * 3).coerceAtLeast(limit))
             .map { it.key }
+
         return ragDao.getChunksByIds(topIds)
-            .filter { it.fileType.equals(fileType, ignoreCase = true) }
+            .filter { it.fileType.uppercase() in fileTypes }
             .sortedByDescending { candidates[it.chunkId] ?: 0f }
             .take(limit)
             .map { ScoredChunk(it, candidates[it.chunkId] ?: 0f) }
     }
+
     suspend fun graphContext(
         seedNodes: List<KgNodeEntity>,
         maxDepth: Int = 3,
