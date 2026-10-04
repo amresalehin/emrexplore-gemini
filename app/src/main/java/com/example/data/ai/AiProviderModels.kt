@@ -9,7 +9,8 @@ enum class ProviderType(
     val defaultBaseUrl: String,
     val defaultModel: String,
     val defaultVisionModel: String,
-    val defaultEmbeddingModel: String,
+    val defaultTextEmbeddingModel: String,
+    val defaultMultimodalEmbeddingModel: String,
     val keyHint: String
 ) {
     GEMINI(
@@ -18,7 +19,8 @@ enum class ProviderType(
         defaultBaseUrl = "https://generativelanguage.googleapis.com/",
         defaultModel = "gemini-3.8-flash",
         defaultVisionModel = "gemini-3.8-flash",
-        defaultEmbeddingModel = "gemini-embedding-2",
+        defaultTextEmbeddingModel = "gemini-embedding-2",
+        defaultMultimodalEmbeddingModel = "",
         keyHint = "AIzaSy..."
     ),
     OPENAI_COMPATIBLE(
@@ -27,7 +29,8 @@ enum class ProviderType(
         defaultBaseUrl = "https://integrate.api.nvidia.com/v1",
         defaultModel = "nvidia/nemotron-3-super-120b-a12b",
         defaultVisionModel = "meta/llama-3.2-11b-vision-instruct",
-        defaultEmbeddingModel = "nvidia/llama-nemotron-embed-vl-1b-v2",
+        defaultTextEmbeddingModel = "nvidia/nv-embedqa-e5-v5",
+        defaultMultimodalEmbeddingModel = "nvidia/llama-nemotron-embed-vl-1b-v2",
         keyHint = "API key"
     ),
     OLLAMA(
@@ -36,7 +39,8 @@ enum class ProviderType(
         defaultBaseUrl = "http://10.0.2.2:11434/v1/",
         defaultModel = "llama3.2:latest",
         defaultVisionModel = "llama3.2-vision:latest",
-        defaultEmbeddingModel = "nomic-embed-text:latest",
+        defaultTextEmbeddingModel = "nomic-embed-text:latest",
+        defaultMultimodalEmbeddingModel = "",
         keyHint = "Optional (not required for local Ollama)"
     ),
     OPENROUTER(
@@ -45,7 +49,8 @@ enum class ProviderType(
         defaultBaseUrl = "https://openrouter.ai/api/v1/",
         defaultModel = "meta-llama/llama-3.2-11b-vision-instruct",
         defaultVisionModel = "meta-llama/llama-3.2-11b-vision-instruct",
-        defaultEmbeddingModel = "openai/text-embedding-3-small",
+        defaultTextEmbeddingModel = "openai/text-embedding-3-small",
+        defaultMultimodalEmbeddingModel = "",
         keyHint = "sk-or-v1-..."
     ),
     CUSTOM(
@@ -54,7 +59,8 @@ enum class ProviderType(
         defaultBaseUrl = "",
         defaultModel = "",
         defaultVisionModel = "",
-        defaultEmbeddingModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
         keyHint = "Optional for local endpoints"
     ),
     GROQ(
@@ -124,6 +130,7 @@ data class AvailableAiModel(
     val supportsChat: Boolean = true,
     val supportsVision: Boolean = false,
     val supportsEmbedding: Boolean = false,
+    val supportsMultimodalEmbedding: Boolean = false,
     val isFree: Boolean = false,
     val priceKnown: Boolean = false
 )
