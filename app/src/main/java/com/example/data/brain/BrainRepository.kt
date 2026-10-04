@@ -4,13 +4,13 @@ import android.content.Context
 import androidx.room.withTransaction
 import com.example.data.ai.AnalysisResult
 import com.example.data.ai.AiProviderClient
-import com.example.data.ai.AttachedAiFile
+import com.example.data.brain.AttachedAiFile
 import com.example.data.ai.AvailableAiModel
-import com.example.data.ai.ConnectedDotsItem
+import com.example.data.brain.ConnectedDotsItem
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.ai.ExtractedEntity
 import com.example.data.ai.ProviderType
-import com.example.data.ai.RagAnswer
+import com.example.data.brain.RagAnswer
 import com.example.data.ai.isKeylessAiConfig
 import com.example.data.local.AiProviderConfigEntity
 import com.example.data.brain.BrainTopicEntity
