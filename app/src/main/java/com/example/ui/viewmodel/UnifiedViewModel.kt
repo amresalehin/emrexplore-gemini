@@ -28,7 +28,9 @@ import com.example.data.media.MediaFilter
 import com.example.data.media.MediaRepository
 import com.example.data.media.FullscreenMediaSource
 import com.example.data.media.MediaViewerWindow
+import com.example.data.media.MediaMetadataRepository
 import com.example.data.ai.KnowledgeGraphRepository
+import com.example.data.ai.GalleryAiOperationStore
 import com.example.data.ai.AvailableAiModel
 import com.example.data.ai.ConnectedDotsItem
 import com.example.data.ai.ConnectionTestResult
@@ -37,6 +39,7 @@ import com.example.data.local.AiProviderConfigEntity
 import com.example.data.local.BrainTopicEntity
 import com.example.data.local.KgEdgeEntity
 import com.example.data.local.KgNodeEntity
+import com.example.data.local.MediaMetadataEntity
 import com.example.data.metadata.MetadataExtractor
 import com.example.data.metadata.MetadataReport
 import com.example.data.ai.BrainTopicFile
@@ -243,6 +246,7 @@ data class UiState(
     val aiConfigLoaded: Boolean = false,
     val isKgIndexing: Boolean = false,
     val isGalleryAiProcessing: Boolean = false,
+    val isGalleryAiPaused: Boolean = false,
     val galleryAiProgress: Float = 0f,
     val galleryAiStatus: String = "Ready",
     val kgIndexingProgress: Float = 0f,
@@ -272,7 +276,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     private val repository = FileRepository(application)
     private val metadataExtractor = MetadataExtractor(application.applicationContext)
     private val mediaRepository = MediaRepository(application)
+    private val mediaMetadataRepository = MediaMetadataRepository(application.applicationContext)
     private val kgRepository = KnowledgeGraphRepository(application)
+    private val galleryAiStore = GalleryAiOperationStore(application.applicationContext)
     private val galleryFilterFlow = MutableStateFlow<MediaFilter?>(MediaFilter.ALL)
     private val galleryDateFilterFlow = MutableStateFlow(GalleryDateFilter.ALL)
     private val galleryLocationFilterFlow = MutableStateFlow(GalleryLocationFilter.ALL)
@@ -437,45 +443,85 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
-        // Gallery AI is also WorkManager-backed so processing survives activity/process recreation.
+        // Gallery AI is WorkManager-backed and its queue/checkpoint is durable outside
+        // the ViewModel. Reattaching here keeps the UI accurate after process death.
+        _uiState.update { it.copy(isGalleryAiPaused = galleryAiStore.isPaused()) }
         viewModelScope.launch {
             WorkManager.getInstance(getApplication<Application>())
                 .getWorkInfosForUniqueWorkFlow(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
                 .collectLatest { works ->
-                    val work = works.firstOrNull() ?: return@collectLatest
+                    val work = works.firstOrNull() ?: run {
+                        if (galleryAiStore.isPaused()) {
+                            val total = galleryAiStore.totalCount()
+                            val completed = galleryAiStore.completedCount()
+                            _uiState.update {
+                                it.copy(
+                                    isGalleryAiProcessing = false,
+                                    isGalleryAiPaused = true,
+                                    galleryAiProgress = if (total > 0) completed.toFloat() / total else 0f,
+                                    galleryAiStatus = "AI processing paused"
+                                )
+                            }
+                        }
+                        return@collectLatest
+                    }
                     val progress = work.progress
-                    val total = progress.getInt("total", 0)
-                    val current = progress.getInt("current", 0)
+                    val storeTotal = galleryAiStore.totalCount()
+                    val storeCompleted = galleryAiStore.completedCount()
+                    val total = progress.getInt("total", storeTotal)
+                    val current = progress.getInt("current", storeCompleted)
                     val path = progress.getString("path").orEmpty()
                     when (work.state) {
                         androidx.work.WorkInfo.State.RUNNING,
                         androidx.work.WorkInfo.State.ENQUEUED -> _uiState.update {
                             it.copy(
                                 isGalleryAiProcessing = true,
+                                isGalleryAiPaused = false,
                                 galleryAiProgress = if (total > 0) current.toFloat() / total else 0f,
                                 galleryAiStatus = if (path.isBlank()) "Processing gallery AI..." else "AI: " + File(path).name + " ($current/$total)"
                             )
                         }
                         androidx.work.WorkInfo.State.SUCCEEDED -> {
+                            val processed = work.outputData.getInt("processed", current)
                             _uiState.update {
                                 it.copy(
                                     isGalleryAiProcessing = false,
+                                    isGalleryAiPaused = false,
                                     galleryAiProgress = 1f,
-                                    galleryAiStatus = "AI enrichment complete"
+                                    galleryAiStatus = "AI enrichment complete ($processed processed)"
                                 )
                             }
+                            refreshGallery()
                             refreshBrainTopicFiles(_uiState.value.selectedBrainTopicId)
                         }
-                        androidx.work.WorkInfo.State.FAILED -> _uiState.update {
-                            it.copy(isGalleryAiProcessing = false, galleryAiStatus = "AI processing failed")
+                        androidx.work.WorkInfo.State.FAILED -> {
+                            val hasPending = galleryAiStore.hasPendingWork()
+                            _uiState.update {
+                                it.copy(
+                                    isGalleryAiProcessing = false,
+                                    isGalleryAiPaused = hasPending,
+                                    galleryAiStatus = if (hasPending) "AI stopped — Resume to retry" else "AI processing failed"
+                                )
+                            }
                         }
-                        androidx.work.WorkInfo.State.CANCELLED -> _uiState.update {
-                            it.copy(isGalleryAiProcessing = false, galleryAiStatus = "AI processing cancelled")
+                        androidx.work.WorkInfo.State.CANCELLED -> {
+                            val paused = galleryAiStore.isPaused() && galleryAiStore.hasPendingWork()
+                            val total = galleryAiStore.totalCount()
+                            val completed = galleryAiStore.completedCount()
+                            _uiState.update {
+                                it.copy(
+                                    isGalleryAiProcessing = false,
+                                    isGalleryAiPaused = paused,
+                                    galleryAiProgress = if (total > 0) completed.toFloat() / total else 0f,
+                                    galleryAiStatus = if (paused) "AI processing paused" else "AI processing cancelled"
+                                )
+                            }
                         }
                         else -> Unit
                     }
                 }
         }
+
 
         // Brain indexing is WorkManager-backed. Reattach the UI to the durable
         // unique work after process recreation instead of relying on ViewModel state.
@@ -1542,6 +1588,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             showMessage("Configure and save an AI provider before processing gallery images")
             return
         }
+
         val paths = selected.mapNotNull { it.path.takeIf { p -> p.isNotBlank() } }.distinct()
         if (paths.isEmpty()) {
             showMessage("Selected gallery images do not expose readable file paths")
@@ -1551,41 +1598,102 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             showMessage("AI processing is limited to 80 selected images per action")
             return
         }
-        val request = OneTimeWorkRequestBuilder<com.example.data.ai.GalleryAiWorker>()
-            .setInputData(androidx.work.workDataOf("paths" to paths.toTypedArray()))
-            .build()
-        _uiState.update { it.copy(gallerySelection = emptyList(), isGalleryAiProcessing = true, galleryAiProgress = 0f, galleryAiStatus = "AI processing queued...") }
+
+        _uiState.update { it.copy(gallerySelection = emptyList()) }
+        startGalleryAiProcessing(paths)
+    }
+
+    private fun startGalleryAiProcessing(paths: Collection<String>, force: Boolean = false) {
+        val cleanPaths = paths.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        if (cleanPaths.isEmpty()) return
+
+        galleryAiStore.addPaths(cleanPaths, force = force)
+        galleryAiStore.setPaused(false)
+        val total = galleryAiStore.totalCount()
+        val completed = galleryAiStore.completedCount()
+        _uiState.update {
+            it.copy(
+                isGalleryAiProcessing = true,
+                isGalleryAiPaused = false,
+                galleryAiProgress = if (total > 0) completed.toFloat() / total else 0f,
+                galleryAiStatus = "AI processing queued..."
+            )
+        }
+
+        enqueueGalleryAiWorker()
+    }
+
+    private fun enqueueGalleryAiWorker() {
+        val workRequest = OneTimeWorkRequestBuilder<com.example.data.ai.GalleryAiWorker>().build()
         WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
             com.example.data.ai.GalleryAiWorker.UNIQUE_NAME,
             ExistingWorkPolicy.KEEP,
-            request
+            workRequest
         )
-        viewModelScope.launch {
-            WorkManager.getInstance(getApplication<Application>()).getWorkInfoByIdFlow(request.id).collectLatest { info ->
-                if (info == null) return@collectLatest
-                val current = info.progress.getInt("current", 0)
-                val total = info.progress.getInt("total", paths.size)
-                val path = info.progress.getString("path").orEmpty()
-                when (info.state) {
-                    androidx.work.WorkInfo.State.RUNNING, androidx.work.WorkInfo.State.ENQUEUED -> _uiState.update {
-                        it.copy(
-                            isGalleryAiProcessing = true,
-                            galleryAiProgress = if (total > 0) current.toFloat() / total else 0f,
-                            galleryAiStatus = if (path.isBlank()) "Processing gallery AI..." else "AI: " + File(path).name + " ($current/$total)"
-                        )
-                    }
-                    androidx.work.WorkInfo.State.SUCCEEDED -> {
-                        _uiState.update { it.copy(isGalleryAiProcessing = false, galleryAiProgress = 1f, galleryAiStatus = "AI enrichment complete") }
-                        refreshGallery()
-                        showMessage("AI processed $current gallery image(s)")
-                    }
-                    androidx.work.WorkInfo.State.FAILED -> _uiState.update { it.copy(isGalleryAiProcessing = false, galleryAiStatus = "AI processing failed") }
-                    androidx.work.WorkInfo.State.CANCELLED -> _uiState.update { it.copy(isGalleryAiProcessing = false, galleryAiStatus = "AI processing cancelled") }
-                    else -> Unit
-                }
-            }
-        }
     }
+
+    fun pauseGalleryAi() {
+        if (!galleryAiStore.hasPendingWork()) {
+            showMessage("No gallery AI processing is active")
+            return
+        }
+        galleryAiStore.setPaused(true)
+        _uiState.update {
+            it.copy(
+                isGalleryAiProcessing = false,
+                isGalleryAiPaused = true,
+                galleryAiStatus = "Pausing AI processing..."
+            )
+        }
+        WorkManager.getInstance(getApplication<Application>())
+            .cancelUniqueWork(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
+    }
+
+    fun resumeGalleryAi() {
+        if (!galleryAiStore.hasPendingWork()) {
+            galleryAiStore.clear()
+            _uiState.update {
+                it.copy(
+                    isGalleryAiProcessing = false,
+                    isGalleryAiPaused = false,
+                    galleryAiStatus = "Ready",
+                    galleryAiProgress = 0f
+                )
+            }
+            showMessage("No pending gallery AI work")
+            return
+        }
+        val config = _uiState.value.aiConfig
+        if (!isBrainAiConfigured(config)) {
+            _uiState.update { it.copy(isAiSettingsScreenOpen = true) }
+            showMessage("Configure and save an AI provider before resuming gallery AI")
+            return
+        }
+        galleryAiStore.setPaused(false)
+        _uiState.update {
+            it.copy(
+                isGalleryAiProcessing = true,
+                isGalleryAiPaused = false,
+                galleryAiStatus = "Resuming AI processing..."
+            )
+        }
+        enqueueGalleryAiWorker()
+    }
+
+    fun reAnalyzeGalleryImage(item: MediaItem) {
+        if (item.isVideo || item.path.isBlank()) return
+        val config = _uiState.value.aiConfig
+        if (!isBrainAiConfigured(config)) {
+            _uiState.update { it.copy(isAiSettingsScreenOpen = true) }
+            showMessage("Configure and save an AI provider before re-analyzing")
+            return
+        }
+        startGalleryAiProcessing(listOf(item.path), force = true)
+        showMessage("Re-analysis queued for ${item.name}")
+    }
+
+    suspend fun getAiMetadata(item: MediaItem): MediaMetadataEntity? =
+        mediaMetadataRepository.getByPath(item.path)
 
     fun deleteGallerySelection(toTrash: Boolean = true) {
         val selected = _uiState.value.gallerySelection
