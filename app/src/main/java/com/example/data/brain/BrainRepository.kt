@@ -14,10 +14,10 @@ import com.example.data.ai.BrainTopicFile
 import com.example.data.ai.RagAnswer
 import com.example.data.ai.isKeylessAiConfig
 import com.example.data.local.AiProviderConfigEntity
-import com.example.data.local.BrainTopicEntity
-import com.example.data.local.KgEdgeEntity
-import com.example.data.local.KgNodeEntity
-import com.example.data.local.RagChunkEntity
+import com.example.data.brain.BrainTopicEntity
+import com.example.data.brain.BrainEdgeEntity
+import com.example.data.brain.BrainNodeEntity
+import com.example.data.brain.BrainChunkEntity
 import com.example.data.local.IndexedFileEntity
 import com.example.data.local.AppDatabase
 import com.example.data.media.MediaMetadataRepository
@@ -75,8 +75,8 @@ class BrainRepository(private val context: Context) {
     private val fileRepository = FileRepository(appContext)
     private val mediaMetadataRepository = MediaMetadataRepository(appContext)
 
-    val allNodesFlow: Flow<List<KgNodeEntity>> = brainNodeDao.observePreview().map { it }
-    val allEdgesFlow: Flow<List<KgEdgeEntity>> = brainNodeDao.observeEdges().map { it }
+    val allNodesFlow: Flow<List<BrainNodeEntity>> = brainNodeDao.observePreview().map { it }
+    val allEdgesFlow: Flow<List<BrainEdgeEntity>> = brainNodeDao.observeEdges().map { it }
     val nodeCountFlow: Flow<Int> = brainNodeDao.countFlow()
     val edgeCountFlow: Flow<Int> = brainEdgeDao.countFlow()
     val chunkCountFlow: Flow<Int> = brainChunkDao.countFlow()
@@ -467,7 +467,7 @@ class BrainRepository(private val context: Context) {
                 localFileAnswer(file, input)
             }
 
-            val node = brainNodeDao.getByFilePath(file.absolutePath) ?: KgNodeEntity(
+            val node = brainNodeDao.getByFilePath(file.absolutePath) ?: BrainNodeEntity(
                 id = "file:" + stableKey(file.absolutePath),
                 label = file.name,
                 nodeType = if (input.isImage) "IMAGE" else "DOCUMENT",
