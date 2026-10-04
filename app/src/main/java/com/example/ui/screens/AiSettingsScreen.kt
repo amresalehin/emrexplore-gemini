@@ -1,62 +1,40 @@
 package com.example.ui.screens
 
-import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Sensors
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -64,24 +42,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -89,12 +63,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.example.data.ai.AvailableAiModel
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.ai.ProviderType
 import com.example.data.local.AiProviderConfigEntity
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AiSettingsScreen(
     currentConfig: AiProviderConfigEntity,
@@ -105,9 +78,9 @@ fun AiSettingsScreen(
     testResult: ConnectionTestResult?,
     onSaveConfig: (AiProviderConfigEntity) -> Unit,
     onTestConnection: (AiProviderConfigEntity) -> Unit,
-    availableModels: List<com.example.data.ai.AvailableAiModel> = emptyList(),
-    availableVisionModels: List<com.example.data.ai.AvailableAiModel> = emptyList(),
-    availableEmbeddingModels: List<com.example.data.ai.AvailableAiModel> = emptyList(),
+    availableModels: List<AvailableAiModel> = emptyList(),
+    availableVisionModels: List<AvailableAiModel> = emptyList(),
+    availableEmbeddingModels: List<AvailableAiModel> = emptyList(),
     isFetchingModels: Boolean = false,
     modelFetchError: String? = null,
     onFetchModels: (AiProviderConfigEntity) -> Unit = {},
@@ -120,944 +93,412 @@ fun AiSettingsScreen(
 
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-
     var selectedProvider by remember { mutableStateOf(ProviderType.fromString(currentConfig.providerType)) }
     var apiKey by remember { mutableStateOf(currentConfig.apiKey) }
     var baseUrl by remember { mutableStateOf(currentConfig.baseUrl) }
     var chatModel by remember { mutableStateOf(currentConfig.chatModel) }
     var visionModel by remember { mutableStateOf(currentConfig.visionModel) }
     var embeddingModel by remember { mutableStateOf(currentConfig.embeddingModel) }
-    var temperature by remember { mutableFloatStateOf(currentConfig.temperature) }
     var isEnabled by remember { mutableStateOf(currentConfig.isEnabled) }
     var autoSync by remember { mutableStateOf(currentConfig.autoSync) }
     var showApiKey by remember { mutableStateOf(false) }
-    var showClearConfirm by remember { mutableStateOf(false) }
-    var hasUnsavedChanges by remember { mutableStateOf(false) }
+    var showProviderPicker by remember { mutableStateOf(false) }
+    var showChatPicker by remember { mutableStateOf(false) }
+    var showVisionPicker by remember { mutableStateOf(false) }
+    var showEmbeddingPicker by remember { mutableStateOf(false) }
+    var showAdvanced by remember { mutableStateOf(false) }
 
-    fun markChanged() {
-        hasUnsavedChanges = true
+    fun draftConfig(): AiProviderConfigEntity = currentConfig.copy(
+        providerType = selectedProvider.name,
+        apiKey = apiKey.trim(),
+        baseUrl = baseUrl.trim(),
+        chatModel = chatModel.trim(),
+        visionModel = visionModel.trim(),
+        embeddingModel = embeddingModel.trim(),
+        isEnabled = isEnabled,
+        autoSync = autoSync
+    )
+
+    fun selectProvider(provider: ProviderType) {
+        selectedProvider = provider
+        if (provider == ProviderType.CUSTOM) {
+            if (currentConfig.providerType == provider.name) {
+                baseUrl = currentConfig.baseUrl
+                chatModel = currentConfig.chatModel
+                visionModel = currentConfig.visionModel
+                embeddingModel = currentConfig.embeddingModel
+            } else {
+                baseUrl = ""
+                chatModel = ""
+                visionModel = ""
+                embeddingModel = ""
+            }
+        } else {
+            baseUrl = provider.defaultBaseUrl
+            chatModel = provider.defaultModel
+            visionModel = provider.defaultVisionModel
+            embeddingModel = provider.defaultEmbeddingModel
+        }
+        showProviderPicker = false
+    }
+
+    fun isDeprecatedNvidiaModel(id: String): Boolean =
+        baseUrl.contains("integrate.api.nvidia.com", ignoreCase = true) &&
+            id.equals("adept/fuyu-8b", ignoreCase = true)
+
+    fun usableModels(models: List<AvailableAiModel>): List<AvailableAiModel> =
+        models.filterNot { isDeprecatedNvidiaModel(it.id) }
+
+    fun firstUsable(models: List<AvailableAiModel>, current: String): String =
+        usableModels(models).firstOrNull { it.id == current }?.id
+            ?: usableModels(models).firstOrNull()?.id
+            ?: current
+
+    val chats = usableModels(availableModels)
+    val visions = usableModels(availableVisionModels)
+    val embeddings = usableModels(availableEmbeddingModels)
+
+    LaunchedEffect(chats, visions, embeddings) {
+        if (chats.isNotEmpty()) chatModel = firstUsable(chats, chatModel)
+        if (visions.isNotEmpty()) visionModel = firstUsable(visions, visionModel)
+        if (embeddings.isNotEmpty()) embeddingModel = firstUsable(embeddings, embeddingModel)
     }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            Surface(
-                tonalElevation = 3.dp,
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(
-                                text = "AI Provider & BYOK Settings",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Knowledge Graph & Multimodal RAG",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(
-                            onClick = onNavigateBack,
-                            modifier = Modifier.testTag("ai_settings_back_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back"
-                            )
-                        }
-                    },
-                    actions = {
-                        Button(
-                            onClick = {
-                                val updated = AiProviderConfigEntity(
-                                    id = currentConfig.id,
-                                    providerType = selectedProvider.name,
-                                    apiKey = apiKey.trim(),
-                                    baseUrl = baseUrl.trim(),
-                                    chatModel = chatModel.trim(),
-                                    visionModel = visionModel.trim(),
-                                    embeddingModel = embeddingModel.trim(),
-                                    temperature = temperature,
-                                    isEnabled = isEnabled,
-                                    autoSync = autoSync
-                                )
-                                onSaveConfig(updated)
-                                hasUnsavedChanges = false
-                                onNavigateBack()
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .padding(end = 8.dp)
-                                .testTag("ai_settings_save_btn")
-                        ) {
-                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Save")
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-                )
-            }
+            TopAppBar(
+                title = {
+                    Column {
+                        Text("AI Setup", fontWeight = FontWeight.Bold)
+                        Text(
+                            if (isEnabled) "Brain enabled" else "Brain is off",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack, modifier = Modifier.testTag("ai_settings_back_btn")) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    Button(
+                        onClick = { onSaveConfig(draftConfig()); onNavigateBack() },
+                        modifier = Modifier.padding(end = 8.dp).testTag("ai_settings_save_btn"),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Save")
+                    }
+                }
+            )
         }
-    ) { innerPadding ->
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(padding)
                 .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Security & Privacy Guarantee Banner
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
-                )
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)),
+                shape = RoundedCornerShape(16.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Security,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Enable Brain", fontWeight = FontWeight.Bold)
                         Text(
-                            text = if (selectedProvider == ProviderType.OLLAMA) "Local Ollama: requests use your configured local endpoint." else "Cloud AI: file text, image thumbnails, and selected metadata are sent to your chosen provider.",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Your API key is saved locally in private app storage. Requests travel directly from your device to your selected provider or local Ollama server.",
+                            "Semantic search, file understanding and image analysis.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            lineHeight = 16.sp
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    }
-                }
-            }
-
-            // Enable AI Knowledge Graph Toggle
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.outlinedCardColors(
-                    containerColor = if (isEnabled) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Activate AI RAG & Knowledge Graph",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = if (isEnabled) "Active: Multimodal dot-connecting enabled" else "Disabled: App uses offline local metadata only",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
                     }
                     Switch(
                         checked = isEnabled,
-                        onCheckedChange = {
-                            isEnabled = it
-                            markChanged()
-                        },
+                        onCheckedChange = { isEnabled = it },
                         modifier = Modifier.testTag("ai_enabled_switch")
                     )
                 }
             }
 
-            // Section 1: Provider Selection
-            Text(
-                text = "AI MODEL PROVIDER",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ProviderType.entries.forEach { provider ->
-                    val isSelected = selectedProvider == provider
-                    OutlinedCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                selectedProvider = provider
-                                baseUrl = provider.defaultBaseUrl
-                                chatModel = provider.defaultModel
-                                visionModel = provider.defaultVisionModel
-                                markChanged()
-                            },
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.outlinedCardColors(
-                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surface
-                        ),
-                        border = androidx.compose.foundation.BorderStroke(
-                            width = if (isSelected) 2.dp else 1.dp,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = {
-                                    selectedProvider = provider
-                                    baseUrl = provider.defaultBaseUrl
-                                    chatModel = provider.defaultModel
-                                    visionModel = provider.defaultVisionModel
-                                    markChanged()
-                                }
+            if (!isEnabled) {
+                Text("Nothing is sent to an AI provider while Brain is off.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                SectionTitle("PROVIDER")
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth().clickable { showProviderPicker = true },
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(selectedProvider.displayName, fontWeight = FontWeight.Bold)
+                            Text(
+                                when (selectedProvider) {
+                                    ProviderType.GEMINI -> "Recommended · simplest cloud setup"
+                                    ProviderType.OLLAMA -> "Local / private"
+                                    ProviderType.CUSTOM -> "Your OpenAI-compatible endpoint"
+                                    else -> "Cloud API"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = provider.displayName,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    if (provider == ProviderType.GEMINI) {
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                        ) {
-                                            Text(
-                                                text = "Recommended",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                fontSize = 10.sp
-                                            )
-                                        }
-                                    } else if (provider == ProviderType.OLLAMA) {
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f)
-                                        ) {
-                                            Text(
-                                                text = "Local / Offline",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.secondary,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                fontSize = 10.sp
-                                            )
-                                        }
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = provider.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    lineHeight = 15.sp
-                                )
-                            }
                         }
+                        Text("Change", color = MaterialTheme.colorScheme.primary)
                     }
                 }
-            }
 
-            // Section 2: Custom API Key
-            Text(
-                text = "CUSTOM API KEY (BYOK)",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Enter API Key",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            // Paste from clipboard button
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surface,
-                                modifier = Modifier.clickable {
+                if (selectedProvider != ProviderType.OLLAMA) {
+                    OutlinedTextField(
+                        value = apiKey,
+                        onValueChange = { apiKey = it },
+                        modifier = Modifier.fillMaxWidth().testTag("ai_custom_api_key_field"),
+                        label = { Text("API key") },
+                        placeholder = { Text(selectedProvider.keyHint) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            Row {
+                                IconButton(onClick = {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     val clip = clipboard.primaryClip
                                     if (clip != null && clip.itemCount > 0) {
-                                        val text = clip.getItemAt(0).text?.toString() ?: ""
-                                        if (text.isNotBlank()) {
-                                            apiKey = text.trim()
-                                            markChanged()
-                                        }
+                                        val value = clip.getItemAt(0).text?.toString()?.trim().orEmpty()
+                                        if (value.isNotBlank()) apiKey = value
                                     }
-                                }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Paste", style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-
-                            // Clear key button
-                            if (apiKey.isNotEmpty()) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.surface,
-                                    modifier = Modifier.clickable {
-                                        apiKey = ""
-                                        markChanged()
-                                    }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(14.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Clear", style = MaterialTheme.typography.labelSmall)
-                                    }
+                                }) { Icon(Icons.Default.ContentPaste, contentDescription = "Paste API key") }
+                                IconButton(onClick = { showApiKey = !showApiKey }) {
+                                    Icon(
+                                        if (showApiKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = if (showApiKey) "Hide API key" else "Show API key"
+                                    )
                                 }
                             }
                         }
-                    }
-
-                    OutlinedTextField(
-                        value = apiKey,
-                        onValueChange = {
-                            apiKey = it
-                            markChanged()
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("ai_custom_api_key_field"),
-                        placeholder = {
-                            Text(selectedProvider.keyHint)
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = if (apiKey.isNotBlank()) Icons.Default.Lock else Icons.Default.Key,
-                                contentDescription = null,
-                                tint = if (apiKey.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        },
-                        trailingIcon = {
-                            IconButton(onClick = { showApiKey = !showApiKey }) {
-                                Icon(
-                                    imageVector = if (showApiKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = if (showApiKey) "Hide API Key" else "Show API Key"
-                                )
-                            }
-                        },
-                        visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
                     )
+                }
 
+                if (selectedProvider == ProviderType.CUSTOM) {
+                    OutlinedTextField(
+                        value = baseUrl,
+                        onValueChange = { baseUrl = it },
+                        modifier = Modifier.fillMaxWidth().testTag("ai_endpoint_url_field"),
+                        label = { Text("Base URL") },
+                        placeholder = { Text("https://.../v1") },
+                        singleLine = true
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        PresetChip("NVIDIA NIM") {
+                            baseUrl = "https://integrate.api.nvidia.com/v1"
+                            chatModel = "nvidia/llama-3.3-nemotron-super-49b-v1"
+                            visionModel = "meta/llama-3.2-11b-vision-instruct"
+                            embeddingModel = "nvidia/embed-qa-4"
+                        }
+                        PresetChip("OpenAI") {
+                            baseUrl = "https://api.openai.com/v1"
+                            chatModel = "gpt-4o-mini"
+                            visionModel = "gpt-4o-mini"
+                            embeddingModel = "text-embedding-3-small"
+                        }
+                        PresetChip("OpenRouter") {
+                            baseUrl = "https://openrouter.ai/api/v1"
+                            chatModel = "meta-llama/llama-3.2-11b-vision-instruct"
+                            visionModel = "meta-llama/llama-3.2-11b-vision-instruct"
+                            embeddingModel = ""
+                        }
+                    }
+                } else if (selectedProvider == ProviderType.OLLAMA) {
+                    CompactInfo("No API key is required for Ollama. Use localhost or 10.0.2.2 for local connections.")
+                } else {
+                    CompactInfo("Server: ${baseUrl.removeSuffix("/")}")
+                }
+
+                SectionTitle("MODELS")
+                OutlinedButton(
+                    onClick = { onFetchModels(draftConfig()) },
+                    enabled = !isFetchingModels,
+                    modifier = Modifier.fillMaxWidth().testTag("ai_fetch_models_btn")
+                ) {
+                    if (isFetchingModels) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (isFetchingModels) "Fetching…" else "Fetch available models")
+                }
+                modelFetchError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+
+                ModelPicker("Chat / reasoning", firstUsable(chats, chatModel), { showChatPicker = true }, "ai_chat_model_field", chats)
+                ModelPicker("Vision / image understanding", firstUsable(visions, visionModel), { showVisionPicker = true }, "ai_vision_model_field", visions)
+                ModelPicker("Embedding / semantic search", firstUsable(embeddings, embeddingModel), { showEmbeddingPicker = true }, "ai_embedding_model_field", embeddings)
+
+                if (embeddings.isEmpty()) {
                     Text(
-                        text = when (selectedProvider) {
-                            ProviderType.GEMINI -> "Get a free Google AI Studio key at https://aistudio.google.com/app/apikey"
-                            ProviderType.OPENAI_COMPATIBLE -> "Create an API key in your OpenAI platform dashboard"
-                            ProviderType.OLLAMA -> "No key required for local Ollama. Prefer localhost binding; do not enable unrestricted origins."
-                            ProviderType.OPENROUTER -> "Generate a key on OpenRouter.ai to access any model"
-                            ProviderType.CUSTOM -> "Use your endpoint's authentication requirements; local endpoints may not need a key"
-                            ProviderType.GROQ -> "Obtain a high-speed inference key on console.groq.com"
-                        },
-                        style = MaterialTheme.typography.labelSmall,
+                        "No embedding model was exposed. Semantic Brain search cannot run until one is configured.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                SectionTitle("CHECK")
+                Button(
+                    onClick = { onTestConnection(draftConfig()) },
+                    enabled = !isTestingConnection,
+                    modifier = Modifier.fillMaxWidth().testTag("ai_screen_test_connection_btn"),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    if (isTestingConnection) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                    else Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (isTestingConnection) "Checking…" else "Test connection")
+                }
+
+                testResult?.let { result ->
+                    Surface(
+                        color = if (result.success) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(if (result.success) "Connected" else "Could not connect", fontWeight = FontWeight.Bold)
+                            Text(result.message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 3.dp))
+                        }
+                    }
+                }
+
+                HorizontalDivider()
+                TextButton(onClick = { showAdvanced = !showAdvanced }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (showAdvanced) "Hide advanced options" else "Advanced options")
+                }
+                if (showAdvanced) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Auto-index new files", fontWeight = FontWeight.SemiBold)
+                            Text("Add newly indexed files to Brain automatically.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = autoSync, onCheckedChange = { autoSync = it })
+                    }
+                    if (selectedProvider != ProviderType.CUSTOM) {
+                        OutlinedTextField(
+                            value = baseUrl,
+                            onValueChange = { baseUrl = it },
+                            modifier = Modifier.fillMaxWidth().testTag("ai_advanced_endpoint_field"),
+                            label = { Text("Base URL") },
+                            singleLine = true
+                        )
+                    }
+                    Text(
+                        "API keys stay in private app storage. Cloud providers receive data required for the AI operation.",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-
-            // Section 3: Base URL & Provider Presets
-            Text(
-                text = "ENDPOINT & BASE URL",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = baseUrl,
-                    onValueChange = {
-                        baseUrl = it
-                        markChanged()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("ai_endpoint_url_field"),
-                    label = { Text("Base URL / Proxy Endpoint") },
-                    leadingIcon = {
-                        Icon(Icons.Default.Dns, contentDescription = null, modifier = Modifier.size(18.dp))
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                // Quick Endpoint Preset Chips
-                Text(
-                    text = "Quick Presets:",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val presets = listOf(
-                        "Google Gemini" to "https://generativelanguage.googleapis.com/",
-                        "OpenAI" to "https://api.openai.com/v1/",
-                        "Ollama (Emulator)" to "http://10.0.2.2:11434/v1/",
-                        "Ollama (Localhost)" to "http://localhost:11434/v1/",
-                        "OpenRouter" to "https://openrouter.ai/api/v1/",
-                        "Groq" to "https://api.groq.com/openai/v1/"
-                    )
-
-                    items(presets) { (name, url) ->
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (baseUrl == url) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.clickable {
-                                baseUrl = url
-                                markChanged()
-                            }
-                        ) {
-                            Text(
-                                text = name,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (baseUrl == url) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Section 4: AI Models Configuration
-            Text(
-                text = "PREFERRED AI MODELS",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Chat / Extraction Model
-                    Text(
-                        text = "Reasoning & Entity Extraction Model",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    OutlinedTextField(
-                        value = chatModel,
-                        onValueChange = {
-                            chatModel = it
-                            markChanged()
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("ai_chat_model_field"),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    // Popular model suggestion chips
-                    val suggestions = when (selectedProvider) {
-                        ProviderType.GEMINI -> listOf("gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-flash-latest")
-                        ProviderType.OPENAI_COMPATIBLE -> listOf("gpt-4o-mini", "gpt-4o")
-                        ProviderType.OLLAMA -> listOf("llama3.2:latest", "mistral:latest", "qwen2.5:latest")
-                        ProviderType.OPENROUTER -> listOf("meta-llama/llama-3.2-11b-vision-instruct", "anthropic/claude-3.5-sonnet")
-                        ProviderType.CUSTOM -> emptyList()
-                        ProviderType.GROQ -> listOf("qwen/qwen3.8-27b")
-                    }
-
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(suggestions) { modelName ->
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (chatModel == modelName) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                                modifier = Modifier.clickable {
-                                    chatModel = modelName
-                                    markChanged()
-                                }
-                            ) {
-                                Text(
-                                    text = modelName,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 11.sp,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Vision Model
-                    Text(
-                        text = "Multimodal Vision Model (Image Understanding & OCR)",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    OutlinedTextField(
-                        value = visionModel,
-                        onValueChange = {
-                            visionModel = it
-                            markChanged()
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("ai_vision_model_field"),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                }
-            }
-
-            // Live provider model discovery
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Provider models", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                            Text(
-                                "Fetch the models currently exposed by this endpoint. Select separate chat, vision, and embedding models.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                onFetchModels(
-                                    currentConfig.copy(
-                                        providerType = selectedProvider.name,
-                                        apiKey = apiKey.trim(),
-                                        baseUrl = baseUrl.trim(),
-                                        chatModel = chatModel.trim(),
-                                        visionModel = visionModel.trim(),
-                                        embeddingModel = embeddingModel.trim(),
-                                     customHeadersJson = currentConfig.customHeadersJson,
-                                        temperature = temperature,
-                                        isEnabled = isEnabled,
-                                        autoSync = autoSync
-                                    )
-                                )
-                            },
-                            enabled = !isFetchingModels
-                        ) {
-                            if (isFetchingModels) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (isFetchingModels) "Fetching…" else "Fetch")
-                        }
-                    }
-                    modelFetchError?.let {
-                        Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                    }
-                    if (availableModels.isNotEmpty()) {
-                        Text("Chat / reasoning", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(availableModels.take(50)) { model ->
-                                FilterChip(
-                                    selected = chatModel == model.id,
-                                    onClick = { chatModel = model.id; markChanged() },
-                                    label = { Text(model.id, fontSize = 10.sp) }
-                                )
-                            }
-                        }
-                    }
-                    if (availableVisionModels.isNotEmpty()) {
-                        Text("Vision", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(availableVisionModels.take(50)) { model ->
-                                FilterChip(
-                                    selected = visionModel == model.id,
-                                    onClick = { visionModel = model.id; markChanged() },
-                                    label = { Text(model.id, fontSize = 10.sp) }
-                                )
-                            }
-                        }
-                    }
-                    if (availableEmbeddingModels.isNotEmpty()) {
-                        Text("Embedding", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(availableEmbeddingModels.take(50)) { model ->
-                                FilterChip(
-                                    selected = embeddingModel == model.id,
-                                    onClick = { embeddingModel = model.id; markChanged() },
-                                    label = { Text(model.id, fontSize = 10.sp) }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Section 5: Generation Parameters
-            Text(
-                text = "GENERATION PARAMETERS",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "Temperature (Randomness vs Factuality)",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "0.2 is ideal for factual Knowledge Graph relations",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            text = String.format("%.2f", temperature),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-
-                    Slider(
-                        value = temperature,
-                        onValueChange = {
-                            temperature = it
-                            markChanged()
-                        },
-                        valueRange = 0.0f..1.0f,
-                        steps = 9,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
-                }
-            }
-
-            // Section 6: Live Connection Test & Validation
-            Text(
-                text = "VERIFICATION & DIAGNOSTICS",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Button(
-                onClick = {
-                    val draftConfig = AiProviderConfigEntity(
-                        id = currentConfig.id,
-                        providerType = selectedProvider.name,
-                        apiKey = apiKey.trim(),
-                        baseUrl = baseUrl.trim(),
-                        chatModel = chatModel.trim(),
-                        visionModel = visionModel.trim(),
-                        embeddingModel = embeddingModel.trim(),
-                        customHeadersJson = currentConfig.customHeadersJson,
-                        temperature = temperature,
-                        isEnabled = isEnabled,
-                        autoSync = autoSync
-                    )
-                    onTestConnection(draftConfig)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("ai_screen_test_connection_btn"),
-                shape = RoundedCornerShape(14.dp),
-                enabled = !isTestingConnection
-            ) {
-                if (isTestingConnection) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text("Testing Connection...")
-                } else {
-                    Icon(Icons.Default.Sensors, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Test Connection & Validate API Key")
-                }
-            }
-
-            testResult?.let { res ->
-                Surface(
-                    color = if (res.success) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (res.success) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.error.copy(alpha = 0.2f)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = if (res.success) Icons.Default.Check else Icons.Default.Clear,
-                                contentDescription = null,
-                                tint = if (res.success) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (res.success) "Connection Verified (${res.responseTimeMs} ms)" else "Connection Failed",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (res.success) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = res.message,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (res.success) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer,
-                                lineHeight = 16.sp
-                            )
-                        }
-                    }
-                }
-            }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-            // Section 7: Knowledge Graph Maintenance & Stats
-            Text(
-                text = "KNOWLEDGE GRAPH STATUS & SYNC",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Hub, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Indexed Graph Stats", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround
-                    ) {
-                        StatPill("Nodes", "$nodeCount")
-                        StatPill("Edges", "$edgeCount")
-                        StatPill("RAG Chunks", "$chunkCount")
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = onReindexAll,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Re-Index Now")
-                        }
-
-                        OutlinedButton(
-                            onClick = { showClearConfirm = true },
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteSweep,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Clear", color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
         }
     }
 
-    if (showClearConfirm) {
-        AlertDialog(
-            onDismissRequest = { showClearConfirm = false },
-            title = { Text("Clear Knowledge Graph?") },
-            text = { Text("This will erase all indexed nodes, connections, and semantic chunks. Your original files, photos, and documents will NOT be deleted.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showClearConfirm = false
-                        onClearGraph()
-                    }
-                ) {
-                    Text("Clear All Graph Data")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
+    if (showProviderPicker) ProviderPickerDialog(selectedProvider, ::selectProvider) { showProviderPicker = false }
+    if (showChatPicker) ModelPickerDialog("Choose chat model", chats, chatModel, { chatModel = it; showChatPicker = false }) { showChatPicker = false }
+    if (showVisionPicker) ModelPickerDialog("Choose vision model", visions, visionModel, { visionModel = it; showVisionPicker = false }) { showVisionPicker = false }
+    if (showEmbeddingPicker) ModelPickerDialog("Choose embedding model", embeddings, embeddingModel, { embeddingModel = it; showEmbeddingPicker = false }) { showEmbeddingPicker = false }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(text, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+}
+
+@Composable
+private fun CompactInfo(text: String) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 2.dp))
+}
+
+@Composable
+private fun PresetChip(label: String, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
     }
 }
 
 @Composable
-private fun StatPill(label: String, value: String) {
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.padding(2.dp)
+private fun ModelPicker(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    testTag: String,
+    models: List<AvailableAiModel>
+) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(testTag),
+        shape = RoundedCornerShape(12.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(value.ifBlank { "Tap Fetch models" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                if (models.isNotEmpty()) Text("${models.size} available", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            }
+            Text("Choose", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
         }
     }
+}
+
+@Composable
+private fun ProviderPickerDialog(selected: ProviderType, onSelect: (ProviderType) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose provider") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ProviderType.entries.forEach { provider ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelect(provider) },
+                        color = if (provider == selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(Modifier.padding(11.dp)) {
+                            Text(provider.displayName, fontWeight = FontWeight.SemiBold)
+                            Text(provider.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
+
+@Composable
+private fun ModelPickerDialog(title: String, models: List<AvailableAiModel>, current: String, onSelect: (String) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().height(420.dp)) {
+                items(models.take(60), key = { it.id }) { model ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelect(model.id) },
+                        color = if (model.id == current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(model.id, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
 }
