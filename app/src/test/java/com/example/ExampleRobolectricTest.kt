@@ -90,9 +90,11 @@ class ExampleRobolectricTest {
     fun database_initializes_and_opens_successfully() {
         val db = com.example.data.local.AppDatabase.getDatabase(context)
         assertNotNull(db)
-        assertNotNull(db.ragDao())
+        assertNotNull(db.brainChunkDao())
+        assertNotNull(db.brainNodeDao())
+        assertNotNull(db.brainEdgeDao())
+        assertNotNull(db.brainDocumentDao())
         assertNotNull(db.brainTopicDao())
-        assertNotNull(db.kgDao())
         val writableDb = db.openHelper.writableDatabase
         assertNotNull(writableDb)
     }
