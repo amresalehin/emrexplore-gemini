@@ -118,11 +118,11 @@ class BrainRepository(private val context: Context) {
     }
 
     suspend fun syncAll(
-        force: Boolean = false,
+        force: Boolean = true,
         onProgress: suspend (current: Int, total: Int, path: String, outcome: BrainIndexOutcome) -> Unit = { _, _, _, _ -> }
     ): BrainSyncResult = withContext(Dispatchers.IO) {
         // Refresh the filesystem index first so newly created/moved files can be seen.
-        runCatching { fileRepository.indexStorage(force = false) }
+        fileRepository.indexStorage(force = true)
 
         val config = getAiConfig()
         val candidates = fileIndexDao.getAllIndexedFilesForBrain()
@@ -172,7 +172,7 @@ class BrainRepository(private val context: Context) {
     suspend fun indexFile(
         file: File,
         uri: android.net.Uri? = null,
-        config: AiProviderConfigEntity = getAiConfig(),
+        config: AiProviderConfigEntity,
         force: Boolean = false
     ): Boolean = withContext(Dispatchers.IO) {
         indexer.index(file, normalizeAiConfig(config), force).success
