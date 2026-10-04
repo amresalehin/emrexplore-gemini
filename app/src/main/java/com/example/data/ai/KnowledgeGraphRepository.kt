@@ -311,10 +311,11 @@ class KnowledgeGraphRepository(private val context: Context) {
         }
 
         val report = try { metadataExtractor.extract(file) } catch (_: Exception) { null }
+        val allowSensitiveLocation = ProviderType.fromString(config.providerType) == ProviderType.OLLAMA
         val metadataSummary = buildString {
             report?.summary?.let { meta ->
                 if (!meta.make.isNullOrBlank()) append("Camera: ${meta.make} ${meta.model.orEmpty()}. ")
-                if (!meta.city.isNullOrBlank()) append("Location: ${meta.city}, ${meta.country.orEmpty()}. ")
+                if (allowSensitiveLocation && !meta.city.isNullOrBlank()) append("Location: ${meta.city}, ${meta.country.orEmpty()}. ")
                 if (!meta.dateTimeOriginal.isNullOrBlank()) append("Date: ${meta.dateTimeOriginal}. ")
                 if (meta.description?.isNotBlank() == true) append("Caption: ${meta.description}. ")
                 if (meta.keywords.isNotEmpty()) append("Keywords: ${meta.keywords.joinToString()}. ")
