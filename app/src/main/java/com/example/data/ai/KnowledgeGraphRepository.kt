@@ -177,8 +177,11 @@ class KnowledgeGraphRepository(private val context: Context) {
 
         if (contentText.isBlank()) return
 
+        replaceSourceData(filePath)
         // 1. Chunk document
-        val chunks = chunkStructuredText(contentText).map { it.first }
+        val structuredChunks = chunkStructuredText(contentText)
+        val chunks = structuredChunks.map { it.first }
+        val embeddings = if (config.isEnabled && config.apiKey.isNotBlank()) client.embedTexts(chunks, config) else emptyList()
         val ragChunks = chunks.mapIndexed { idx, chunk ->
             RagChunkEntity(
                 chunkId = hashKey("$filePath:$idx"),
@@ -186,7 +189,11 @@ class KnowledgeGraphRepository(private val context: Context) {
                 fileType = "DOCUMENT",
                 chunkIndex = idx,
                 content = chunk,
-                tagsJson = "[]"
+                tagsJson = "[]",
+                embeddingJson = embeddings.getOrNull(idx)?.let { embeddingToJson(it) },
+                embeddingModel = embeddings.getOrNull(idx)?.let { config.embeddingModel },
+                contentHash = hashKey(chunk),
+                sectionPath = structuredChunks.getOrNull(idx)?.second.orEmpty()
             )
         }
         ragDao.insertChunks(ragChunks)
@@ -314,17 +321,22 @@ class KnowledgeGraphRepository(private val context: Context) {
         }
 
         // 3. Store RAG chunk for visual caption and OCR
-        val chunkContent = "Image: ${file.name}\nDescription: ${analysis.summary}\nMetadata: $metadataSummary"
+        val chunkContent = "Image: ${file.name}\nDescription: ${analysis.summary}\nMetadata: $metadataSummary\nTags: ${analysis.tags.joinToString(", ")}"
         val tagsJsonArray = JSONArray(analysis.tags).toString()
         val chunk = RagChunkEntity(
-            chunkId = hashKey("img:$filePath:0"),
+            chunkId = hashKey("img:$filePath:0:$chunkContent"),
             filePath = filePath,
             fileType = "IMAGE",
             chunkIndex = 0,
             content = chunkContent,
-            tagsJson = tagsJsonArray
+            tagsJson = tagsJsonArray,
+            contentHash = hashKey(chunkContent)
         )
-        ragDao.insertChunks(listOf(chunk))
+        val vector = if (config.isEnabled && config.apiKey.isNotBlank()) client.embedTexts(listOf(chunkContent), config).firstOrNull() else null
+        ragDao.insertChunks(listOf(chunk.copy(
+            embeddingJson = vector?.let { embeddingToJson(it) },
+            embeddingModel = vector?.let { config.embeddingModel }
+        )))
 
         // 4. Build Knowledge Graph nodes & edges
         val imgNodeId = "img:$filePath"
