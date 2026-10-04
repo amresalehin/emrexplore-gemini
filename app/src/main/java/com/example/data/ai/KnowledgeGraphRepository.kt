@@ -57,7 +57,11 @@ class KnowledgeGraphRepository(private val context: Context) {
     private val modelRunDao = db.modelRunDao()
     private val client = AiProviderClient()
     private val brainEngine = BrainEngine(ragDao, kgDao, client)
-    private data class IndexResult(val success: Boolean, val hasSearchableContent: Boolean)
+    private data class IndexResult(
+        val success: Boolean,
+        val hasSearchableContent: Boolean,
+        val embeddingModel: String? = null
+    )
 
     private val metadataExtractor = MetadataExtractor(context)
     private val mediaMetadataRepository = MediaMetadataRepository(context)
@@ -464,10 +468,10 @@ class KnowledgeGraphRepository(private val context: Context) {
         val chunkCount = ragDao.getChunkCountForFile(filePath)
         val indexed = kgDao.getNodeByFilePath(filePath) != null &&
             (!result.hasSearchableContent || chunkCount > 0)
-        val targetModel = if (isImageFile(file)) {
-            if (isAiReady(config) && multimodalEmbeddingModel(config).isNotBlank()) multimodalEmbeddingModel(config) else OfflineEmbeddingEngine.MODEL_NAME
+        val targetModel = result.embeddingModel ?: if (isImageFile(file)) {
+            OfflineEmbeddingEngine.MODEL_NAME
         } else {
-            if (isAiReady(config) && textEmbeddingModel(config).isNotBlank()) textEmbeddingModel(config) else OfflineEmbeddingEngine.MODEL_NAME
+            OfflineEmbeddingEngine.MODEL_NAME
         }
         val embeddingsReady = !result.hasSearchableContent ||
             ragDao.getChunksMissingEmbeddings(filePath, targetModel) == 0
@@ -665,7 +669,11 @@ class KnowledgeGraphRepository(private val context: Context) {
             }
         }
         if (evidence.isNotEmpty()) kgDao.insertEdgeEvidence(evidence)
-        return IndexResult(success = true, hasSearchableContent = true)
+        return IndexResult(
+            success = true,
+            hasSearchableContent = true,
+            embeddingModel = modelName
+        )
     }
 
     private suspend fun indexImageInternal(file: File, uri: android.net.Uri?, config: AiProviderConfigEntity): IndexResult {
@@ -846,7 +854,11 @@ class KnowledgeGraphRepository(private val context: Context) {
             }
         }
         if (evidence.isNotEmpty()) kgDao.insertEdgeEvidence(evidence)
-        return IndexResult(success = true, hasSearchableContent = true)
+        return IndexResult(
+            success = true,
+            hasSearchableContent = true,
+            embeddingModel = vectorModel
+        )
     }
 
     /**
