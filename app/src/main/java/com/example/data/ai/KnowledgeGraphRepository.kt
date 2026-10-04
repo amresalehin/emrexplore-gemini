@@ -9,6 +9,7 @@ import android.util.Log
 import com.example.data.local.AiProviderConfigEntity
 import com.example.data.local.AppDatabase
 import com.example.data.local.KgEdgeEntity
+import com.example.data.local.KgEdgeEvidenceEntity
 import com.example.data.local.KgNodeEntity
 import com.example.data.local.IndexFingerprintEntity
 import com.example.data.local.RagChunkEntity
@@ -82,6 +83,7 @@ class KnowledgeGraphRepository(private val context: Context) {
 
     suspend fun clearGraph() = withContext(Dispatchers.IO) {
         db.withTransaction {
+            kgDao.clearAllEdgeEvidence()
             kgDao.clearAllEdges()
             kgDao.clearAllNodes()
             ragDao.clearAllChunks()
@@ -335,6 +337,18 @@ class KnowledgeGraphRepository(private val context: Context) {
 
         kgDao.insertNodes(nodesToInsert)
         kgDao.insertEdges(edgesToInsert)
+        val evidence = edgesToInsert.mapNotNull { edge ->
+            edge.evidenceSource?.takeIf { it.isNotBlank() }?.let { source ->
+                KgEdgeEvidenceEntity(
+                    sourceNodeId = edge.sourceNodeId,
+                    targetNodeId = edge.targetNodeId,
+                    relation = edge.relation,
+                    evidenceSource = source,
+                    evidenceSnippet = edge.evidenceSnippet
+                )
+            }
+        }
+        if (evidence.isNotEmpty()) kgDao.insertEdgeEvidence(evidence)
     }
 
     private suspend fun indexImageInternal(file: File, uri: android.net.Uri?, config: AiProviderConfigEntity) {
@@ -480,6 +494,18 @@ class KnowledgeGraphRepository(private val context: Context) {
 
         kgDao.insertNodes(nodesToInsert)
         kgDao.insertEdges(edgesToInsert)
+        val evidence = edgesToInsert.mapNotNull { edge ->
+            edge.evidenceSource?.takeIf { it.isNotBlank() }?.let { source ->
+                KgEdgeEvidenceEntity(
+                    sourceNodeId = edge.sourceNodeId,
+                    targetNodeId = edge.targetNodeId,
+                    relation = edge.relation,
+                    evidenceSource = source,
+                    evidenceSnippet = edge.evidenceSnippet
+                )
+            }
+        }
+        if (evidence.isNotEmpty()) kgDao.insertEdgeEvidence(evidence)
     }
 
     /**
@@ -533,7 +559,8 @@ class KnowledgeGraphRepository(private val context: Context) {
     }
 
     private suspend fun replaceSourceData(filePath: String) {
-        kgDao.deleteEdgesByEvidenceSource(filePath)
+        kgDao.deleteEdgeEvidenceBySource(filePath)
+        kgDao.deleteSourcedEdgesWithoutEvidence()
         kgDao.deleteEdgesForNode("doc:$filePath")
         kgDao.deleteEdgesForNode("img:$filePath")
         kgDao.deleteNodeByFilePath(filePath)
