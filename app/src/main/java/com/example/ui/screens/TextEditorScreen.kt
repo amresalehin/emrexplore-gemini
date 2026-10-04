@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -48,8 +50,10 @@ fun TextEditorScreen(
     onSave: () -> Unit,
     onClose: () -> Unit
 ) {
-    val scrollState = rememberScrollState()
-    val linesCount = content.lines().size
+    BackHandler(enabled = true, onBack = onClose)
+
+    val lines = content.lines()
+    val linesCount = lines.size
     val wordsCount = if (content.isBlank()) 0 else content.trim().split("\\s+".toRegex()).size
 
     Scaffold(
@@ -130,37 +134,36 @@ fun TextEditorScreen(
                     shape = MaterialTheme.shapes.medium
                 ) {
                     SelectionContainer {
-                        Row(
+                        LazyColumn(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .verticalScroll(scrollState)
                                 .padding(12.dp)
                         ) {
-                            // Line numbers gutter
-                            Column(
-                                horizontalAlignment = Alignment.End,
-                                modifier = Modifier.padding(end = 12.dp)
-                            ) {
-                                for (i in 1..linesCount) {
+                            itemsIndexed(
+                                items = lines,
+                                key = { index, _ -> index }
+                            ) { index, line ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
                                     Text(
-                                        text = "$i",
+                                        text = (index + 1).toString(),
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 13.sp,
                                         lineHeight = 20.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                        modifier = Modifier.padding(end = 12.dp)
+                                    )
+                                    Text(
+                                        text = if (content.isEmpty()) "(Empty file)" else line,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 13.sp,
+                                        lineHeight = 20.sp,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f)
                                     )
                                 }
                             }
-
-                            // Text content
-                            Text(
-                                text = content.ifEmpty { "(Empty file)" },
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 13.sp,
-                                lineHeight = 20.sp,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.fillMaxWidth()
-                            )
                         }
                     }
                 }
