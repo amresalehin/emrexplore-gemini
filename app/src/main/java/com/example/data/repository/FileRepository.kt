@@ -441,7 +441,7 @@ class FileRepository(private val context: Context) {
             } else {
                 val valid = inMemory.filter { item ->
                     val file = File(item.path)
-                    file.exists() && (!item.isDirectory || file.isDirectory)
+                    file.exists() && item.isDirectory == file.isDirectory
                 }
                 if (valid.size != inMemory.size) {
                     folderCache[dirPath] = valid
@@ -453,13 +453,27 @@ class FileRepository(private val context: Context) {
         try {
             val entities = fileIndexDao.getFilesByParent(dirPath)
             if (entities.isNotEmpty()) {
-                val favSet = try { favoriteDao.getAllFavoritePathsSync().toHashSet() } catch (e: Exception) { emptySet() }
-                // Room is a cache, not the source of truth. Never surface entries whose
-                // backing path has disappeared since the index was written.
-                val validEntities = entities.filter { entity ->
-                    val file = File(entity.path)
-                    file.exists() && (!entity.isDirectory || file.isDirectory)
+                // Room is only a cache. Serve it only when its path set and item types
+                // exactly match the live directory; otherwise fall through to disk.
+                val actualFiles = dir.listFiles()?.toList() ?: return@withContext null
+                val actualPaths = actualFiles
+                    .filter { showHidden || !it.name.startsWith(".") }
+                    .map { it.absolutePath }
+                    .toSet()
+                val indexedPaths = entities
+                    .filter { showHidden || !it.name.startsWith(".") }
+                    .map { it.path }
+                    .toSet()
+                val indexedTypesMatch = entities
+                    .filter { showHidden || !it.name.startsWith(".") }
+                    .all { entity -> File(entity.path).let { it.exists() && entity.isDirectory == it.isDirectory } }
+
+                if (actualPaths != indexedPaths || !indexedTypesMatch) {
+                    return@withContext null
                 }
+
+                val favSet = try { favoriteDao.getAllFavoritePathsSync().toHashSet() } catch (e: Exception) { emptySet() }
+                val validEntities = entities
                 if (validEntities.isEmpty()) return@withContext null
                 val items = validEntities.map { entity ->
                     FileItem(
