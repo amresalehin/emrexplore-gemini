@@ -237,7 +237,11 @@ data class UiState(
     val aiTestResult: ConnectionTestResult? = null,
     val showAiSettingsDialog: Boolean = false,
     val isAiSettingsScreenOpen: Boolean = false,
+    val aiConfigLoaded: Boolean = false,
     val isKgIndexing: Boolean = false,
+    val isGalleryAiProcessing: Boolean = false,
+    val galleryAiProgress: Float = 0f,
+    val galleryAiStatus: String = "Ready",
     val kgIndexingProgress: Float = 0f,
     val kgIndexingStatus: String = "Ready",
     val ragAnswer: RagAnswer? = null,
@@ -482,8 +486,11 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
         viewModelScope.launch {
             kgRepository.aiConfigFlow.collectLatest { config ->
-                config?.let { c ->
-                    _uiState.update { it.copy(aiConfig = c) }
+                _uiState.update {
+                    it.copy(
+                        aiConfigLoaded = true,
+                        aiConfig = config ?: it.aiConfig
+                    )
                 }
             }
         }
@@ -1460,6 +1467,55 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             clearGallerySelection()
             refreshGallery()
             showMessage("Updated favorites for " + selected.size + " items")
+        }
+    }
+
+    fun processGalleryAiSelection() {
+        val selected = _uiState.value.gallerySelection.filter { !it.isVideo }
+        if (selected.isEmpty()) return
+        val config = _uiState.value.aiConfig
+        if (!isBrainAiConfigured(config)) {
+            _uiState.update { it.copy(isAiSettingsScreenOpen = true, showAiSettingsDialog = true) }
+            showMessage("Configure and save an AI provider before processing gallery images")
+            return
+        }
+        val paths = selected.mapNotNull { it.path.takeIf { p -> p.isNotBlank() } }
+        if (paths.isEmpty()) {
+            showMessage("Selected gallery images do not expose readable file paths")
+            return
+        }
+        val request = OneTimeWorkRequestBuilder<com.example.data.ai.GalleryAiWorker>()
+            .setInputData(androidx.work.workDataOf("paths" to paths.toTypedArray()))
+            .setConstraints(
+                Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+            )
+            .build()
+        _uiState.update { it.copy(gallerySelection = emptyList(), isGalleryAiProcessing = true, galleryAiProgress = 0f, galleryAiStatus = "AI processing queued...") }
+        WorkManager.getInstance(getApplication<Application>()).enqueue(request)
+        viewModelScope.launch {
+            WorkManager.getInstance(getApplication<Application>()).getWorkInfoByIdFlow(request.id).collectLatest { info ->
+                if (info == null) return@collectLatest
+                val current = info.progress.getInt("current", 0)
+                val total = info.progress.getInt("total", paths.size)
+                val path = info.progress.getString("path").orEmpty()
+                when (info.state) {
+                    androidx.work.WorkInfo.State.RUNNING, androidx.work.WorkInfo.State.ENQUEUED -> _uiState.update {
+                        it.copy(
+                            isGalleryAiProcessing = true,
+                            galleryAiProgress = if (total > 0) current.toFloat() / total else 0f,
+                            galleryAiStatus = if (path.isBlank()) "Processing gallery AI..." else "AI: " + File(path).name + " ($current/$total)"
+                        )
+                    }
+                    androidx.work.WorkInfo.State.SUCCEEDED -> {
+                        _uiState.update { it.copy(isGalleryAiProcessing = false, galleryAiProgress = 1f, galleryAiStatus = "AI enrichment complete") }
+                        refreshGallery()
+                        showMessage("AI processed $current gallery image(s)")
+                    }
+                    androidx.work.WorkInfo.State.FAILED -> _uiState.update { it.copy(isGalleryAiProcessing = false, galleryAiStatus = "AI processing failed") }
+                    androidx.work.WorkInfo.State.CANCELLED -> _uiState.update { it.copy(isGalleryAiProcessing = false, galleryAiStatus = "AI processing cancelled") }
+                    else -> Unit
+                }
+            }
         }
     }
 
