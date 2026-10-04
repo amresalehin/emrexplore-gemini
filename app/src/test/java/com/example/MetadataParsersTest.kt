@@ -16,7 +16,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 @RunWith(RobolectricTestRunner::class)
-@Config(manifest = Config.NONE)
+@Config(sdk = [35], manifest = Config.NONE)
 class MetadataParsersTest {
 
     @Test
