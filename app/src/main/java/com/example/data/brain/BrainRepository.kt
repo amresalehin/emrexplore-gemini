@@ -10,7 +10,6 @@ import com.example.data.ai.ConnectedDotsItem
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.ai.ExtractedEntity
 import com.example.data.ai.ProviderType
-import com.example.data.ai.BrainTopicFile
 import com.example.data.ai.RagAnswer
 import com.example.data.ai.isKeylessAiConfig
 import com.example.data.local.AiProviderConfigEntity
