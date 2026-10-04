@@ -59,7 +59,6 @@ import com.example.ui.components.StoragePermissionBanner
 import com.example.ui.components.getRequiredStoragePermissions
 import com.example.ui.components.isAllFilesAccessGranted
 import com.example.ui.components.launchAllFilesAccessSettings
-import com.example.ui.screens.AiSettingsDialog
 import com.example.ui.screens.AiSettingsScreen
 import com.example.ui.screens.FileExplorerScreen
 import com.example.ui.screens.FilePropertiesDialog
@@ -497,16 +496,6 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             onReindexAll = { viewModel.indexAllFilesForKnowledgeGraph() },
             onClearGraph = { viewModel.clearKnowledgeGraph() },
             onNavigateBack = { viewModel.setShowAiSettings(false) }
-        )
-    } else if (uiState.showAiSettingsDialog) {
-        AiSettingsDialog(
-            currentConfig = uiState.aiConfig,
-            isTestingConnection = uiState.isTestingAiConnection,
-            testResult = uiState.aiTestResult,
-            onSaveConfig = { viewModel.saveAiConfig(it) },
-            onTestConnection = { viewModel.testAiConnection(it) },
-            onClearGraph = { viewModel.clearKnowledgeGraph() },
-            onDismiss = { viewModel.setShowAiSettings(false) }
         )
     }
 }
