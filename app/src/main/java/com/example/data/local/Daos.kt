@@ -242,10 +242,18 @@ interface KgDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEdges(edges: List<KgEdgeEntity>)
 
-    @Query("SELECT * FROM kg_nodes ORDER BY degree DESC, updatedAt DESC")
+    // The Brain canvas is a preview, not a database dump. Keep large libraries from
+    // materializing thousands of nodes/edges into Compose state on every change.
+    @Query("SELECT * FROM kg_nodes ORDER BY degree DESC, updatedAt DESC LIMIT 240")
     fun getAllNodesFlow(): Flow<List<KgNodeEntity>>
 
-    @Query("SELECT * FROM kg_edges ORDER BY weight DESC")
+    @Query("""
+        SELECT e.* FROM kg_edges e
+        INNER JOIN kg_nodes s ON s.id = e.sourceNodeId
+        INNER JOIN kg_nodes t ON t.id = e.targetNodeId
+        ORDER BY e.weight DESC
+        LIMIT 500
+    """)
     fun getAllEdgesFlow(): Flow<List<KgEdgeEntity>>
 
     @Query("SELECT * FROM kg_nodes WHERE id = :id LIMIT 1")
@@ -283,6 +291,9 @@ interface KgDao {
 
     @Query("SELECT * FROM kg_edges WHERE sourceNodeId = :nodeId OR targetNodeId = :nodeId")
     suspend fun getEdgesForNode(nodeId: String): List<KgEdgeEntity>
+
+    @Query("SELECT * FROM kg_edges WHERE sourceNodeId IN (:nodeIds) OR targetNodeId IN (:nodeIds)")
+    suspend fun getEdgesForNodes(nodeIds: List<String>): List<KgEdgeEntity>
 
     @Query("SELECT * FROM kg_nodes WHERE label LIKE '%' || :query || '%' OR summary LIKE '%' || :query || '%'")
     suspend fun searchNodes(query: String): List<KgNodeEntity>
@@ -335,8 +346,23 @@ interface RagDao {
     @Query("SELECT * FROM rag_chunks WHERE filePath = :filePath ORDER BY chunkIndex ASC")
     suspend fun getChunksForFile(filePath: String): List<RagChunkEntity>
 
-    @Query("SELECT * FROM rag_chunks WHERE embeddingModel = :embeddingModel AND embeddingJson IS NOT NULL LIMIT :limit OFFSET :offset")
-    suspend fun getEmbeddedChunksPage(embeddingModel: String, limit: Int, offset: Int): List<RagChunkEntity>
+    @Query("SELECT COUNT(*) FROM rag_chunks WHERE filePath = :filePath")
+    suspend fun getChunkCountForFile(filePath: String): Int
+
+    @Query("""
+        SELECT COUNT(*) FROM rag_chunks
+        WHERE filePath = :filePath
+          AND (embeddingJson IS NULL OR embeddingModel != :embeddingModel)
+    """)
+    suspend fun getChunksMissingEmbeddings(filePath: String, embeddingModel: String): Int
+
+    @Query("""
+        SELECT chunkId, embeddingJson FROM rag_chunks
+        WHERE embeddingModel = :embeddingModel AND embeddingJson IS NOT NULL
+        ORDER BY indexedTimestamp DESC
+        LIMIT :limit OFFSET :offset
+    """)
+    suspend fun getEmbeddedChunksPage(embeddingModel: String, limit: Int, offset: Int): List<RagEmbeddingRow>
     @Query("SELECT * FROM rag_chunks WHERE chunkId IN (:ids)")
     suspend fun getChunksByIds(ids: List<String>): List<RagChunkEntity>
 
