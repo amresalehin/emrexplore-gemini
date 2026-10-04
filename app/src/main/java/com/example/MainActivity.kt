@@ -433,9 +433,7 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                 size = item.size,
                 dateAdded = item.lastModified,
                 mimeType = item.mimeType,
-                isVideo = false,
-                width = item.width,
-                height = item.height
+                isVideo = false
             )) },
             onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false)) },
             onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false, mimeType = "image/jpeg")) }
