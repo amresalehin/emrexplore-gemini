@@ -180,6 +180,7 @@ class AiProviderClient {
 
     private fun embedOpenAi(texts: List<String>, config: AiProviderConfigEntity): List<FloatArray> {
         val rawBase = config.baseUrl.trimEnd('/').ifBlank { "https://api.openai.com/v1" }
+        val validatedBase = validateEndpoint(rawBase, ProviderType.fromString(config.providerType)).toString()
         val url = if (rawBase.endsWith("/embeddings")) rawBase else "$rawBase/embeddings"
         val root = JSONObject()
             .put("model", config.embeddingModel)
