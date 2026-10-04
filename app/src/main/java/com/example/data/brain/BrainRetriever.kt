@@ -52,17 +52,15 @@ class BrainRetriever(
             null
         }
 
-        val hits = PriorityQueue<BrainSearchHit>(limit * 2) { a, b ->
-            a.score.compareTo(b.score)
-        }
-        collectOfflineHits(offlineQuery, hits, limit * 2)
-
-        if (onlineQuery != null) {
-            collectModelHits(onlineModel, onlineQuery, hits, limit * 2)
+        val offlineHits = collectOfflineHits(offlineQuery, limit * 3)
+        val onlineHits = if (onlineQuery != null) {
+            collectModelHits(onlineModel, onlineQuery, limit * 3)
+        } else {
+            emptyList()
         }
 
-        var bestHits = drainTop(hits, limit)
-        if (bestHits.isEmpty() || bestHits.first().score < MIN_VECTOR_SCORE) {
+        var bestHits = fuseRanks(offlineHits, onlineHits, limit)
+        if (bestHits.isEmpty() || offlineHits.firstOrNull()?.score ?: 0f < MIN_VECTOR_SCORE) {
             bestHits = mergeLexicalFallback(clean, bestHits, limit)
         }
 
@@ -141,11 +139,13 @@ class BrainRetriever(
 
     private suspend fun collectOfflineHits(
         queryVector: FloatArray,
-        queue: PriorityQueue<BrainSearchHit>,
-        capacity: Int
-    ) {
-        if (queryVector.isEmpty()) return
+        limit: Int
+    ): List<BrainSearchHit> {
+        if (queryVector.isEmpty() || limit <= 0) return emptyList()
 
+        val queue = PriorityQueue<BrainSearchHit>(limit * 2) { a, b ->
+            a.score.compareTo(b.score)
+        }
         var offset = 0
         while (true) {
             val page = chunkDao.getOfflinePage(PAGE_SIZE, offset)
@@ -155,23 +155,26 @@ class BrainRetriever(
                 val vector = OfflineEmbeddingEngine.parseEmbedding(chunk.offlineEmbeddingJson)
                 if (vector.isEmpty() || vector.size != queryVector.size) continue
                 val score = OfflineEmbeddingEngine.cosine(queryVector, vector)
-                offer(queue, BrainSearchHit(chunk, score), capacity)
+                offer(queue, BrainSearchHit(chunk, score), limit)
             }
 
             if (page.size < PAGE_SIZE) break
             offset += page.size
             if (offset >= MAX_SCAN_ROWS) break
         }
+        return drainTop(queue, limit)
     }
 
     private suspend fun collectModelHits(
         model: String,
         queryVector: FloatArray,
-        queue: PriorityQueue<BrainSearchHit>,
-        capacity: Int
-    ) {
-        if (model.isBlank() || queryVector.isEmpty()) return
+        limit: Int
+    ): List<BrainSearchHit> {
+        if (model.isBlank() || queryVector.isEmpty() || limit <= 0) return emptyList()
 
+        val queue = PriorityQueue<BrainSearchHit>(limit * 2) { a, b ->
+            a.score.compareTo(b.score)
+        }
         var offset = 0
         while (true) {
             val page = chunkDao.getEmbeddedPage(model, PAGE_SIZE, offset)
@@ -181,13 +184,51 @@ class BrainRetriever(
                 val vector = OfflineEmbeddingEngine.parseEmbedding(chunk.embeddingJson)
                 if (vector.isEmpty() || vector.size != queryVector.size) continue
                 val score = OfflineEmbeddingEngine.cosine(queryVector, vector)
-                offer(queue, BrainSearchHit(chunk, score), capacity)
+                offer(queue, BrainSearchHit(chunk, score), limit)
             }
 
             if (page.size < PAGE_SIZE) break
             offset += page.size
             if (offset >= MAX_SCAN_ROWS) break
         }
+        return drainTop(queue, limit)
+    }
+
+    private fun fuseRanks(
+        offlineHits: List<BrainSearchHit>,
+        onlineHits: List<BrainSearchHit>,
+        limit: Int
+    ): List<BrainSearchHit> {
+        data class RankScore(
+            val chunk: BrainChunkEntity,
+            val rrf: Float,
+            val bestSimilarity: Float
+        )
+
+        val fused = mutableMapOf<String, RankScore>()
+        offlineHits.forEachIndexed { index, hit ->
+            val contribution = 1f / (RRF_K + index + 1)
+            val current = fused[hit.chunk.id]
+            fused[hit.chunk.id] = RankScore(
+                chunk = hit.chunk,
+                rrf = (current?.rrf ?: 0f) + contribution,
+                bestSimilarity = maxOf(current?.bestSimilarity ?: 0f, hit.score)
+            )
+        }
+        onlineHits.forEachIndexed { index, hit ->
+            val contribution = 1f / (RRF_K + index + 1)
+            val current = fused[hit.chunk.id]
+            fused[hit.chunk.id] = RankScore(
+                chunk = hit.chunk,
+                rrf = (current?.rrf ?: 0f) + contribution,
+                bestSimilarity = maxOf(current?.bestSimilarity ?: 0f, hit.score)
+            )
+        }
+
+        return fused.values
+            .sortedWith(compareByDescending<RankScore> { it.rrf }.thenByDescending { it.bestSimilarity })
+            .take(limit)
+            .map { BrainSearchHit(it.chunk, it.bestSimilarity) }
     }
 
     private suspend fun mergeLexicalFallback(
@@ -259,5 +300,6 @@ class BrainRetriever(
         const val MAX_EVIDENCE = 18
         const val MAX_CONTEXT_CHARS = 18_000
         const val MIN_VECTOR_SCORE = 0.12f
+        const val RRF_K = 60f
     }
 }
