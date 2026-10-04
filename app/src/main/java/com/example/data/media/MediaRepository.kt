@@ -28,12 +28,17 @@ class MediaRepository(context: Context) {
 
     private val appContext = context.applicationContext
 
-    fun favoritesPager(): Flow<PagingData<com.example.data.model.MediaItem>> = Pager(
+    fun favoritesPager(
+        sort: com.example.ui.viewmodel.GallerySortOption = com.example.ui.viewmodel.GallerySortOption.DATE_DESC
+    ): Flow<PagingData<com.example.data.model.MediaItem>> = Pager(
         config = PagingConfig(pageSize = MediaStorePagingSource.MIN_PAGE_SIZE, initialLoadSize = MediaStorePagingSource.MIN_PAGE_SIZE, prefetchDistance = 15, maxSize = MediaStorePagingSource.MIN_PAGE_SIZE * 3, enablePlaceholders = false),
-        pagingSourceFactory = { FavoriteMediaPagingSource(appContext) }
+        pagingSourceFactory = { FavoriteMediaPagingSource(appContext, sort) }
     ).flow
 
-    fun albumPager(bucketId: String): Flow<PagingData<com.example.data.model.MediaItem>> = Pager(
+    fun albumPager(
+        bucketId: String,
+        sort: com.example.ui.viewmodel.GallerySortOption = com.example.ui.viewmodel.GallerySortOption.DATE_DESC
+    ): Flow<PagingData<com.example.data.model.MediaItem>> = Pager(
         config = PagingConfig(
             pageSize = MediaStorePagingSource.MIN_PAGE_SIZE,
             initialLoadSize = MediaStorePagingSource.MIN_PAGE_SIZE,
@@ -41,7 +46,7 @@ class MediaRepository(context: Context) {
             maxSize = MediaStorePagingSource.MIN_PAGE_SIZE * 3,
             enablePlaceholders = false
         ),
-        pagingSourceFactory = { MediaStoreAlbumPagingSource(appContext, bucketId) }
+        pagingSourceFactory = { MediaStoreAlbumPagingSource(appContext, bucketId, sort) }
     ).flow
 
     /**
@@ -174,9 +179,8 @@ class MediaRepository(context: Context) {
         sort: com.example.ui.viewmodel.GallerySortOption = com.example.ui.viewmodel.GallerySortOption.DATE_DESC
     ): Int {
         if (source == FullscreenMediaSource.FAVORITES) {
-            val dao = com.example.data.local.AppDatabase.getDatabase(appContext).favoriteDao()
-            val timestamp = dao.getFavoriteTimestamp(item.path) ?: return 0
-            return dao.countFavoritesBefore(timestamp, item.path)
+            val favoriteItems = FavoriteMediaPagingSource(appContext, sort).loadAllSorted()
+            return favoriteItems.indexOfFirst { it.path == item.path }.coerceAtLeast(0)
         }
         val resolver = appContext.contentResolver
         val rawId = if (item.isVideo) item.id - 1_000_000L else item.id
@@ -248,7 +252,9 @@ class MediaRepository(context: Context) {
     }
 
     suspend fun viewerTotalCount(source: FullscreenMediaSource, albumId: String? = null): Int {
-        if (source == FullscreenMediaSource.FAVORITES) return com.example.data.local.AppDatabase.getDatabase(appContext).favoriteDao().getFavoriteCount()
+        if (source == FullscreenMediaSource.FAVORITES) {
+            return FavoriteMediaPagingSource(appContext).loadAllSorted().size
+        }
         val resolver = appContext.contentResolver
         val (selection, args) = when (source) {
             FullscreenMediaSource.ALL -> MediaStore.Files.FileColumns.MEDIA_TYPE + " IN (?, ?)" to arrayOf(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(), MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString())
