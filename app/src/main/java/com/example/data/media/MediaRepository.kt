@@ -280,7 +280,7 @@ class MediaRepository(context: Context) {
             FullscreenMediaSource.ALL -> MediaStorePagingSource(appContext, MediaFilter.ALL, sort)
             FullscreenMediaSource.PHOTOS -> MediaStorePagingSource(appContext, MediaFilter.PHOTOS, sort)
             FullscreenMediaSource.VIDEOS -> MediaStorePagingSource(appContext, MediaFilter.VIDEOS, sort)
-            FullscreenMediaSource.FAVORITES -> FavoriteMediaPagingSource(appContext)
+            FullscreenMediaSource.FAVORITES -> FavoriteMediaPagingSource(appContext, sort)
             FullscreenMediaSource.ALBUM -> requireNotNull(albumId) { "albumId is required for album fullscreen source" }
                 .let { MediaStoreAlbumPagingSource(appContext, it, sort) }
             FullscreenMediaSource.SEARCH -> error("Use loadSearchViewerWindow() for SEARCH source")
