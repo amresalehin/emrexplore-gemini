@@ -44,7 +44,7 @@ import com.example.data.brain.BrainNodeEntity
 import com.example.data.local.MediaMetadataEntity
 import com.example.data.metadata.MetadataExtractor
 import com.example.data.metadata.MetadataReport
-import com.example.data.ai.BrainTopicFile
+import com.example.data.brain.BrainTopicFile
 import com.example.data.model.ConflictResolution
 import com.example.data.model.FileOperationProgress
 import com.example.data.model.OperationStatus
@@ -1584,11 +1584,19 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun isGalleryAiConfigured(config: AiProviderConfigEntity): Boolean {
+        val provider = com.example.data.ai.ProviderType.fromString(config.providerType)
+        val localProvider = provider == com.example.data.ai.ProviderType.OLLAMA ||
+            provider == com.example.data.ai.ProviderType.CUSTOM ||
+            provider == com.example.data.ai.ProviderType.OPENAI_COMPATIBLE
+        return config.isEnabled && (localProvider || config.apiKey.isNotBlank())
+    }
+
     fun processGalleryAiSelection() {
         val selected = _uiState.value.gallerySelection.filter { !it.isVideo }
         if (selected.isEmpty()) return
         val config = _uiState.value.aiConfig
-        if (!isBrainAiConfigured(config)) {
+        if (!isGalleryAiConfigured(config)) {
             _uiState.update { it.copy(isAiSettingsScreenOpen = true) }
             showMessage("Configure and save an AI provider before processing gallery images")
             return
@@ -1669,7 +1677,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         val config = _uiState.value.aiConfig
-        if (!isBrainAiConfigured(config)) {
+        if (!isGalleryAiConfigured(config)) {
             _uiState.update { it.copy(isAiSettingsScreenOpen = true) }
             showMessage("Configure and save an AI provider before resuming gallery AI")
             return
@@ -1688,7 +1696,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     fun reAnalyzeGalleryImage(item: MediaItem) {
         if (item.isVideo || item.path.isBlank()) return
         val config = _uiState.value.aiConfig
-        if (!isBrainAiConfigured(config)) {
+        if (!isGalleryAiConfigured(config)) {
             _uiState.update { it.copy(isAiSettingsScreenOpen = true) }
             showMessage("Configure and save an AI provider before re-analyzing")
             return
