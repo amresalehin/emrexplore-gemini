@@ -56,18 +56,26 @@ class AiProviderClient {
                 return@withContext ConnectionTestResult(false, "Choose a chat model first. Tap Fetch models.", System.currentTimeMillis() - startTime)
             }
 
-            if (provider != ProviderType.GEMINI && provider != ProviderType.OLLAMA) {
-                val listedModels = try {
-                    listOpenAiModels(config)
-                } catch (error: AiHttpException) {
-                    if (error.code == 404) null else throw error
-                }
-                if (listedModels != null && listedModels.isNotEmpty() && listedModels.none { it.id == config.chatModel.trim() }) {
-                    return@withContext ConnectionTestResult(
-                        false,
-                        "Endpoint is reachable, but ${config.chatModel.trim()} is not available. Tap Fetch models and choose an available model.",
-                        System.currentTimeMillis() - startTime
-                    )
+            val listedModels = runCatching { listModels(config) }.getOrNull()
+            if (!listedModels.isNullOrEmpty()) {
+                val textEmbedding = config.textEmbeddingModel.ifBlank { config.embeddingModel }
+                val multimodalEmbedding = config.multimodalEmbeddingModel.ifBlank { textEmbedding }
+                val requirements = listOf(
+                    "chat" to (config.chatModel to { it.supportsChat }),
+                    "vision" to (config.visionModel to { it.supportsVision }),
+                    "text embedding" to (textEmbedding to { it.supportsEmbedding }),
+                    "multimodal embedding" to (multimodalEmbedding to { it.supportsMultimodalEmbedding || (multimodalEmbedding == textEmbedding && it.supportsEmbedding) })
+                )
+                for ((role, requirement) in requirements) {
+                    val modelId = requirement.first.trim()
+                    val capability = requirement.second
+                    if (modelId.isNotBlank() && listedModels.none { it.id == modelId && capability(it) }) {
+                        return@withContext ConnectionTestResult(
+                            false,
+                            "Selected $role model is not available: $modelId. Tap Fetch and choose a compatible model.",
+                            System.currentTimeMillis() - startTime
+                        )
+                    }
                 }
             }
 
@@ -84,7 +92,7 @@ class AiProviderClient {
             val provider = ProviderType.fromString(config.providerType)
             val message = when {
                 error.code == 401 || error.code == 403 -> "The endpoint is reachable, but the API key was rejected (${error.code})."
-                error.code == 404 && config.baseUrl.contains("integrate.api.nvidia.com", ignoreCase = true) -> "NVIDIA returned 404 for this model or route. Fetch models and choose a current model. Deprecated models such as adept/fuyu-8b are no longer served here."
+                error.code == 404 && config.baseUrl.contains("integrate.api.nvidia.com", ignoreCase = true) -> "NVIDIA returned 404 for this model or route. Tap Fetch models and choose a current model."
                 error.code == 404 -> "The endpoint is reachable, but the path or selected model was not found. Check Base URL and choose a model from Fetch."
                 else -> "${provider.displayName} returned HTTP ${error.code}."
             }
