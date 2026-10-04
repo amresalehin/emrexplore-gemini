@@ -37,6 +37,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -284,7 +285,8 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                     transitionSpec = { fadeIn() togetherWith fadeOut() },
                     label = "TabContent"
                 ) { targetTab ->
-                    when (targetTab) {
+                    key(targetTab) {
+                        when (targetTab) {
                         MainTab.HOME -> HomeScreen(
                             uiState = uiState,
                             viewModel = viewModel
@@ -323,6 +325,7 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                             onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false)) },
                             onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false, mimeType = "image/jpeg")) }
                         )
+                    }
                     }
                 }
             }
