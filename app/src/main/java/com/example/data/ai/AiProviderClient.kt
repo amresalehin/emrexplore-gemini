@@ -497,8 +497,7 @@ class AiProviderClient {
 
         okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
             if (!response.isSuccessful) {
-                val errorBody = response.body?.string().orEmpty()
-                throw RuntimeException("OpenAI API Error HTTP ${response.code}: $errorBody")
+                throw safeHttpError("OpenAI-compatible API", response.code)
             }
             val responseBody = response.body?.string().orEmpty()
             val jsonResponse = JSONObject(responseBody)
