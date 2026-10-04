@@ -2033,7 +2033,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 baseUrl = config.baseUrl.trim()
             )
             kgRepository.saveAiConfig(saved)
-            _uiState.update { it.copy(aiConfig = saved) }
+            _uiState.update { it.copy(aiConfig = saved, aiConfigLoaded = true) }
             showMessage("AI settings saved")
         }
     }
