@@ -154,12 +154,12 @@ class KnowledgeGraphRepository(private val context: Context) {
         if (!isImage && !isDoc) return@withContext
 
         val filePath = file.absolutePath
-
-        if (isDoc) {
-            indexDocumentInternal(file, uri, config)
-        } else {
-            indexImageInternal(file, uri, config)
-        }
+        val hash = computeFileHash(file, uri)
+        val modelVersion = ProviderType.fromString(config.providerType).name + ":" + config.chatModel + ":" + config.visionModel + ":" + config.isEnabled
+        val existing = fingerprintDao.get(filePath)
+        if (existing != null && existing.size == file.length() && existing.lastModified == file.lastModified() && existing.contentHash == hash && existing.modelVersion == modelVersion && existing.embeddingModel == config.embeddingModel) return@withContext
+        if (isDoc) indexDocumentInternal(file, uri, config) else indexImageInternal(file, uri, config)
+        fingerprintDao.insert(IndexFingerprintEntity(filePath, file.length(), file.lastModified(), hash, modelVersion, config.embeddingModel))
     }
 
     private suspend fun indexDocumentInternal(file: File, uri: android.net.Uri?, config: AiProviderConfigEntity) {
