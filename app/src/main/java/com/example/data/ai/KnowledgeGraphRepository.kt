@@ -9,6 +9,7 @@ import com.example.data.local.AiProviderConfigEntity
 import com.example.data.local.AppDatabase
 import com.example.data.local.KgEdgeEntity
 import com.example.data.local.KgNodeEntity
+import com.example.data.local.IndexFingerprintEntity
 import com.example.data.local.RagChunkEntity
 import com.example.data.metadata.MetadataExtractor
 import kotlinx.coroutines.Dispatchers
