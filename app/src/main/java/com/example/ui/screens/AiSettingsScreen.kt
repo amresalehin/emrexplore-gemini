@@ -734,6 +734,7 @@ fun AiSettingsScreen(
                                         chatModel = chatModel.trim(),
                                         visionModel = visionModel.trim(),
                                         embeddingModel = embeddingModel.trim(),
+                                     customHeadersJson = currentConfig.customHeadersJson,
                                         temperature = temperature,
                                         isEnabled = isEnabled,
                                         autoSync = autoSync
