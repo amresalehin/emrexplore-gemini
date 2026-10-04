@@ -56,14 +56,22 @@ class KnowledgeGraphRepository(private val context: Context) {
     val chunkCountFlow: Flow<Int> = ragDao.getChunkCountFlow()
     val aiConfigFlow: Flow<AiProviderConfigEntity?> = aiConfigDao.getConfigFlow()
 
-    suspend fun getAiConfig(): AiProviderConfigEntity {
-        return withContext(Dispatchers.IO) {
-            aiConfigDao.getConfig() ?: AiProviderConfigEntity()
+    private fun normalizeAiConfig(config: AiProviderConfigEntity): AiProviderConfigEntity {
+        if (config.embeddingModel != "gemini-embedding-2-preview") return config
+        val provider = ProviderType.fromString(config.providerType)
+        val replacement = provider.defaultEmbeddingModel
+        return if (replacement.isNotBlank()) config.copy(embeddingModel = replacement) else config.copy(embeddingModel = "")
+    }
+
+    suspend fun getAiConfig(): AiProviderConfigEntity = withContext(Dispatchers.IO) {
+        val raw = aiConfigDao.getConfig() ?: AiProviderConfigEntity()
+        normalizeAiConfig(raw).also { normalized ->
+            if (normalized != raw) aiConfigDao.saveConfig(normalized)
         }
     }
 
     suspend fun saveAiConfig(config: AiProviderConfigEntity) = withContext(Dispatchers.IO) {
-        aiConfigDao.saveConfig(config)
+        aiConfigDao.saveConfig(normalizeAiConfig(config))
     }
 
     suspend fun testConnection(config: AiProviderConfigEntity): ConnectionTestResult {
