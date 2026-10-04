@@ -15,10 +15,9 @@ class BrainEngine(
     companion object {
         private const val LEXICAL_RESULTS_PER_TOKEN = 8
         private const val MAX_QUERY_TOKENS = 6
-        private const val SEMANTIC_CANDIDATE_THRESHOLD = 32
         private const val SEMANTIC_PAGE_SIZE = 64
-        private const val SEMANTIC_TIME_BUDGET_MS = 250L
-        private const val MAX_SEMANTIC_ROWS = 4096
+        private const val SEMANTIC_TIME_BUDGET_MS = 750L
+        private const val MAX_SEMANTIC_ROWS = 8192
         private const val MAX_GRAPH_SEEDS = 8
         private const val MAX_GRAPH_NODES = 64
         private const val MAX_GRAPH_EVIDENCE = 24
@@ -41,10 +40,10 @@ class BrainEngine(
             ) || config.apiKey.isNotBlank()) &&
             config.embeddingModel.isNotBlank()
 
-        // Avoid an expensive embedding request + broad vector scan when lexical
-        // retrieval already produced a healthy candidate pool.
-        val shouldRunSemantic = semanticAvailable && lexical.size < SEMANTIC_CANDIDATE_THRESHOLD
-        val queryEmbedding = if (shouldRunSemantic) {
+        // Keep semantic retrieval active whenever embeddings are available. This is
+        // the high-value recall path for paraphrases and concepts that do not share
+        // exact words with the query. The scan itself remains bounded for resource use.
+        val queryEmbedding = if (semanticAvailable && question.isNotBlank()) {
             client.embedTexts(listOf(question), config).firstOrNull()
         } else null
 
@@ -94,7 +93,7 @@ class BrainEngine(
 
     suspend fun graphContext(
         seedNodes: List<KgNodeEntity>,
-        maxDepth: Int = 2,
+        maxDepth: Int = 3,
         maxPerNode: Int = 6
     ): Pair<List<KgNodeEntity>, List<String>> = withContext(Dispatchers.IO) {
         val seeds = seedNodes.distinctBy { it.id }.take(MAX_GRAPH_SEEDS)
