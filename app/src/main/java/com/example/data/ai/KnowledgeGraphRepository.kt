@@ -228,7 +228,7 @@ class KnowledgeGraphRepository(private val context: Context) {
                 if (pdf.isEncrypted) return ""
                 val stripper = PDFTextStripper().apply {
                     startPage = 1
-                    endPage = minOf(numberOfPages, 120)
+                    endPage = minOf(pdf.numberOfPages, 120)
                 }
                 stripper.getText(pdf).take(50000)
             }
@@ -245,7 +245,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             if (file.extension.equals("pdf", ignoreCase = true)) {
                 extractPdfText(file, uri)
             } else if (file.exists() && file.canRead()) {
-                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText().take(50000) }.orEmpty()
+                file.inputStream().bufferedReader().use { it.readText().take(50000) }
             } else ""
         } catch (e: Exception) {
             Log.w("KGRepo", "Could not read doc text: ${e.message}")
