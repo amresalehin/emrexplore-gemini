@@ -135,7 +135,8 @@ fun KnowledgeGraphScreen(
     indexingStatus: String,
     ragAnswer: RagAnswer?,
     isRagQuerying: Boolean,
-    smartSuggestions: List<String> = emptyList(),
+    smartSuggestions: List<String> = emptyList(
+    apiConfigured: Boolean = false,),
     onQueryRag: (String) -> Unit,
     onIndexAllFiles: () -> Unit,
     onOpenAiSettings: () -> Unit,
@@ -147,6 +148,11 @@ fun KnowledgeGraphScreen(
     var selectedTab by remember { mutableStateOf(GraphScreenTab.ASK_AI) }
     var selectedNode by remember { mutableStateOf<KgNodeEntity?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    if (!apiConfigured) {
+        AiSetupRequiredState(onOpenAiSettings = onOpenAiSettings)
+        return
+    }
 
     val syncRotation = if (isIndexing) {
         val transition = rememberInfiniteTransition(label = "sync_anim")
