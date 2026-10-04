@@ -128,7 +128,7 @@ class MainActivity : ComponentActivity() {
 fun MainAppRoot(viewModel: UnifiedViewModel) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val aiSettingsVisible = uiState.isAiSettingsScreenOpen || uiState.showAiSettingsDialog
+    val aiSettingsVisible = uiState.isAiSettingsScreenOpen
     val activityContext = LocalContext.current
 
     DisposableEffect(aiSettingsVisible) {
