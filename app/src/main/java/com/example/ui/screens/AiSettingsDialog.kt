@@ -79,6 +79,7 @@ fun AiSettingsDialog(
     var baseUrl by remember { mutableStateOf(currentConfig.baseUrl) }
     var chatModel by remember { mutableStateOf(currentConfig.chatModel) }
     var visionModel by remember { mutableStateOf(currentConfig.visionModel) }
+    var embeddingModel by remember { mutableStateOf(currentConfig.embeddingModel) }
     var temperature by remember { mutableFloatStateOf(currentConfig.temperature) }
     var isEnabled by remember { mutableStateOf(currentConfig.isEnabled) }
     var autoSync by remember { mutableStateOf(currentConfig.autoSync) }
@@ -191,7 +192,7 @@ fun AiSettingsDialog(
                                 selectedProvider = provider
                                 baseUrl = provider.defaultBaseUrl
                                 chatModel = provider.defaultModel
-                                visionModel = provider.defaultModel
+                                visionModel = provider.defaultVisionModel
                             },
                             label = { Text(provider.displayName, fontSize = 12.sp) },
                             leadingIcon = if (selectedProvider == provider) {
@@ -367,6 +368,7 @@ fun AiSettingsDialog(
                             baseUrl = baseUrl,
                             chatModel = chatModel,
                             visionModel = visionModel,
+                            embeddingModel = embeddingModel,
                             temperature = temperature,
                             isEnabled = isEnabled,
                             autoSync = autoSync
