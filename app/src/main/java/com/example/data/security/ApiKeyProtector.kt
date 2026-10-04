@@ -2,6 +2,7 @@ package com.example.data.security
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.Base64
 import java.nio.ByteBuffer
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -38,13 +39,13 @@ object ApiKeyProtector {
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val iv = cipher.iv
         val ciphertext = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-        return PREFIX + java.util.Base64.getEncoder().encodeToString(ByteBuffer.allocate(4 + iv.size + ciphertext.size).putInt(iv.size).put(iv).put(ciphertext).array())
+        return PREFIX + Base64.encodeToString(ByteBuffer.allocate(4 + iv.size + ciphertext.size).putInt(iv.size).put(iv).put(ciphertext).array(), Base64.NO_WRAP)
     }
 
     fun decrypt(value: String): String {
         if (value.isBlank() || !value.startsWith(PREFIX)) return value
         return try {
-            val packed = java.util.Base64.getDecoder().decode(value.removePrefix(PREFIX))
+            val packed = Base64.decode(value.removePrefix(PREFIX), Base64.NO_WRAP)
             val buffer = ByteBuffer.wrap(packed)
             val ivSize = buffer.int
             if (ivSize !in 12..16) return ""
