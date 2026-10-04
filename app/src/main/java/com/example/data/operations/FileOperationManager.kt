@@ -225,7 +225,7 @@ class FileOperationManager(
                                 }
                             } else {
                                 // Fallback streaming copy and delete
-                                copyRecursivelyWithProgress(
+                                val copiedCompletely = copyRecursivelyWithProgress(
                                     src = src,
                                     dest = dest,
                                     onByteChunk = { chunk ->
@@ -243,7 +243,12 @@ class FileOperationManager(
                                         }
                                     }
                                 )
-                                src.deleteRecursively()
+                                if (!copiedCompletely) {
+                                    throw IOException("Move could not complete because one or more conflicts were skipped")
+                                }
+                                if (src.exists() && !src.deleteRecursively()) {
+                                    throw IOException("Copied successfully but could not delete source")
+                                }
                             }
                         }
 
@@ -303,17 +308,21 @@ class FileOperationManager(
         dest: File,
         onByteChunk: (Long) -> Unit,
         onFileCompleted: (File) -> Unit
-    ) {
+    ): Boolean {
         checkPausedOrCancelled()
 
         if (src.isDirectory) {
-            if (!dest.exists()) dest.mkdirs()
-            val children = src.listFiles() ?: return
+            if (!dest.exists() && !dest.mkdirs()) throw IOException("Could not create destination")
+            val children = src.listFiles() ?: return false
+            var complete = true
             for (child in children) {
                 val childDest = File(dest, child.name)
-                copyRecursivelyWithProgress(child, childDest, onByteChunk, onFileCompleted)
+                if (!copyRecursivelyWithProgress(child, childDest, onByteChunk, onFileCompleted)) {
+                    complete = false
+                }
             }
-            onFileCompleted(src)
+            if (complete) onFileCompleted(src)
+            complete
         } else {
             var targetFile = dest
             if (dest.exists()) {
@@ -331,9 +340,7 @@ class FileOperationManager(
                 val resolution = askConflictResolution(conflict)
                 when (resolution) {
                     ConflictResolution.SKIP -> {
-                        onByteChunk(src.length())
-                        onFileCompleted(src)
-                        return
+                        return false
                     }
                     ConflictResolution.KEEP_BOTH -> {
                         targetFile = generateUniqueFile(dest)
@@ -346,6 +353,7 @@ class FileOperationManager(
 
             streamCopyFile(src, targetFile, onByteChunk)
             onFileCompleted(src)
+            true
         }
     }
 
