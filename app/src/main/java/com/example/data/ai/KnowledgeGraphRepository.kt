@@ -25,6 +25,7 @@ import com.example.data.security.ApiKeyProtector
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
@@ -454,6 +455,7 @@ class KnowledgeGraphRepository(private val context: Context) {
                 staged
             }
         } catch (error: Exception) {
+            if (error is CancellationException) throw error
             Log.w("KGRepo", "Indexing failed; existing Brain data was preserved for $filePath: ${error.message}")
             modelRunDao.insert(ModelRunEntity(runId, filePath, "INDEX", config.chatModel.ifBlank { "local" }, false, error.message, runStartedAt, System.currentTimeMillis()))
             return@withContext false
