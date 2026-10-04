@@ -60,7 +60,9 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import kotlinx.coroutines.isActive
@@ -2037,7 +2039,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 kgIndexingStatus = "Brain indexing queued..."
             )
         }
-        val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>().build()
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+        val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>()
+            .setConstraints(constraints)
+            .build()
         WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
             com.example.data.ai.BrainIndexWorker.UNIQUE_NAME,
             ExistingWorkPolicy.REPLACE,
