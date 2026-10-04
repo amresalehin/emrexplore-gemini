@@ -1282,6 +1282,213 @@ fun HomeScreen(
     }
 }
 
+
+@Composable
+private fun HomeSectionTitle(
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onBackground,
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun StorageSummary(
+    storageStats: com.example.data.model.StorageStats,
+    onBrowse: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val total = storageStats.totalBytes.coerceAtLeast(1L)
+    val used = storageStats.usedBytes.coerceAtLeast(0L).coerceAtMost(total)
+    val usedFraction = used.toFloat() / total.toFloat()
+    val usedPercent = (usedFraction * 100f).toInt()
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Storage",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${formatFileSize(storageStats.freeBytes)} free of ${formatFileSize(storageStats.totalBytes)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            TextButton(onClick = onBrowse) {
+                Text("Browse")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LinearProgressIndicator(
+            progress = { usedFraction },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(8.dp)),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "$usedPercent% used",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = "Available: ${formatFileSize(storageStats.freeBytes)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeShortcutRow(
+    onOpenStorage: () -> Unit,
+    onOpenDcim: () -> Unit,
+    onOpenDownloads: () -> Unit,
+    onOpenRecycleBin: () -> Unit,
+    trashCount: Int,
+    modifier: Modifier = Modifier
+) {
+    val shortcuts = listOf(
+        Triple("Storage", Icons.Default.Storage, onOpenStorage),
+        Triple("DCIM", Icons.Default.Image, onOpenDcim),
+        Triple("Downloads", Icons.Default.Download, onOpenDownloads),
+        Triple(if (trashCount > 0) "Trash ($trashCount)" else "Trash", Icons.Default.Delete, onOpenRecycleBin)
+    )
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        shortcuts.forEach { (label, icon, action) ->
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant,
+                        RoundedCornerShape(12.dp)
+                    )
+                    .clickable(onClick = action)
+            ) {
+                Column(
+                    modifier = Modifier.padding(vertical = 9.dp, horizontal = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = label,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeCategoryCard(
+    category: CategoryType,
+    count: Int,
+    sizeBytes: Long,
+    onClick: () -> Unit
+) {
+    val tint = getCategoryColor(category)
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant,
+                RoundedCornerShape(14.dp)
+            )
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(tint.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = getCategoryIcon(category),
+                    contentDescription = category.displayName,
+                    tint = tint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(9.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = category.displayName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "$count files • ${formatFileSize(sizeBytes)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
 @Composable
 private fun StorageOverviewCard(
     storageStats: com.example.data.model.StorageStats,
