@@ -20,7 +20,8 @@ class BrainIndexWorker(appContext: Context, params: WorkerParameters) : Coroutin
 
         val provider = ProviderType.fromString(config.providerType)
         val keyless = provider in setOf(ProviderType.OLLAMA, ProviderType.OPENAI_COMPATIBLE, ProviderType.CUSTOM)
-        if (!config.isEnabled || !config.autoSync || (!keyless && config.apiKey.isBlank())) {
+        val manual = inputData.getBoolean("manual", false)
+        if (!config.isEnabled || (!manual && !config.autoSync) || (!keyless && config.apiKey.isBlank())) {
             return Result.failure(workDataOf("error" to "Configure and save an AI provider first"))
         }
 
