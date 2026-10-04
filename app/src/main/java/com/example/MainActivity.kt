@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
@@ -192,6 +193,21 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
         if (storagePermissionsState.allPermissionsGranted && uiState.files.isEmpty()) {
             viewModel.onPermissionsGranted()
         }
+    }
+
+    // At a tab root, Back returns to Home. Content-level handlers (folders/viewers/editors)
+    // are registered later and therefore take precedence when they can consume Back.
+    BackHandler(
+        enabled = uiState.currentTab != MainTab.HOME &&
+            uiState.activeTextFile == null &&
+            uiState.activeZipFile == null &&
+            uiState.activeDetailItem == null &&
+            uiState.fullscreenMediaIndex == null &&
+            !uiState.isAiSettingsScreenOpen &&
+            !uiState.showAiSettingsDialog &&
+            !uiState.isRecycleBinOpen
+    ) {
+        viewModel.setTab(MainTab.HOME)
     }
 
     // Display user messages via Snackbar
