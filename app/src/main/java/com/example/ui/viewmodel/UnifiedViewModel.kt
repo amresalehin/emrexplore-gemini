@@ -1479,9 +1479,13 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             showMessage("Configure and save an AI provider before processing gallery images")
             return
         }
-        val paths = selected.mapNotNull { it.path.takeIf { p -> p.isNotBlank() } }
+        val paths = selected.mapNotNull { it.path.takeIf { p -> p.isNotBlank() } }.distinct()
         if (paths.isEmpty()) {
             showMessage("Selected gallery images do not expose readable file paths")
+            return
+        }
+        if (paths.size > 80) {
+            showMessage("AI processing is limited to 80 selected images per action")
             return
         }
         val request = OneTimeWorkRequestBuilder<com.example.data.ai.GalleryAiWorker>()
@@ -1491,7 +1495,11 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             )
             .build()
         _uiState.update { it.copy(gallerySelection = emptyList(), isGalleryAiProcessing = true, galleryAiProgress = 0f, galleryAiStatus = "AI processing queued...") }
-        WorkManager.getInstance(getApplication<Application>()).enqueue(request)
+        WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
+            com.example.data.ai.GalleryAiWorker.UNIQUE_NAME,
+            ExistingWorkPolicy.KEEP,
+            request
+        )
         viewModelScope.launch {
             WorkManager.getInstance(getApplication<Application>()).getWorkInfoByIdFlow(request.id).collectLatest { info ->
                 if (info == null) return@collectLatest
