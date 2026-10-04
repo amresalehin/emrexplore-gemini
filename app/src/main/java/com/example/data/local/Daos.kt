@@ -95,6 +95,22 @@ interface FileIndexDao {
     @Query("SELECT * FROM indexed_files WHERE isDirectory = 0")
     suspend fun getAllIndexedFilesForBrain(): List<IndexedFileEntity>
 
+    @Query("SELECT COUNT(*) FROM indexed_files WHERE isDirectory = 0 AND extension IN (:extensions)")
+    suspend fun getBrainCandidateCount(extensions: List<String>): Int
+
+    @Query("""
+        SELECT * FROM indexed_files
+        WHERE isDirectory = 0
+          AND extension IN (:extensions)
+        ORDER BY path ASC
+        LIMIT :limit OFFSET :offset
+    """)
+    suspend fun getBrainCandidatesPage(
+        extensions: List<String>,
+        limit: Int,
+        offset: Int
+    ): List<IndexedFileEntity>
+
     @Query("SELECT * FROM indexed_files WHERE name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
     suspend fun searchFiles(query: String, limit: Int = 100): List<IndexedFileEntity>
 
