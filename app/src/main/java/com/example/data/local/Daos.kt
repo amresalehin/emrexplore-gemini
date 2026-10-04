@@ -313,6 +313,8 @@ interface RagDao {
 
     @Query("SELECT * FROM rag_chunks WHERE embeddingJson IS NOT NULL")
     suspend fun getEmbeddedChunks(): List<RagChunkEntity>
+    @Query("SELECT * FROM rag_chunks WHERE chunkId IN (:ids)")
+    suspend fun getChunksByIds(ids: List<String>): List<RagChunkEntity>
 
     @Query("SELECT * FROM rag_chunks WHERE content LIKE '%' || :query || '%' OR tagsJson LIKE '%' || :query || '%' LIMIT :limit")
     suspend fun searchChunks(query: String, limit: Int = 20): List<RagChunkEntity>
