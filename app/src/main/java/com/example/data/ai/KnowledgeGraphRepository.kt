@@ -408,7 +408,12 @@ class KnowledgeGraphRepository(private val context: Context) {
         val filePath = file.absolutePath
         val runId = UUID.randomUUID().toString()
         val runStartedAt = System.currentTimeMillis()
-        val modelVersion = brainIndexVersion + ":" + ProviderType.fromString(config.providerType).name + ":" + config.chatModel + ":" + config.visionModel + ":" + config.isEnabled
+        val modelVersion = brainIndexVersion + ":" + ProviderType.fromString(config.providerType).name +
+            ":chat=" + config.chatModel +
+            ":vision=" + config.visionModel +
+            ":textEmbed=" + textEmbeddingModel(config) +
+            ":multiEmbed=" + multimodalEmbeddingModel(config) +
+            ":" + config.isEnabled
         val existing = fingerprintDao.get(filePath)
 
         // For ordinary files, size + mtime let us skip a full SHA-256 read on every sync.
@@ -417,7 +422,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             existing.size == file.length() &&
             existing.lastModified == file.lastModified() &&
             existing.modelVersion == modelVersion &&
-            existing.embeddingModel == config.embeddingModel
+            existing.embeddingModel == embeddingSignature(config)
         ) {
             return@withContext true
         }
@@ -428,7 +433,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             existing.lastModified == file.lastModified() &&
             existing.contentHash == hash &&
             existing.modelVersion == modelVersion &&
-            existing.embeddingModel == config.embeddingModel
+            existing.embeddingModel == embeddingSignature(config)
         ) {
             return@withContext true
         }
@@ -451,7 +456,10 @@ class KnowledgeGraphRepository(private val context: Context) {
             (!result.hasSearchableContent || chunkCount > 0)
         val embeddingsReady = !result.hasSearchableContent ||
             !requiresEmbeddings(config) ||
-            ragDao.getChunksMissingEmbeddings(filePath, config.embeddingModel) == 0
+            ragDao.getChunksMissingEmbeddings(
+                filePath,
+                if (isImageFile(file)) multimodalEmbeddingModel(config) else textEmbeddingModel(config)
+            ) == 0
         if (indexed && embeddingsReady) {
             fingerprintDao.insert(IndexFingerprintEntity(filePath, file.length(), file.lastModified(), hash, modelVersion, config.embeddingModel))
             modelRunDao.insert(ModelRunEntity(runId, filePath, "INDEX", config.chatModel.ifBlank { "local" }, true, null, runStartedAt, System.currentTimeMillis()))
@@ -520,7 +528,9 @@ class KnowledgeGraphRepository(private val context: Context) {
         // 1. Chunk document
         val structuredChunks = chunkStructuredText(contentText)
         val chunks = structuredChunks.map { it.first }
-        val embeddings = if (isAiReady(config)) client.embedTexts(chunks, config) else emptyList()
+        val embeddings = if (isAiReady(config) && textEmbeddingModel(config).isNotBlank()) {
+            client.embedTextPassages(chunks, config)
+        } else emptyList()
         val ragChunks = chunks.mapIndexed { idx, chunk ->
             RagChunkEntity(
                 chunkId = hashKey("$filePath:$idx"),
@@ -530,7 +540,7 @@ class KnowledgeGraphRepository(private val context: Context) {
                 content = chunk,
                 tagsJson = "[]",
                 embeddingJson = embeddings.getOrNull(idx)?.let { embeddingToJson(it) },
-                embeddingModel = embeddings.getOrNull(idx)?.let { config.embeddingModel },
+                embeddingModel = embeddings.getOrNull(idx)?.let { textEmbeddingModel(config) },
                 contentHash = hashKey(chunk),
                 sectionPath = structuredChunks.getOrNull(idx)?.second.orEmpty()
             )
@@ -697,7 +707,9 @@ class KnowledgeGraphRepository(private val context: Context) {
             tagsJson = tagsJsonArray,
             contentHash = hashKey(chunkContent)
         )
-        val vector = if (isAiReady(config)) client.embedTexts(listOf(chunkContent), config).firstOrNull() else null
+        val vector = if (isAiReady(config) && multimodalEmbeddingModel(config).isNotBlank()) {
+            client.embedMultimodalDocument(base64Thumbnail, chunkContent, config)
+        } else null
         ragDao.insertChunks(listOf(chunk.copy(
             embeddingJson = vector?.let { embeddingToJson(it) },
             embeddingModel = vector?.let { config.embeddingModel }
