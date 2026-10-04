@@ -368,6 +368,11 @@ class AiProviderClient {
                 val inputs = architecture?.optJSONArray("input_modalities")
                 val hasImage = inputs != null && (0 until inputs.length()).any { inputs.optString(it).equals("image", true) }
                 val embedding = id.contains("embedding", true) || id.contains("embed", true)
+                val multimodalEmbedding = embedding && (
+                    lowerIdContains(id, "embed-vl") ||
+                        lowerIdContains(id, "embedvl") ||
+                        lowerIdContains(id, "embedding-vl")
+                    )
                 val lowerId = id.lowercase()
                 val nonChat = listOf("embedding", "embed-", "rerank", "moderation", "transcri", "whisper", "tts", "speech", "image-generation", "text-to-image")
                     .any { lowerId.contains(it) }
@@ -381,12 +386,15 @@ class AiProviderClient {
                     supportsChat = !embedding && !nonChat,
                     supportsVision = !embedding && !nonChat && (hasImage || id.contains("vision", true) || id.contains("vl", true)),
                     supportsEmbedding = embedding,
+                    supportsMultimodalEmbedding = multimodalEmbedding,
                     isFree = free,
                     priceKnown = priceKnown
                 )
             }.sortedBy { it.id }
         }
     }
+    private fun lowerIdContains(id: String, needle: String): Boolean = id.contains(needle, ignoreCase = true)
+
     private fun applyCustomHeaders(builder: Request.Builder, config: AiProviderConfigEntity) {
         try {
             val headers = JSONObject(config.customHeadersJson.ifBlank { "{}" })
