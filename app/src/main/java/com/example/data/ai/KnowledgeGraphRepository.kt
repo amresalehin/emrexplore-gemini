@@ -11,6 +11,9 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.KgEdgeEntity
 import com.example.data.local.KgEdgeEvidenceEntity
 import com.example.data.local.KgNodeEntity
+import com.example.data.local.MemoryFactEntity
+import com.example.data.local.EntityMentionEntity
+import com.example.data.local.ModelRunEntity
 import com.example.data.local.IndexFingerprintEntity
 import com.example.data.local.RagChunkEntity
 import com.example.data.metadata.MetadataExtractor
