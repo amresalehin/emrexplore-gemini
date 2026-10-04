@@ -155,7 +155,6 @@ class BrainEngine(
             .filter { it.length > 2 && it !in stopWords }
             .distinct()
             .sortedByDescending { it.length }
-            .take(MAX_QUERY_TOKENS)
             .toList()
     }
     private fun parseEmbedding(json: String?): FloatArray {
