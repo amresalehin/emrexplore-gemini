@@ -268,6 +268,16 @@ class KnowledgeGraphRepository(private val context: Context) {
                 })
             }
         }.toString()
+        val relationsJson = JSONArray().apply {
+            analysis.relations.forEach { relation ->
+                put(org.json.JSONObject().apply {
+                    put("source", relation.source.trim())
+                    put("relation", relation.relation.trim())
+                    put("target", relation.target.trim())
+                    put("evidence", relation.evidence.trim())
+                })
+            }
+        }.toString()
 
         mediaMetadataRepository.getOrRead(item, requireOriginalLocation = false)
         mediaMetadataRepository.saveAiEnrichment(
@@ -275,6 +285,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             caption = analysis.summary.trim(),
             tagsJson = tagsJson,
             entitiesJson = entitiesJson,
+            relationsJson = relationsJson,
             model = config.visionModel
         )
         MetadataWriter.writeAiMetadata(file, analysis.summary.trim(), tags)
@@ -747,9 +758,23 @@ class KnowledgeGraphRepository(private val context: Context) {
         } catch (_: Exception) {
             emptyList()
         }
+        val relations = try {
+            val array = JSONArray(metadata.aiRelationsJson)
+            (0 until array.length()).mapNotNull { index ->
+                val obj = array.optJSONObject(index) ?: return@mapNotNull null
+                val source = obj.optString("source").trim()
+                val relation = obj.optString("relation").trim()
+                val target = obj.optString("target").trim()
+                if (source.isBlank() || relation.isBlank() || target.isBlank()) return@mapNotNull null
+                ExtractedRelation(source, relation, target, obj.optString("evidence"))
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
         return AnalysisResult(
             summary = metadata.aiCaption.orEmpty(),
             entities = entities,
+            relations = relations,
             tags = tags
         )
     }
