@@ -21,6 +21,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AiProviderConfigEntity::class,
         KgNodeEntity::class,
         KgEdgeEntity::class,
+        KgEdgeEvidenceEntity::class,
         RagChunkEntity::class,
         MemoryFactEntity::class,
         EntityMentionEntity::class,
@@ -50,6 +51,15 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun modelRunDao(): ModelRunDao
 
     companion object {
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS kg_edge_evidence (sourceNodeId TEXT NOT NULL, targetNodeId TEXT NOT NULL, relation TEXT NOT NULL, evidenceSource TEXT NOT NULL, evidenceSnippet TEXT NOT NULL DEFAULT '', createdAt INTEGER NOT NULL, PRIMARY KEY(sourceNodeId, targetNodeId, relation, evidenceSource))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_kg_edge_evidence_evidenceSource ON kg_edge_evidence(evidenceSource)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_kg_edge_evidence_edge ON kg_edge_evidence(sourceNodeId, targetNodeId, relation)")
+                db.execSQL("INSERT OR IGNORE INTO kg_edge_evidence(sourceNodeId, targetNodeId, relation, evidenceSource, evidenceSnippet, createdAt) SELECT sourceNodeId, targetNodeId, relation, evidenceSource, evidenceSnippet, createdAt FROM kg_edges WHERE evidenceSource IS NOT NULL AND evidenceSource != ''")
+            }
+        }
+
         private val MIGRATION_4_6 = object : Migration(4, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE kg_nodes ADD COLUMN confidence REAL NOT NULL DEFAULT 1.0")
@@ -87,7 +97,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "emrexplore.db"
-                ).addMigrations(MIGRATION_4_6)
+                ) .addMigrations(MIGRATION_4_6, MIGRATION_6_7)
                  .build()
                 INSTANCE = instance
                 instance
