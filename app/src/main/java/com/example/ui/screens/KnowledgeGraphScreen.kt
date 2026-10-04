@@ -129,10 +129,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.ai.AskAiChatMessage
-import com.example.data.ai.AttachedAiFile
+import com.example.data.brain.AskAiChatMessage
+import com.example.data.brain.AttachedAiFile
 import com.example.data.brain.BrainTopicFile
-import com.example.data.ai.RagAnswer
+import com.example.data.brain.RagAnswer
 import com.example.data.local.AiProviderConfigEntity
 import com.example.data.brain.BrainTopicEntity
 import com.example.data.brain.BrainEdgeEntity
