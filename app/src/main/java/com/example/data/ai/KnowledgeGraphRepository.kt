@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.Log
 import com.example.data.local.AiProviderConfigEntity
+import com.example.data.local.BrainTopicEntity
 import com.example.data.local.AppDatabase
 import com.example.data.local.KgEdgeEntity
 import com.example.data.local.KgEdgeEvidenceEntity
@@ -35,12 +36,18 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
 
+data class BrainTopicFile(
+    val node: KgNodeEntity,
+    val score: Float
+)
+
 class KnowledgeGraphRepository(private val context: Context) {
 
     private val db = AppDatabase.getDatabase(context)
     private val kgDao = db.kgDao()
     private val ragDao = db.ragDao()
     private val aiConfigDao = db.aiProviderConfigDao()
+    private val brainTopicDao = db.brainTopicDao()
     private val fileIndexDao = db.fileIndexDao()
     private val mediaMetadataDao = db.mediaMetadataDao()
     private val fingerprintDao = db.indexFingerprintDao()
@@ -68,6 +75,7 @@ class KnowledgeGraphRepository(private val context: Context) {
     val edgeCountFlow: Flow<Int> = kgDao.getEdgeCountFlow()
     val chunkCountFlow: Flow<Int> = ragDao.getChunkCountFlow()
     val aiConfigFlow: Flow<AiProviderConfigEntity?> = aiConfigDao.getConfigFlow().map { it?.let(::decryptConfig) }
+    val brainTopicsFlow: Flow<List<BrainTopicEntity>> = brainTopicDao.getAllFlow()
 
     private fun normalizeAiConfig(config: AiProviderConfigEntity): AiProviderConfigEntity {
         if (config.embeddingModel != "gemini-embedding-2-preview") return config
@@ -133,6 +141,74 @@ class KnowledgeGraphRepository(private val context: Context) {
 
     suspend fun getBrainCandidates(): List<com.example.data.local.IndexedFileEntity> = withContext(Dispatchers.IO) {
         fileIndexDao.getAllIndexedFilesForBrain()
+    }
+
+    suspend fun saveBrainTopic(
+        id: String?,
+        heading: String,
+        description: String
+    ): BrainTopicEntity = withContext(Dispatchers.IO) {
+        val cleanHeading = heading.trim()
+        require(cleanHeading.isNotBlank()) { "Topic heading cannot be blank" }
+        val cleanDescription = description.trim()
+        val existing = id?.let { brainTopicDao.get(it) }
+        val now = System.currentTimeMillis()
+        val topic = BrainTopicEntity(
+            id = existing?.id ?: UUID.randomUUID().toString(),
+            heading = cleanHeading,
+            description = cleanDescription,
+            createdAt = existing?.createdAt ?: now,
+            updatedAt = now
+        )
+        brainTopicDao.insertOrUpdate(topic)
+        topic
+    }
+
+    suspend fun deleteBrainTopic(id: String) = withContext(Dispatchers.IO) {
+        brainTopicDao.delete(id)
+    }
+
+    /**
+     * Finds the files semantically closest to a user-defined topic.
+     * This intentionally uses the same semantic-only Brain retrieval path as RAG;
+     * there is no lexical fallback when embeddings are unavailable.
+     */
+    suspend fun getRelevantFilesForBrainTopic(
+        topic: BrainTopicEntity,
+        config: AiProviderConfigEntity,
+        limit: Int = 12
+    ): List<BrainTopicFile> = withContext(Dispatchers.IO) {
+        if (limit <= 0 || !requiresEmbeddings(config)) return@withContext emptyList()
+        val query = listOf(topic.heading, topic.description)
+            .filter { it.isNotBlank() }
+            .joinToString(". ")
+        if (query.isBlank()) return@withContext emptyList()
+
+        val scored = brainEngine.search(query, config, (limit * 4).coerceAtLeast(limit))
+        val bestByPath = linkedMapOf<String, Float>()
+        scored.forEach { match ->
+            if (match.chunk.filePath.isNotBlank()) {
+                val current = bestByPath[match.chunk.filePath]
+                if (current == null || match.score > current) {
+                    bestByPath[match.chunk.filePath] = match.score
+                }
+            }
+        }
+
+        val orderedPaths = bestByPath.entries
+            .sortedByDescending { it.value }
+            .take(limit)
+        if (orderedPaths.isEmpty()) return@withContext emptyList()
+
+        val nodesByPath = kgDao.getNodesByFilePaths(orderedPaths.map { it.key })
+            .filter { it.nodeType == "DOCUMENT" || it.nodeType == "IMAGE" }
+            .associateBy { it.sourceFilePath.orEmpty() }
+
+        orderedPaths.mapNotNull { scoredPath ->
+            nodesByPath[scoredPath.key]?.let { node ->
+                BrainTopicFile(node = node, score = scoredPath.value)
+            }
+        }
     }
 
     suspend fun recomputeGraphDegrees() = withContext(Dispatchers.IO) {
