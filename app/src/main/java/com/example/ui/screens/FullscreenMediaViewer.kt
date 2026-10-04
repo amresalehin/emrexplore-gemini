@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -41,6 +43,8 @@ import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -71,6 +75,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.data.local.MediaMetadataEntity
 import com.example.data.model.FileItem
 import com.example.data.model.MediaItem
 import com.example.ui.components.formatDate
@@ -86,7 +91,9 @@ fun FullscreenMediaViewer(
     onClose: () -> Unit,
     onIndexChange: (Int) -> Unit,
     onToggleFavorite: (FileItem) -> Unit,
-    onInspectMetadata: (MediaItem) -> Unit = {}
+    onInspectMetadata: (MediaItem) -> Unit = {},
+    onLoadAiMetadata: suspend (MediaItem) -> MediaMetadataEntity? = { null },
+    onReAnalyzeAi: (MediaItem) -> Unit = {}
 ) {
     BackHandler { onClose() }
 
@@ -95,6 +102,9 @@ fun FullscreenMediaViewer(
     val currentItem = mediaList.getOrNull(localIndex)
     var showControls by remember { mutableStateOf(true) }
     var showInfoSheet by remember { mutableStateOf(false) }
+    var showAiSheet by remember { mutableStateOf(false) }
+    var aiMetadata by remember { mutableStateOf<MediaMetadataEntity?>(null) }
+    var isLoadingAiMetadata by remember { mutableStateOf(false) }
     var rotationDegrees by remember { mutableFloatStateOf(0f) }
 
     // Zoom & Pan state
@@ -103,6 +113,17 @@ fun FullscreenMediaViewer(
     var offsetY by remember { mutableFloatStateOf(0f) }
 
     // Reset zoom when index changes
+    LaunchedEffect(currentItem.path) {
+        showAiSheet = false
+        isLoadingAiMetadata = true
+        aiMetadata = try {
+            onLoadAiMetadata(currentItem)
+        } catch (_: Exception) {
+            null
+        }
+        isLoadingAiMetadata = false
+    }
+
     LaunchedEffect(currentIndex) {
         scale = 1f
         offsetX = 0f
@@ -139,8 +160,28 @@ fun FullscreenMediaViewer(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(currentIndex) {
+                    var swipeUpDistance = 0f
+                    var swipeHorizontalDistance = 0f
                     detectTransformGestures { _, pan, zoom, _ ->
+                        val previousScale = scale
                         scale = (scale * zoom).coerceIn(1f, 5f)
+                        if (previousScale <= 1.05f && zoom in 0.995f..1.005f) {
+                            swipeUpDistance += pan.y
+                            swipeHorizontalDistance += pan.x
+                            if (
+                                swipeUpDistance < -110f &&
+                                kotlin.math.abs(swipeUpDistance) > kotlin.math.abs(swipeHorizontalDistance) * 1.2f
+                            ) {
+                                swipeUpDistance = 0f
+                                swipeHorizontalDistance = 0f
+                                showAiSheet = true
+                                showControls = true
+                            }
+                        } else {
+                            swipeUpDistance = 0f
+                            swipeHorizontalDistance = 0f
+                        }
+
                         if (scale > 1f) {
                             val maxOffsetX = (size.width * (scale - 1)) / 2
                             val maxOffsetY = (size.height * (scale - 1)) / 2
@@ -339,6 +380,23 @@ fun FullscreenMediaViewer(
             }
         }
 
+        if (showControls && !showAiSheet) {
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color.Black.copy(alpha = 0.62f),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 76.dp)
+            ) {
+                Text(
+                    text = "↑ Swipe up for AI details",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                )
+            }
+        }
+
         // Bottom Filmstrip
         AnimatedVisibility(
             visible = showControls,
@@ -381,6 +439,153 @@ fun FullscreenMediaViewer(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // AI enrichment sheet — opened by swiping up on the image.
+    if (showAiSheet) {
+        val tags = remember(aiMetadata?.aiTagsJson) {
+            parseJsonStrings(aiMetadata?.aiTagsJson.orEmpty())
+        }
+        val entities = remember(aiMetadata?.aiEntitiesJson) {
+            parseJsonEntities(aiMetadata?.aiEntitiesJson.orEmpty())
+        }
+        val relations = remember(aiMetadata?.aiRelationsJson) {
+            parseJsonRelations(aiMetadata?.aiRelationsJson.orEmpty())
+        }
+
+        ModalBottomSheet(
+            onDismissRequest = { showAiSheet = false },
+            sheetState = rememberModalBottomSheetState()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "AI Analysis",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (aiMetadata?.aiProcessedAt ?: 0L > 0L) {
+                                "Saved AI enrichment"
+                            } else {
+                                "Not analyzed yet"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (!currentItem.isVideo) {
+                        Button(
+                            onClick = { onReAnalyzeAi(currentItem) },
+                            contentPadding = ButtonDefaults.ContentPadding
+                        ) {
+                            Text("Re-analyze")
+                        }
+                    }
+                }
+
+                if (isLoadingAiMetadata) {
+                    Text(
+                        text = "Loading saved AI analysis…",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (aiMetadata == null || aiMetadata?.aiProcessedAt == 0L) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (currentItem.isVideo) {
+                                "AI gallery enrichment is available for images."
+                            } else {
+                                "This image has not been analyzed yet."
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                } else {
+                    aiMetadata?.aiCaption?.takeIf { it.isNotBlank() }?.let { caption ->
+                        Text(
+                            text = "DESCRIPTION",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = caption,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                    }
+
+                    if (tags.isNotEmpty()) {
+                        Text(
+                            text = "TAGS",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(tags, key = { it }) { tag ->
+                                AssistChip(
+                                    onClick = {},
+                                    label = { Text("#$tag") },
+                                    colors = AssistChipDefaults.assistChipColors()
+                                )
+                            }
+                        }
+                    }
+
+                    if (entities.isNotEmpty()) {
+                        Text(
+                            text = "DETECTED CONCEPTS",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        entities.forEach { (name, type) ->
+                            MediaInfoRow(type.ifBlank { "ENTITY" }, name)
+                        }
+                    }
+
+                    if (relations.isNotEmpty()) {
+                        Text(
+                            text = "RELATIONS",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        relations.forEach { relation ->
+                            MediaInfoRow("Connection", relation)
+                        }
+                    }
+
+                    aiMetadata?.aiModel?.takeIf { it.isNotBlank() }?.let { model ->
+                        MediaInfoRow("AI model", model)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
@@ -433,6 +638,52 @@ fun FullscreenMediaViewer(
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
+    }
+}
+
+private fun parseJsonStrings(raw: String): List<String> {
+    return try {
+        val array = org.json.JSONArray(raw)
+        buildList(array.length()) {
+            for (index in 0 until array.length()) {
+                array.optString(index).trim().takeIf(String::isNotBlank)?.let(::add)
+            }
+        }.distinct().take(80)
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
+
+private fun parseJsonEntities(raw: String): List<Pair<String, String>> {
+    return try {
+        val array = org.json.JSONArray(raw)
+        buildList(array.length()) {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val name = item.optString("name").trim()
+                if (name.isNotBlank()) add(name to item.optString("type").trim())
+            }
+        }.distinctBy { it.first.lowercase() }.take(50)
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
+
+private fun parseJsonRelations(raw: String): List<String> {
+    return try {
+        val array = org.json.JSONArray(raw)
+        buildList(array.length()) {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val source = item.optString("source").trim()
+                val relation = item.optString("relation").trim()
+                val target = item.optString("target").trim()
+                val line = listOf(source, relation, target).filter { it.isNotBlank() }.joinToString(" → ")
+                if (line.isNotBlank()) add(line)
+            }
+        }.distinct().take(50)
+    } catch (_: Exception) {
+        emptyList()
     }
 }
 
