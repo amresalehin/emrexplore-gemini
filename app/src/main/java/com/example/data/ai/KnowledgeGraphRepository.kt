@@ -269,7 +269,7 @@ class KnowledgeGraphRepository(private val context: Context) {
             } else ""
         } catch (e: Exception) {
             Log.w("KGRepo", "Could not read doc text: ${e.message}")
-            return
+            return IndexResult(success = false, hasSearchableContent = false)
         }
 
         if (contentText.isBlank()) {
