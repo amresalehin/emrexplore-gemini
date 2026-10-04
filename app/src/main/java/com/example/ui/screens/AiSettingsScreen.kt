@@ -181,6 +181,7 @@ fun AiSettingsScreen(
                                     baseUrl = baseUrl.trim(),
                                     chatModel = chatModel.trim(),
                                     visionModel = visionModel.trim(),
+                                    embeddingModel = embeddingModel.trim(),
                                     temperature = temperature,
                                     isEnabled = isEnabled,
                                     autoSync = autoSync
