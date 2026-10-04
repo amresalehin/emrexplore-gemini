@@ -37,6 +37,8 @@ import com.example.data.local.AiProviderConfigEntity
 import com.example.data.local.BrainTopicEntity
 import com.example.data.local.KgEdgeEntity
 import com.example.data.local.KgNodeEntity
+import com.example.data.metadata.MetadataExtractor
+import com.example.data.metadata.MetadataReport
 import com.example.data.ai.BrainTopicFile
 import com.example.data.model.ConflictResolution
 import com.example.data.model.FileOperationProgress
@@ -203,6 +205,7 @@ data class UiState(
     val zipEntries: List<String> = emptyList(),
     val isExtractingZip: Boolean = false,
     val activeDetailItem: FileItem? = null,
+    val activeMetadataReport: MetadataReport? = null,
 
     // Audio Mini-Player
     val activeAudioFile: FileItem? = null,
@@ -267,6 +270,7 @@ data class UiState(
 class UnifiedViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = FileRepository(application)
+    private val metadataExtractor = MetadataExtractor(application.applicationContext)
     private val mediaRepository = MediaRepository(application)
     private val kgRepository = KnowledgeGraphRepository(application)
     private val galleryFilterFlow = MutableStateFlow<MediaFilter?>(MediaFilter.ALL)
@@ -1960,6 +1964,26 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun closeProperties() {
         _uiState.update { it.copy(activeDetailItem = null) }
+    }
+
+    fun inspectMetadata(mediaItem: MediaItem) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val report = if (mediaItem.uri != null) {
+                    metadataExtractor.extractFromUri(mediaItem.uri, mediaItem.name, mediaItem.size, mediaItem.path)
+                } else {
+                    metadataExtractor.extract(File(mediaItem.path))
+                }
+                _uiState.update { it.copy(activeMetadataReport = report) }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                showMessage("Could not inspect metadata")
+            }
+        }
+    }
+
+    fun closeMetadataInspector() {
+        _uiState.update { it.copy(activeMetadataReport = null) }
     }
 
     // Audio Playback
