@@ -1527,9 +1527,6 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
         val request = OneTimeWorkRequestBuilder<com.example.data.ai.GalleryAiWorker>()
             .setInputData(androidx.work.workDataOf("paths" to paths.toTypedArray()))
-            .setConstraints(
-                Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
-            )
             .build()
         _uiState.update { it.copy(gallerySelection = emptyList(), isGalleryAiProcessing = true, galleryAiProgress = 0f, galleryAiStatus = "AI processing queued...") }
         WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
