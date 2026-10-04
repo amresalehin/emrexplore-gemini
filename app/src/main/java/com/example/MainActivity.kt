@@ -315,7 +315,7 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                              nodeCount = uiState.kgNodeCount,
                              edgeCount = uiState.kgEdgeCount,
                             aiConfig = uiState.aiConfig,
-                            apiConfigured = uiState.aiConfig.isEnabled &&
+                            apiConfigured = uiState.aiConfigLoaded && uiState.aiConfig.isEnabled &&
                                 (com.example.data.ai.ProviderType.fromString(uiState.aiConfig.providerType) in setOf(
                                     com.example.data.ai.ProviderType.OLLAMA,
                                     com.example.data.ai.ProviderType.OPENAI_COMPATIBLE,
