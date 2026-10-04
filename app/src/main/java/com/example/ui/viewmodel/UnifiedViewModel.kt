@@ -29,6 +29,7 @@ import com.example.data.media.MediaRepository
 import com.example.data.media.FullscreenMediaSource
 import com.example.data.media.MediaViewerWindow
 import com.example.data.ai.KnowledgeGraphRepository
+import com.example.data.ai.AvailableAiModel
 import com.example.data.ai.ConnectedDotsItem
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.ai.RagAnswer
@@ -238,6 +239,11 @@ data class UiState(
     val isRagQuerying: Boolean = false,
     val activeFileConnectedDots: List<ConnectedDotsItem> = emptyList(),
     val kgSmartSuggestions: List<String> = emptyList(),
+    val aiModels: List<AvailableAiModel> = emptyList(),
+    val aiVisionModels: List<AvailableAiModel> = emptyList(),
+    val aiEmbeddingModels: List<AvailableAiModel> = emptyList(),
+    val isFetchingAiModels: Boolean = false,
+    val aiModelFetchError: String? = null,
 
     // User Feedback
     val userMessage: String? = null
@@ -1906,6 +1912,25 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun fetchAiModels(config: AiProviderConfigEntity) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isFetchingAiModels = true, aiModelFetchError = null) }
+            try {
+                val all = kgRepository.listAiModels(config)
+                _uiState.update {
+                    it.copy(
+                        aiModels = all.filter { model -> !model.supportsEmbedding },
+                        aiVisionModels = all.filter { model -> model.supportsVision },
+                        aiEmbeddingModels = all.filter { model -> model.supportsEmbedding },
+                        isFetchingAiModels = false
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isFetchingAiModels = false, aiModelFetchError = e.message ?: "Could not fetch models") }
+            }
+        }
+    }
+
     fun testAiConnection(config: AiProviderConfigEntity) {
         viewModelScope.launch {
             _uiState.update { it.copy(isTestingAiConnection = true, aiTestResult = null) }
@@ -1953,86 +1978,24 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 data class FileCandidate(val file: File, val uri: Uri?)
                 val candidateMap = mutableMapOf<String, FileCandidate>()
 
-                // 1. Files from database index
-                try {
-                    val indexed = repository.getAllNonDirectoryFiles(limit = 400)
-                    for (ent in indexed) {
-                        val f = File(ent.path)
-                        candidateMap[ent.path] = FileCandidate(f, Uri.fromFile(f))
-                    }
-                } catch (e: Exception) {
-                    Log.w("UnifiedViewModel", "Error fetching indexed files: ${e.message}")
-                }
-
-                // 2. Real photos & images from MediaStore
-                try {
-                    val realImages = repository.getFilesByCategory(CategoryType.IMAGES)
-                    for (item in realImages) {
-                        val f = File(item.path)
-                        candidateMap[item.path] = FileCandidate(f, item.uri)
-                    }
-                } catch (e: Exception) {
-                    Log.w("UnifiedViewModel", "Error scanning real images: ${e.message}")
-                }
-
-                // 3. Real documents across storage
-                try {
-                    val realDocs = repository.getFilesByCategory(CategoryType.DOCUMENTS)
-                    for (item in realDocs) {
-                        val f = File(item.path)
-                        candidateMap[item.path] = FileCandidate(f, item.uri)
-                    }
-                } catch (e: Exception) {
-                    Log.w("UnifiedViewModel", "Error scanning real docs: ${e.message}")
-                }
-
-                // 4. Downloads
-                try {
-                    val realDownloads = repository.getFilesByCategory(CategoryType.DOWNLOADS)
-                    for (item in realDownloads) {
-                        val f = File(item.path)
-                        candidateMap[item.path] = FileCandidate(f, item.uri)
-                    }
-                } catch (e: Exception) {
-                    Log.w("UnifiedViewModel", "Error scanning downloads: ${e.message}")
-                }
-
-                // 5. Standard public user directories
-                val publicDirs = listOf(
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                    File(repository.rootPath, "DCIM"),
-                    File(repository.rootPath, "Pictures"),
-                    File(repository.rootPath, "Documents"),
-                    File(repository.rootPath, "Download"),
-                    repository.baseWorkingDir
+                val supportedBrainExtensions = setOf(
+                    "jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp",
+                    "txt", "md", "json", "csv", "xml", "html", "htm", "log", "kt", "java", "py", "js", "ts",
+                    "c", "cpp", "properties", "sql", "yaml", "yml", "pdf", "conf", "ini", "tsv", "gradle", "kts", "env"
                 )
-
-                for (dir in publicDirs.distinctBy { it.absolutePath }) {
-                    if (dir.exists() && dir.isDirectory) {
-                        dir.walkTopDown().maxDepth(3).filter { it.isFile && !it.name.startsWith(".") }.take(40).forEach { f ->
-                            candidateMap[f.absolutePath] = FileCandidate(f, Uri.fromFile(f))
-                        }
-                    }
+                val scanRoots = listOf(File(repository.rootPath), repository.baseWorkingDir).distinctBy { it.absolutePath }
+                for (root in scanRoots) {
+                    if (!root.exists() || !root.isDirectory) continue
+                    root.walkTopDown()
+                        .onEnter { dir -> dir.name !in setOf("Android", ".trash", "cache", ".thumbnails") }
+                        .filter { it.isFile && !it.name.startsWith(".") && it.extension.lowercase() in supportedBrainExtensions }
+                        .forEach { file -> candidateMap[file.absolutePath] = FileCandidate(file, Uri.fromFile(file)) }
                 }
 
-                // 6. Explorer files, recents, and favorites
-                for (item in _uiState.value.files) {
-                    if (!item.isDirectory) {
-                        val f = File(item.path)
-                        candidateMap[item.path] = FileCandidate(f, item.uri)
-                    }
-                }
-                for (recent in _uiState.value.recentsList) {
-                    val f = File(recent.path)
-                    candidateMap[recent.path] = FileCandidate(f, Uri.fromFile(f))
-                }
-                for (fav in _uiState.value.favoritesList) {
-                    val f = File(fav.path)
-                    candidateMap[fav.path] = FileCandidate(f, Uri.fromFile(f))
-                }
+                // Keep explicitly selected/recent/favorite files even when outside the standard roots.
+                for (item in _uiState.value.files) if (!item.isDirectory) candidateMap[item.path] = FileCandidate(File(item.path), item.uri)
+                for (recent in _uiState.value.recentsList) candidateMap[recent.path] = FileCandidate(File(recent.path), Uri.fromFile(recent.path))
+                for (fav in _uiState.value.favoritesList) candidateMap[fav.path] = FileCandidate(File(fav.path), Uri.fromFile(fav.path))
 
                 val distinctCandidates = candidateMap.values.toList()
                 val total = distinctCandidates.size.coerceAtLeast(1)
