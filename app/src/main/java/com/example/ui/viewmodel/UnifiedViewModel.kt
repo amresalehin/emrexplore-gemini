@@ -1965,26 +1965,41 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         try {
             mediaPlayer?.release()
             mediaPlayer = MediaPlayer().apply {
-                setDataSource(fileItem.path)
-                prepare()
-                start()
+                if (fileItem.uri != null) {
+                    setDataSource(getApplication<Application>(), fileItem.uri!!)
+                } else {
+                    setDataSource(fileItem.path)
+                }
+                setOnPreparedListener { mp ->
+                    mp.start()
+                    _uiState.update {
+                        it.copy(
+                            activeAudioFile = fileItem,
+                            isAudioPlaying = true,
+                            audioDurationMs = mp.duration,
+                            audioPositionMs = 0
+                        )
+                    }
+                    startAudioTracking()
+                }
                 setOnCompletionListener {
                     _uiState.update { it.copy(isAudioPlaying = false, audioPositionMs = 0) }
                 }
+                prepareAsync()
             }
-            val dur = mediaPlayer?.duration ?: 0
             _uiState.update {
                 it.copy(
                     activeAudioFile = fileItem,
-                    isAudioPlaying = true,
-                    audioDurationMs = dur,
+                    isAudioPlaying = false,
+                    audioDurationMs = 0,
                     audioPositionMs = 0
                 )
             }
-            startAudioTracking()
         } catch (e: Exception) {
+            mediaPlayer?.release()
+            mediaPlayer = null
             e.printStackTrace()
-            showMessage("Could not play audio: ${e.message}")
+            showMessage("Could not play audio: " + (e.message ?: "unknown error"))
         }
     }
 
