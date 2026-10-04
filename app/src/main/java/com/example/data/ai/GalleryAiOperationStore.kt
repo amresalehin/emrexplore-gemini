@@ -28,6 +28,7 @@ class GalleryAiOperationStore(context: Context) {
         if (clean.isEmpty()) return
 
         val existing = pendingPaths().toMutableList()
+        val hadPendingWork = existing.isNotEmpty()
         val newPaths = clean.filterNot(existing::contains)
         if (newPaths.isNotEmpty()) {
             existing += newPaths
@@ -36,9 +37,9 @@ class GalleryAiOperationStore(context: Context) {
         val forcePaths = prefs.getStringSet(KEY_FORCE_PATHS, emptySet()).orEmpty().toMutableSet()
         if (force) forcePaths.addAll(clean)
 
-        val totalWasEmpty = existing.isEmpty() || totalCount() == 0
-        val nextTotal = if (totalWasEmpty) newPaths.size else totalCount() + newPaths.size
-        val nextCompleted = if (totalWasEmpty) 0 else completedCount()
+        val newOperation = !hadPendingWork && totalCount() == 0
+        val nextTotal = if (newOperation) newPaths.size else totalCount() + newPaths.size
+        val nextCompleted = if (newOperation) 0 else completedCount()
 
         prefs.edit()
             .putString(KEY_PATHS, JSONArray(existing).toString())
