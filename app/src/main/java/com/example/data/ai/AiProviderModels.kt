@@ -48,6 +48,15 @@ enum class ProviderType(
         defaultEmbeddingModel = "openai/text-embedding-3-small",
         keyHint = "sk-or-v1-..."
     ),
+    CUSTOM(
+        displayName = "Custom OpenAI-Compatible",
+        description = "Bring your own base URL, API key, and model IDs for an OpenAI-compatible endpoint",
+        defaultBaseUrl = "",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultEmbeddingModel = "",
+        keyHint = "Optional for local endpoints"
+    ),
     GROQ(
         displayName = "Groq Cloud",
         description = "Ultra-fast LPUs for instant document extraction & indexing",
