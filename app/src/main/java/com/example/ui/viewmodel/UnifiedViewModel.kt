@@ -1538,7 +1538,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         if (selected.isEmpty()) return
         val config = _uiState.value.aiConfig
         if (!isBrainAiConfigured(config)) {
-            _uiState.update { it.copy(isAiSettingsScreenOpen = true, showAiSettingsDialog = true) }
+            _uiState.update { it.copy(isAiSettingsScreenOpen = true) }
             showMessage("Configure and save an AI provider before processing gallery images")
             return
         }
