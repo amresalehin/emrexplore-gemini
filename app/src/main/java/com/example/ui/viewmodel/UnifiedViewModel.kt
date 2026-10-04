@@ -1999,8 +1999,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
                 // Keep explicitly selected/recent/favorite files even when outside the standard roots.
                 for (item in _uiState.value.files) if (!item.isDirectory) candidateMap[item.path] = FileCandidate(File(item.path), item.uri)
-                for (recent in _uiState.value.recentsList) candidateMap[recent.path] = FileCandidate(File(recent.path), Uri.fromFile(recent.path))
-                for (fav in _uiState.value.favoritesList) candidateMap[fav.path] = FileCandidate(File(fav.path), Uri.fromFile(fav.path))
+                for (recent in _uiState.value.recentsList) candidateMap[recent.path] = FileCandidate(File(recent.path), Uri.fromFile(File(recent.path)))
+                for (fav in _uiState.value.favoritesList) candidateMap[fav.path] = FileCandidate(File(fav.path), Uri.fromFile(File(fav.path)))
 
                 val distinctCandidates = candidateMap.values.toList()
                 val total = distinctCandidates.size.coerceAtLeast(1)
