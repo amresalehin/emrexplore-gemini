@@ -120,6 +120,7 @@ data class MediaMetadataEntity(
     val aiCaption: String? = null,
     val aiTagsJson: String = "[]",
     val aiEntitiesJson: String = "[]",
+    val aiRelationsJson: String = "[]",
     val aiModel: String? = null,
     val aiFileLastModified: Long = 0L,
     val aiProcessedAt: Long = 0L,
