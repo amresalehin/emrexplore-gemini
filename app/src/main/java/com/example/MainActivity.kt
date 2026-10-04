@@ -219,7 +219,6 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             uiState.activeDetailItem == null &&
             uiState.fullscreenMediaIndex == null &&
             !uiState.isAiSettingsScreenOpen &&
-            !uiState.showAiSettingsDialog &&
             !uiState.isRecycleBinOpen
     ) {
         viewModel.setTab(MainTab.HOME)
