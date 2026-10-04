@@ -323,14 +323,15 @@ class KnowledgeGraphRepository(private val context: Context) {
     suspend fun enrichGalleryImage(
         file: File,
         uri: android.net.Uri,
-        config: AiProviderConfigEntity
+        config: AiProviderConfigEntity,
+        force: Boolean = false
     ): Boolean = withContext(Dispatchers.IO) {
         if (!isAiReady(config) || !file.exists() || !file.isFile || !file.canRead()) return@withContext false
         val ext = file.extension.lowercase()
         if (ext !in setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp")) return@withContext false
 
         val existing = mediaMetadataDao.getByPath(file.absolutePath)
-        if (existing != null &&
+        if (!force && existing != null &&
             existing.aiProcessedAt > 0L &&
             existing.aiModel == config.visionModel &&
             existing.size == file.length() &&
