@@ -89,14 +89,7 @@ class BrainRepository(private val context: Context) {
 
     suspend fun getAiConfig(): AiProviderConfigEntity = withContext(Dispatchers.IO) {
         val stored = aiConfigDao.getConfig() ?: AiProviderConfigEntity()
-        val normalized = normalizeAiConfig(decryptConfig(stored))
-        if (stored.apiKey != encryptConfig(normalized).apiKey ||
-            stored.providerType != normalized.providerType ||
-            stored.textEmbeddingModel != normalized.textEmbeddingModel
-        ) {
-            aiConfigDao.saveConfig(encryptConfig(normalized))
-        }
-        normalized
+        normalizeAiConfig(decryptConfig(stored))
     }
 
     suspend fun saveAiConfig(config: AiProviderConfigEntity) = withContext(Dispatchers.IO) {
