@@ -92,7 +92,7 @@ fun FullscreenMediaViewer(
 
     val context = LocalContext.current
     val localIndex = (currentIndex - windowStartIndex).coerceIn(0, (mediaList.size - 1).coerceAtLeast(0))
-    val currentItem = mediaList.getOrNull(localIndex) ?: return
+    val currentItem = mediaList.getOrNull(localIndex)
     var showControls by remember { mutableStateOf(true) }
     var showInfoSheet by remember { mutableStateOf(false) }
     var rotationDegrees by remember { mutableFloatStateOf(0f) }
