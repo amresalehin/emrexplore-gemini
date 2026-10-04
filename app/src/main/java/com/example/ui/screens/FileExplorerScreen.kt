@@ -1217,22 +1217,22 @@ fun FileExplorerScreen(
                                 DropdownMenuItem(
                                     text = { Text("Share") },
                                     leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
-                                    onClick = {
-                                        try {
-                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                type = item.mimeType
-                                                val shareDir = File(context.cacheDir, "share").apply { mkdirs() }
-                                             val shareCopy = File(shareDir, item.name).also {
-                                                 File(item.path).copyTo(it, overwrite = true)
-                                             }
-                                             val shareUri = androidx.core.content.FileProvider.getUriForFile(
-                                                 context,
-                                                 context.packageName + ".fileprovider",
-                                                 shareCopy
-                                             )
-                                                                                          putExtra(Intent.EXTRA_STREAM, shareUri)
-                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                            }
+                                                 onClick = {
+                                                 try {
+                                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                     type = item.mimeType
+                                                     val shareDir = File(context.cacheDir, "share").apply { mkdirs() }
+                                                     val shareCopy = File(shareDir, item.name).also {
+                                                         File(item.path).copyTo(it, overwrite = true)
+                                                     }
+                                                     val shareUri = androidx.core.content.FileProvider.getUriForFile(
+                                                         context,
+                                                         context.packageName + ".fileprovider",
+                                                         shareCopy
+                                                     )
+                                                     putExtra(Intent.EXTRA_STREAM, shareUri)
+                                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                 }
                                             context.startActivity(Intent.createChooser(shareIntent, "Share File"))
                                         } catch (e: Exception) {
                                             e.printStackTrace()
