@@ -5,6 +5,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.example.data.local.AppDatabase
+import com.example.data.brain.BrainRepository
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.io.File
@@ -43,7 +44,7 @@ class GalleryAiWorker(appContext: Context, params: WorkerParameters) : Coroutine
             return Result.failure(workDataOf("error" to "Configure and save an AI provider first"))
         }
 
-        val repository = KnowledgeGraphRepository(applicationContext)
+        val repository = BrainRepository(applicationContext)
         var failedThisAttempt = 0
 
         while (true) {
