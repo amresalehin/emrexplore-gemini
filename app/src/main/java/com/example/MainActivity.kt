@@ -324,6 +324,24 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                             smartSuggestions = uiState.kgSmartSuggestions,
                             onQueryRag = { viewModel.queryRag(it) },
                             onIndexAllFiles = { viewModel.indexAllFilesForKnowledgeGraph() },
+                            onAskAiForFile = { node ->
+                                val context = listOf(
+                                    "Tell me about this file.",
+                                    "File: ${node.label}.",
+                                    node.summary
+                                ).filter { it.isNotBlank() }.joinToString(" ")
+                                viewModel.queryRag(context)
+                            },
+                            brainTopics = uiState.brainTopics,
+                            selectedBrainTopic = uiState.brainTopics.firstOrNull { it.id == uiState.selectedBrainTopicId },
+                            brainTopicRelevantFiles = uiState.brainTopicRelevantFiles,
+                            isBrainTopicLoading = uiState.isBrainTopicLoading,
+                            brainTopicStatus = uiState.brainTopicStatus,
+                            onSelectBrainTopic = { viewModel.selectBrainTopic(it) },
+                            onSaveBrainTopic = { heading, description, existingId ->
+                                viewModel.saveBrainTopic(heading, description, existingId)
+                            },
+                            onDeleteBrainTopic = { viewModel.deleteBrainTopic(it) },
                             onOpenAiSettings = { viewModel.setShowAiSettings(true) },
                             onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false)) },
                             onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false, mimeType = "image/jpeg")) }
