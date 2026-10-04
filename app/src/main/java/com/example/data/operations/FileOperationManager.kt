@@ -311,7 +311,7 @@ class FileOperationManager(
     ): Boolean {
         checkPausedOrCancelled()
 
-        if (src.isDirectory) {
+        return if (src.isDirectory) {
             if (!dest.exists() && !dest.mkdirs()) throw IOException("Could not create destination")
             val children = src.listFiles() ?: return false
             var complete = true
