@@ -118,7 +118,7 @@ class AiProviderClient {
             requests.put(
                 JSONObject()
                     .put("model", "models/$model")
-                    .put("content", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", value.take(32000)))))
+                    .put("content", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", value.take(8000)))))
             )
         }
         val request = Request.Builder().url(url)
@@ -129,8 +129,9 @@ class AiProviderClient {
             if (!response.isSuccessful) throw RuntimeException("Gemini embedding HTTP ${response.code}: ${response.body?.string().orEmpty()}")
             val embeddings = JSONObject(response.body?.string().orEmpty()).optJSONArray("embeddings") ?: throw RuntimeException("Gemini embedding response missing embeddings")
             if (embeddings.length() != texts.size) throw RuntimeException("Gemini embedding response count ${embeddings.length()} != request count ${texts.size}")
-            return (0 until embeddings.length()).mapNotNull { i ->
-                val values = embeddings.optJSONObject(i)?.optJSONArray("values") ?: return@mapNotNull null
+            return (0 until embeddings.length()).map { i ->
+                val values = embeddings.optJSONObject(i)?.optJSONArray("values")
+                    ?: throw RuntimeException("Gemini embedding item $i is missing values")
                 FloatArray(values.length()) { idx -> values.optDouble(idx, 0.0).toFloat() }
             }
         }
@@ -150,8 +151,9 @@ class AiProviderClient {
             val body = JSONObject(response.body?.string().orEmpty())
             val array = body.optJSONArray("embeddings") ?: throw RuntimeException("Ollama embedding response missing embeddings")
             if (array.length() != texts.size) throw RuntimeException("Ollama embedding response count ${array.length()} != request count ${texts.size}")
-            return (0 until array.length()).mapNotNull { i ->
-                val values = array.optJSONArray(i) ?: return@mapNotNull null
+            return (0 until array.length()).map { i ->
+                val values = array.optJSONArray(i)
+                    ?: throw RuntimeException("Ollama embedding item $i is missing values")
                 FloatArray(values.length()) { idx -> values.optDouble(idx, 0.0).toFloat() }
             }
         }
@@ -170,10 +172,11 @@ class AiProviderClient {
             if (!response.isSuccessful) throw RuntimeException("Embedding HTTP ${response.code}: ${response.body?.string().orEmpty()}")
             val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data") ?: throw RuntimeException("Embedding response missing data")
             if (data.length() != texts.size) throw RuntimeException("Embedding response count ${data.length()} != request count ${texts.size}")
-            return (0 until data.length()).mapNotNull { i ->
-                val item = data.optJSONObject(i) ?: return@mapNotNull null
+            return (0 until data.length()).map { i ->
+                val item = data.optJSONObject(i) ?: throw RuntimeException("Embedding item $i is malformed")
                 val index = item.optInt("index", i)
-                val values = item.optJSONArray("embedding") ?: return@mapNotNull null
+                val values = item.optJSONArray("embedding")
+                    ?: throw RuntimeException("Embedding item $i is missing embedding values")
                 index to FloatArray(values.length()) { idx -> values.optDouble(idx, 0.0).toFloat() }
             }.sortedBy { it.first }.map { it.second }
         }
