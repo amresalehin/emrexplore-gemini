@@ -450,12 +450,15 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                 galleryAiStatus = if (path.isBlank()) "Processing gallery AI..." else "AI: " + File(path).name + " ($current/$total)"
                             )
                         }
-                        androidx.work.WorkInfo.State.SUCCEEDED -> _uiState.update {
-                            it.copy(
-                                isGalleryAiProcessing = false,
-                                galleryAiProgress = 1f,
-                                galleryAiStatus = "AI enrichment complete"
-                            )
+                        androidx.work.WorkInfo.State.SUCCEEDED -> {
+                            _uiState.update {
+                                it.copy(
+                                    isGalleryAiProcessing = false,
+                                    galleryAiProgress = 1f,
+                                    galleryAiStatus = "AI enrichment complete"
+                                )
+                            }
+                            refreshBrainTopicFiles(_uiState.value.selectedBrainTopicId)
                         }
                         androidx.work.WorkInfo.State.FAILED -> _uiState.update {
                             it.copy(isGalleryAiProcessing = false, galleryAiStatus = "AI processing failed")
@@ -490,10 +493,19 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                         androidx.work.WorkInfo.State.ENQUEUED -> _uiState.update {
                             it.copy(isKgIndexing = true, kgIndexingStatus = "Brain indexing queued...")
                         }
+                        androidx.work.WorkInfo.State.SUCCEEDED -> {
+                            _uiState.update {
+                                it.copy(
+                                    isKgIndexing = false,
+                                    kgIndexingProgress = 1f
+                                )
+                            }
+                            refreshBrainTopicFiles(_uiState.value.selectedBrainTopicId)
+                        }
                         else -> _uiState.update {
                             it.copy(
                                 isKgIndexing = false,
-                                kgIndexingProgress = if (work.state == androidx.work.WorkInfo.State.SUCCEEDED) 1f else it.kgIndexingProgress
+                                kgIndexingProgress = it.kgIndexingProgress
                             )
                         }
                     }
@@ -545,11 +557,15 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
         viewModelScope.launch {
             kgRepository.aiConfigFlow.collectLatest { config ->
+                val selectedTopicId = _uiState.value.selectedBrainTopicId
                 _uiState.update {
                     it.copy(
                         aiConfigLoaded = true,
                         aiConfig = config ?: it.aiConfig
                     )
+                }
+                if (selectedTopicId != null) {
+                    refreshBrainTopicFiles(selectedTopicId)
                 }
             }
         }
