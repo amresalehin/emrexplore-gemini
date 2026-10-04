@@ -81,6 +81,7 @@ fun AiSettingsScreen(
     availableModels: List<AvailableAiModel> = emptyList(),
     availableVisionModels: List<AvailableAiModel> = emptyList(),
     availableEmbeddingModels: List<AvailableAiModel> = emptyList(),
+    availableMultimodalEmbeddingModels: List<AvailableAiModel> = emptyList(),
     isFetchingModels: Boolean = false,
     modelFetchError: String? = null,
     onFetchModels: (AiProviderConfigEntity) -> Unit = {},
@@ -98,7 +99,8 @@ fun AiSettingsScreen(
     var baseUrl by remember { mutableStateOf(currentConfig.baseUrl) }
     var chatModel by remember { mutableStateOf(currentConfig.chatModel) }
     var visionModel by remember { mutableStateOf(currentConfig.visionModel) }
-    var embeddingModel by remember { mutableStateOf(currentConfig.embeddingModel) }
+    var embeddingModel by remember { mutableStateOf(currentConfig.textEmbeddingModel.ifBlank { currentConfig.embeddingModel }) }
+    var multimodalEmbeddingModel by remember { mutableStateOf(currentConfig.multimodalEmbeddingModel) }
     var isEnabled by remember { mutableStateOf(currentConfig.isEnabled) }
     var autoSync by remember { mutableStateOf(currentConfig.autoSync) }
     var freeOnly by remember { mutableStateOf(false) }
@@ -107,6 +109,7 @@ fun AiSettingsScreen(
     var showChatPicker by remember { mutableStateOf(false) }
     var showVisionPicker by remember { mutableStateOf(false) }
     var showEmbeddingPicker by remember { mutableStateOf(false) }
+    var showMultimodalEmbeddingPicker by remember { mutableStateOf(false) }
     var showAdvanced by remember { mutableStateOf(false) }
 
     fun draftConfig(): AiProviderConfigEntity = currentConfig.copy(
@@ -116,6 +119,8 @@ fun AiSettingsScreen(
         chatModel = chatModel.trim(),
         visionModel = visionModel.trim(),
         embeddingModel = embeddingModel.trim(),
+        textEmbeddingModel = embeddingModel.trim(),
+        multimodalEmbeddingModel = multimodalEmbeddingModel.trim(),
         isEnabled = isEnabled,
         autoSync = autoSync
     )
@@ -126,13 +131,15 @@ fun AiSettingsScreen(
             baseUrl = currentConfig.baseUrl
             chatModel = currentConfig.chatModel
             visionModel = currentConfig.visionModel
-            embeddingModel = currentConfig.embeddingModel
+            embeddingModel = currentConfig.textEmbeddingModel.ifBlank { currentConfig.embeddingModel }
+            multimodalEmbeddingModel = currentConfig.multimodalEmbeddingModel
             apiKey = currentConfig.apiKey
         } else {
             baseUrl = provider.defaultBaseUrl
             chatModel = ""
             visionModel = ""
-            embeddingModel = ""
+            embeddingModel = provider.defaultTextEmbeddingModel
+            multimodalEmbeddingModel = provider.defaultMultimodalEmbeddingModel
             apiKey = ""
         }
         showProviderPicker = false
@@ -149,11 +156,13 @@ fun AiSettingsScreen(
     val chats = usableModels(availableModels)
     val visions = usableModels(availableVisionModels)
     val embeddings = usableModels(availableEmbeddingModels)
+    val multimodalEmbeddings = usableModels(availableMultimodalEmbeddingModels)
 
-    LaunchedEffect(chats, visions, embeddings) {
+    LaunchedEffect(chats, visions, embeddings, multimodalEmbeddings) {
         if (chats.isNotEmpty()) chatModel = firstUsable(chats, chatModel)
         if (visions.isNotEmpty()) visionModel = firstUsable(visions, visionModel)
         if (embeddings.isNotEmpty()) embeddingModel = firstUsable(embeddings, embeddingModel)
+        if (multimodalEmbeddings.isNotEmpty()) multimodalEmbeddingModel = firstUsable(multimodalEmbeddings, multimodalEmbeddingModel)
     }
 
     Scaffold(
@@ -319,13 +328,14 @@ fun AiSettingsScreen(
                 }
                 modelFetchError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
-                ModelPicker("Chat / reasoning", firstUsable(chats, chatModel), { showChatPicker = true }, "ai_chat_model_field", chats)
-                ModelPicker("Vision / image understanding", firstUsable(visions, visionModel), { showVisionPicker = true }, "ai_vision_model_field", visions)
-                ModelPicker("Embedding / semantic search", firstUsable(embeddings, embeddingModel), { showEmbeddingPicker = true }, "ai_embedding_model_field", embeddings)
+                ModelPicker("General files / chat", firstUsable(chats, chatModel), { showChatPicker = true }, "ai_chat_model_field", chats)
+                ModelPicker("Vision / image understanding + caption", firstUsable(visions, visionModel), { showVisionPicker = true }, "ai_vision_model_field", visions)
+                ModelPicker("Text embeddings", firstUsable(embeddings, embeddingModel), { showEmbeddingPicker = true }, "ai_text_embedding_model_field", embeddings)
+                ModelPicker("Image + text semantic search", firstUsable(multimodalEmbeddings, multimodalEmbeddingModel), { showMultimodalEmbeddingPicker = true }, "ai_multimodal_embedding_model_field", multimodalEmbeddings)
 
-                if (embeddings.isEmpty()) {
+                if (embeddings.isEmpty() || multimodalEmbeddings.isEmpty()) {
                     Text(
-                        "No embedding model was exposed. Semantic Brain search cannot run until one is configured.",
+                        "Fetch the provider models and choose both embedding roles for full Brain search.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -383,7 +393,8 @@ fun AiSettingsScreen(
     if (showProviderPicker) ProviderPickerDialog(selectedProvider, ::selectProvider) { showProviderPicker = false }
     if (showChatPicker) ModelPickerDialog("Choose chat model", chats, chatModel, { chatModel = it; showChatPicker = false }) { showChatPicker = false }
     if (showVisionPicker) ModelPickerDialog("Choose vision model", visions, visionModel, { visionModel = it; showVisionPicker = false }) { showVisionPicker = false }
-    if (showEmbeddingPicker) ModelPickerDialog("Choose embedding model", embeddings, embeddingModel, { embeddingModel = it; showEmbeddingPicker = false }) { showEmbeddingPicker = false }
+    if (showEmbeddingPicker) ModelPickerDialog("Choose text embedding model", embeddings, embeddingModel, { embeddingModel = it; showEmbeddingPicker = false }) { showEmbeddingPicker = false }
+    if (showMultimodalEmbeddingPicker) ModelPickerDialog("Choose image + text embedding model", multimodalEmbeddings, multimodalEmbeddingModel, { multimodalEmbeddingModel = it; showMultimodalEmbeddingPicker = false }) { showMultimodalEmbeddingPicker = false }
 }
 
 private fun normalizeProvider(value: String): ProviderType = when (ProviderType.fromString(value)) {
