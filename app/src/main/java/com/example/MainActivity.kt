@@ -65,6 +65,7 @@ import com.example.ui.screens.FullscreenMediaViewer
 import com.example.ui.screens.GalleryScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.KnowledgeGraphScreen
+import com.example.ui.screens.MetadataInspectorSheet
 import com.example.ui.screens.TextEditorScreen
 import com.example.ui.screens.ZipViewerDialog
 import com.example.ui.theme.EmrExploreTheme
@@ -373,7 +374,8 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             totalCount = uiState.fullscreenTotalCount.coerceAtLeast(uiState.fullscreenMediaList.size),
             onClose = { viewModel.closeFullscreenMedia() },
             onIndexChange = { newIdx -> viewModel.moveFullscreenMedia(newIdx) },
-            onToggleFavorite = { fileItem -> viewModel.toggleFavorite(fileItem) }
+            onToggleFavorite = { fileItem -> viewModel.toggleFavorite(fileItem) },
+            onInspectMetadata = { mediaItem -> viewModel.inspectMetadata(mediaItem) }
         )
     }
 
@@ -407,8 +409,28 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             item = uiState.activeDetailItem!!,
             connectedDots = uiState.activeFileConnectedDots,
             onDismiss = { viewModel.closeProperties() },
+            onInspectMetadata = { item -> viewModel.inspectMetadata(com.example.data.model.MediaItem(
+                id = item.path.hashCode().toLong(),
+                uri = item.uri,
+                name = item.name,
+                path = item.path,
+                size = item.size,
+                dateAdded = item.lastModified,
+                mimeType = item.mimeType,
+                isVideo = false,
+                width = item.width,
+                height = item.height
+            )) },
             onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false)) },
             onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false, mimeType = "image/jpeg")) }
+        )
+    }
+
+    // Metadata Inspector
+    if (uiState.activeMetadataReport != null) {
+        MetadataInspectorSheet(
+            report = uiState.activeMetadataReport,
+            onDismiss = { viewModel.closeMetadataInspector() }
         )
     }
 
