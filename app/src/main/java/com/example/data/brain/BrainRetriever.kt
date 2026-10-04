@@ -214,9 +214,10 @@ class BrainRetriever(
         return value
             .replace(Regex("(?im)^\\s*(GPS|Location):.*(?:\\R|$)"), "")
             .replace(
-                Regex("(?i)(exact coordinates|geographic coordinates|coordinates?)\\s*[:=]?\\s*-?\\d+(?:\\.\\d+)?\\s*,\\s*-?\\d+(?:\\.\\d+)?"),
-                "$1: [redacted]"
-            )
+                Regex("(?i)(exact coordinates|geographic coordinates|coordinates?)\\s*[:=]?\\s*-?\\d+(?:\\.\\d+)?\\s*,\\s*-?\\d+(?:\\.\\d+)?")
+            ) { match ->
+                match.groupValues[1] + ": [redacted]"
+            }
     }
 
     companion object {
