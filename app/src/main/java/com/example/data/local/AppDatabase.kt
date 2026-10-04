@@ -28,7 +28,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         IndexFingerprintEntity::class,
         ModelRunEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -51,6 +51,17 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun modelRunDao(): ModelRunDao
 
     companion object {
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiCaption TEXT")
+                db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiTagsJson TEXT NOT NULL DEFAULT '[]'")
+                db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiEntitiesJson TEXT NOT NULL DEFAULT '[]'")
+                db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiModel TEXT")
+                db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiFileLastModified INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE media_metadata ADD COLUMN aiProcessedAt INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         private val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS kg_edge_evidence (sourceNodeId TEXT NOT NULL, targetNodeId TEXT NOT NULL, relation TEXT NOT NULL, evidenceSource TEXT NOT NULL, evidenceSnippet TEXT NOT NULL DEFAULT '', createdAt INTEGER NOT NULL, PRIMARY KEY(sourceNodeId, targetNodeId, relation, evidenceSource))")
@@ -97,7 +108,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "emrexplore.db"
-                ) .addMigrations(MIGRATION_4_6, MIGRATION_6_7)
+                )  .addMigrations(MIGRATION_4_6, MIGRATION_6_7, MIGRATION_7_8)
                  .fallbackToDestructiveMigrationFrom(1, 2, 3)
                  .build()
                 INSTANCE = instance
