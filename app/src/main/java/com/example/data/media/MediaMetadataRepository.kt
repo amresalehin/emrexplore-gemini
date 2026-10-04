@@ -47,7 +47,7 @@ class MediaMetadataRepository(context: Context) {
                     aiModel = cached.aiModel,
                     aiFileLastModified = cached.aiFileLastModified,
                     aiProcessedAt = cached.aiProcessedAt,
-                    searchableText = listOf(extracted.searchableText, cached.aiCaption, cached.aiTagsJson)
+                    searchableText = listOfNotNull(extracted.searchableText, cached.aiCaption, cached.aiTagsJson)
                         .filter { it.isNotBlank() }
                         .joinToString(" ")
                 )
