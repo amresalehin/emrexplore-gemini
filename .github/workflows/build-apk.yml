@@ -97,6 +97,7 @@ jobs:
 
       - name: Build release APK
         if: env.HAS_RELEASE_SIGNING == 'true'
+        run: gradle :app:assembleRelease --stacktrace --no-daemon
 
       - name: Verify APK
         shell: bash
