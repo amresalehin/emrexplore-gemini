@@ -216,7 +216,7 @@ class AiProviderClient {
     }
 
     private fun listGeminiModels(config: AiProviderConfigEntity): List<AvailableAiModel> {
-        val base = config.baseUrl.trimEnd('/').ifBlank { "https://generativelanguage.googleapis.com" }
+        val base = validateEndpoint(config.baseUrl.trimEnd('/').ifBlank { "https://generativelanguage.googleapis.com" }, ProviderType.GEMINI).toString().trimEnd('/')
         val endpoint = if (base.endsWith("/v1beta") || base.endsWith("/v1")) base else "$base/v1beta"
         val request = Request.Builder().url("$endpoint/models").addHeader("x-goog-api-key", config.apiKey.trim()).get().build()
         okHttpClient.newCall(request).execute().use { response ->
