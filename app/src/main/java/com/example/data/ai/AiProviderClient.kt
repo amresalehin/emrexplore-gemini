@@ -127,7 +127,8 @@ class AiProviderClient {
             .build()
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw RuntimeException("Gemini embedding HTTP ${response.code}: ${response.body?.string().orEmpty()}")
-            val embeddings = JSONObject(response.body?.string().orEmpty()).optJSONArray("embeddings") ?: return emptyList()
+            val embeddings = JSONObject(response.body?.string().orEmpty()).optJSONArray("embeddings") ?: throw RuntimeException("Gemini embedding response missing embeddings")
+            if (embeddings.length() != texts.size) throw RuntimeException("Gemini embedding response count ${embeddings.length()} != request count ${texts.size}")
             return (0 until embeddings.length()).mapNotNull { i ->
                 val values = embeddings.optJSONObject(i)?.optJSONArray("values") ?: return@mapNotNull null
                 FloatArray(values.length()) { idx -> values.optDouble(idx, 0.0).toFloat() }
@@ -147,7 +148,8 @@ class AiProviderClient {
         okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
             if (!response.isSuccessful) throw RuntimeException("Ollama embedding HTTP ${response.code}: ${response.body?.string().orEmpty()}")
             val body = JSONObject(response.body?.string().orEmpty())
-            val array = body.optJSONArray("embeddings") ?: return emptyList()
+            val array = body.optJSONArray("embeddings") ?: throw RuntimeException("Ollama embedding response missing embeddings")
+            if (array.length() != texts.size) throw RuntimeException("Ollama embedding response count ${array.length()} != request count ${texts.size}")
             return (0 until array.length()).mapNotNull { i ->
                 val values = array.optJSONArray(i) ?: return@mapNotNull null
                 FloatArray(values.length()) { idx -> values.optDouble(idx, 0.0).toFloat() }
@@ -166,11 +168,14 @@ class AiProviderClient {
         applyCustomHeaders(builder, config)
         okHttpClient.newCall(builder.build()).execute().use { response ->
             if (!response.isSuccessful) throw RuntimeException("Embedding HTTP ${response.code}: ${response.body?.string().orEmpty()}")
-            val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data") ?: return emptyList()
+            val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data") ?: throw RuntimeException("Embedding response missing data")
+            if (data.length() != texts.size) throw RuntimeException("Embedding response count ${data.length()} != request count ${texts.size}")
             return (0 until data.length()).mapNotNull { i ->
-                val values = data.optJSONObject(i)?.optJSONArray("embedding") ?: return@mapNotNull null
-                FloatArray(values.length()) { idx -> values.optDouble(idx, 0.0).toFloat() }
-            }
+                val item = data.optJSONObject(i) ?: return@mapNotNull null
+                val index = item.optInt("index", i)
+                val values = item.optJSONArray("embedding") ?: return@mapNotNull null
+                index to FloatArray(values.length()) { idx -> values.optDouble(idx, 0.0).toFloat() }
+            }.sortedBy { it.first }.map { it.second }
         }
     }
 
@@ -183,7 +188,7 @@ class AiProviderClient {
             }
         } catch (error: Exception) {
             Log.w("AiProviderClient", "Model discovery failed: ${error.message}")
-            emptyList()
+            throw error
         }
     }
 
@@ -369,8 +374,9 @@ class AiProviderClient {
         config: AiProviderConfigEntity,
         modelOverride: String = ""
     ): String {
-        val baseUrl = if (config.baseUrl.isNotBlank()) config.baseUrl.trimEnd('/') else "https://generativelanguage.googleapis.com"
-        val model = modelOverride.ifBlank { config.chatModel.ifBlank { "gemini-3.5-flash" } }
+        val rawBase = config.baseUrl.trimEnd('/').ifBlank { "https://generativelanguage.googleapis.com" }
+        val baseUrl = rawBase.removeSuffix("/v1beta").removeSuffix("/v1")
+        val model = modelOverride.ifBlank { config.chatModel.ifBlank { "gemini-3.8-flash" } }.removePrefix("models/")
         val apiKey = config.apiKey.trim()
 
         val url = "$baseUrl/v1beta/models/$model:generateContent"
