@@ -1,7 +1,5 @@
 package com.example.data.ai
 
-import com.example.data.brain.BrainNodeEntity
-import com.example.data.brain.BrainChunkEntity
 
 enum class ProviderType(
     val displayName: String,
@@ -107,22 +105,6 @@ data class ConnectionTestResult(
     val responseTimeMs: Long = 0L
 )
 
-data class RagAnswer(
-    val answer: String,
-    val sourceChunks: List<BrainChunkEntity> = emptyList(),
-    val connectedNodes: List<BrainNodeEntity> = emptyList(),
-    val isSuccessful: Boolean = true,
-    val latencyMs: Long = 0L
-)
-
-data class ConnectedDotsItem(
-    val fileNode: BrainNodeEntity,
-    val relationship: String,
-    val targetNode: BrainNodeEntity,
-    val snippet: String = ""
-)
-
-
 fun isKeylessAiConfig(config: com.example.data.local.AiProviderConfigEntity): Boolean {
     val provider = ProviderType.fromString(config.providerType)
     if (provider == ProviderType.OLLAMA) return true
@@ -139,15 +121,6 @@ data class AvailableAiModel(
     val supportsMultimodalEmbedding: Boolean = false,
     val isFree: Boolean = false,
     val priceKnown: Boolean = false
-)
-
-data class AttachedAiFile(
-    val file: java.io.File,
-    val name: String = file.name,
-    val path: String = file.absolutePath,
-    val mimeType: String = "",
-    val size: Long = file.length(),
-    val isImage: Boolean = false
 )
 
 data class AskAiChatMessage(
