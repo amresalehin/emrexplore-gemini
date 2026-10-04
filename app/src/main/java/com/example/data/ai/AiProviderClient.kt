@@ -145,7 +145,7 @@ class AiProviderClient {
             .post(JSONObject().put("requests", requests).toString().toRequestBody(jsonMediaType))
             .build()
         okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw RuntimeException("Gemini embedding HTTP ${response.code}: ${response.body?.string().orEmpty()}")
+            if (!response.isSuccessful) throw safeHttpError("Gemini embedding", response.code)
             val embeddings = JSONObject(response.body?.string().orEmpty()).optJSONArray("embeddings") ?: throw RuntimeException("Gemini embedding response missing embeddings")
             if (embeddings.length() != texts.size) throw RuntimeException("Gemini embedding response count ${embeddings.length()} != request count ${texts.size}")
             return (0 until embeddings.length()).map { i ->
