@@ -38,6 +38,7 @@ datastorePreferences = "1.1.7"
 robolectric = "4.16.1"
 credentials = "1.5.0"
 googleid = "1.1.1"
+pdfboxAndroid = "2.0.27.0"
 
 
 [libraries]
@@ -89,6 +90,7 @@ robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "
 androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
 androidx-credentials-play-services = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
 googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
+pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }
 
 
 [plugins]
