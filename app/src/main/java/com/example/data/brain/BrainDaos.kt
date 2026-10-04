@@ -139,7 +139,7 @@ interface BrainEdgeDao {
 @Dao
 interface BrainTopicDao {
     @Query("SELECT * FROM brain_topics ORDER BY updatedAt DESC")
-    fun getAllFlow(): Flow<BrainTopicEntity>
+    fun getAllFlow(): Flow<List<BrainTopicEntity>>
 
     @Query("SELECT * FROM brain_topics WHERE id = :id LIMIT 1")
     suspend fun get(id: String): BrainTopicEntity?
