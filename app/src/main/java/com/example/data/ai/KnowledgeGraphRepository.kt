@@ -94,6 +94,26 @@ class KnowledgeGraphRepository(private val context: Context) {
         }
     }
 
+    suspend fun removeIndexedSource(filePath: String) = withContext(Dispatchers.IO) {
+        db.withTransaction {
+            kgDao.deleteEdgeEvidenceBySource(filePath)
+            kgDao.deleteSourcedEdgesWithoutEvidence()
+            kgDao.deleteEdgesForNode("doc:$filePath")
+            kgDao.deleteEdgesForNode("img:$filePath")
+            kgDao.deleteNodeByFilePath(filePath)
+            ragDao.deleteChunksForFile(filePath)
+            factDao.deleteForFile(filePath)
+            mentionDao.deleteForFile(filePath)
+            fingerprintDao.delete(filePath)
+        }
+        kgDao.deleteOrphanedNonFileNodes()
+        kgDao.recomputeDegrees()
+    }
+
+    suspend fun recomputeGraphDegrees() = withContext(Dispatchers.IO) {
+        kgDao.recomputeDegrees()
+    }
+
     /**
      * Finds files (documents & images) that share entities or direct relations with this file.
      */
