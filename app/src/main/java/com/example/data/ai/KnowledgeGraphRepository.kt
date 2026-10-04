@@ -471,7 +471,7 @@ class KnowledgeGraphRepository(private val context: Context) {
                 if (isImageFile(file)) multimodalEmbeddingModel(config) else textEmbeddingModel(config)
             ) == 0
         if (indexed && embeddingsReady) {
-            fingerprintDao.insert(IndexFingerprintEntity(filePath, file.length(), file.lastModified(), hash, modelVersion, config.embeddingModel))
+            fingerprintDao.insert(IndexFingerprintEntity(filePath, file.length(), file.lastModified(), hash, modelVersion, embeddingSignature(config)))
             modelRunDao.insert(ModelRunEntity(runId, filePath, "INDEX", config.chatModel.ifBlank { "local" }, true, null, runStartedAt, System.currentTimeMillis()))
             return@withContext true
         } else {
