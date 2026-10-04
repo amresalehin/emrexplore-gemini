@@ -153,9 +153,3 @@ data class AiProviderConfigEntity(
     val autoSync: Boolean = false,
     val lastSyncTimestamp: Long = 0L
 )
-
-// Brain persistence is implemented in com.example.data.brain.
-typealias KgNodeEntity = com.example.data.brain.BrainNodeEntity
-typealias KgEdgeEntity = com.example.data.brain.BrainEdgeEntity
-typealias RagChunkEntity = com.example.data.brain.BrainChunkEntity
-typealias BrainTopicEntity = com.example.data.brain.BrainTopicEntity
