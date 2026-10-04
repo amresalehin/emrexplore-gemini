@@ -358,7 +358,7 @@ class KnowledgeGraphRepository(private val context: Context) {
         // Link with folder
         val parentDir = file.parentFile?.name
         if (!parentDir.isNullOrBlank() && parentDir !in setOf("/", "0", "emulated", "storage")) {
-            val folderId = "folder:${parentDir.lowercase()}"
+            val folderId = "folder:${hashKey(File(filePath).parentFile?.absolutePath ?: parentDir)}"
             nodesToInsert.add(
                 KgNodeEntity(
                     id = folderId,
@@ -378,12 +378,13 @@ class KnowledgeGraphRepository(private val context: Context) {
         }
 
         for (ent in analysis.entities) {
-            val entId = "ent:${ent.name.trim().lowercase()}"
+            val entId = "ent:${hashKey(normalize(ent.name))}"
             val entNode = KgNodeEntity(
                 id = entId,
                 label = ent.name.trim(),
                 nodeType = ent.type.ifBlank { "TOPIC" },
-                summary = "Entity detected in ${file.name}"
+                summary = "Observed in ${file.name}",
+                confidence = ent.confidence.coerceIn(0f, 1f)
             )
             nodesToInsert.add(entNode)
 
@@ -392,7 +393,8 @@ class KnowledgeGraphRepository(private val context: Context) {
                     sourceNodeId = imgNodeId,
                     targetNodeId = entId,
                     relation = "DEPICTS",
-                    evidenceSnippet = "Depicted in photo ${file.name}"
+                    evidenceSnippet = "Depicted in photo ${file.name}",
+                    evidenceSource = filePath
                 )
             )
         }
@@ -401,7 +403,7 @@ class KnowledgeGraphRepository(private val context: Context) {
         metadataReport?.summary?.let { s ->
             if (s.latitude != null && s.longitude != null) {
                 val locLabel = if (!s.city.isNullOrBlank()) "${s.city}, ${s.country.orEmpty()}".trim() else "Geo (${String.format("%.3f", s.latitude)}, ${String.format("%.3f", s.longitude)})"
-                val locId = "ent:${locLabel.lowercase()}"
+                val locId = "loc:${s.latitude}:${s.longitude}"
                 nodesToInsert.add(
                     KgNodeEntity(
                         id = locId,
@@ -415,7 +417,8 @@ class KnowledgeGraphRepository(private val context: Context) {
                         sourceNodeId = imgNodeId,
                         targetNodeId = locId,
                         relation = "LOCATED_AT",
-                        evidenceSnippet = "Taken at coordinates ${s.latitude}, ${s.longitude}"
+                        evidenceSnippet = "Taken at coordinates ${s.latitude}, ${s.longitude}",
+                        evidenceSource = filePath
                     )
                 )
             }
