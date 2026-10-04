@@ -113,7 +113,7 @@ class AiProviderClient {
         config: AiProviderConfigEntity
     ): AnalysisResult = withContext(Dispatchers.IO) {
         val systemPrompt = """
-            You are a Knowledge Graph and document analysis engine.
+            You are a private-document analysis engine for Brain v2.
             Analyze the document named "$fileName".
             Extract:
             1. summary: A concise 2-sentence summary of the content.
