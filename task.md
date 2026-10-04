@@ -179,6 +179,9 @@ Target branch: `gemini` (repository default branch)
 - [x] Preserve the selected Gallery sort in search results.
 - [x] Preserve the selected Gallery sort in album paging and fullscreen navigation.
 - [x] Make Favorites a media-only, globally sorted gallery and ignore stale/non-media favorite rows.
+- [x] Reject stale indexed paths when converting fast-search results into live FileItems.
+- [x] Exclude `.trash` path segments from Brain worker candidates.
+- [x] Validate Brain embedding readiness against the embedding model actually persisted by the indexing stage.
 - [x] Reject copy/move destinations that are the source or descendants of a source directory.
 - [x] Reject same-file streaming copies before opening the destination.
 - [x] Validate create/rename child names against absolute paths and path separators.
