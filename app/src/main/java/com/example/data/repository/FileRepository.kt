@@ -1485,6 +1485,7 @@ class FileRepository(private val context: Context) {
 
     // CRUD & File Operations
     suspend fun createFolder(parentPath: String, name: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidChildName(name)) return@withContext false
         val dir = File(parentPath, name)
         val created = if (!dir.exists()) dir.mkdirs() else false
         if (created) {
@@ -1495,25 +1496,28 @@ class FileRepository(private val context: Context) {
     }
 
     suspend fun createTextFile(parentPath: String, name: String, content: String = ""): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidChildName(name)) return@withContext false
         val file = File(parentPath, name)
         if (!file.exists()) {
             val created = file.createNewFile()
+            if (!created) return@withContext false
             if (content.isNotEmpty()) {
                 file.writeText(content)
             }
-            if (created) {
-                invalidateFolderCache(parentPath)
-                indexFileOrDir(file)
-            }
+            invalidateFolderCache(parentPath)
+            indexFileOrDir(file)
             true
         } else false
     }
 
     suspend fun renameFile(oldPath: String, newName: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidChildName(newName)) return@withContext false
         val oldFile = File(oldPath)
         if (!oldFile.exists()) return@withContext false
         val parent = oldFile.parent ?: ""
         val newFile = File(oldFile.parentFile, newName)
+        if (oldFile.canonicalFile == newFile.canonicalFile) return@withContext true
+        if (newFile.exists()) return@withContext false
         val isDir = oldFile.isDirectory
         val renamed = oldFile.renameTo(newFile)
         if (renamed) {
@@ -1529,6 +1533,24 @@ class FileRepository(private val context: Context) {
             }
         }
         renamed
+    }
+
+    private fun isUnsafeDestination(source: File, destination: File): Boolean {
+        return runCatching {
+            val canonicalSource = source.canonicalFile
+            val canonicalDestination = destination.canonicalFile
+            canonicalSource == canonicalDestination ||
+                (source.isDirectory && canonicalDestination.toPath().startsWith(canonicalSource.toPath()))
+        }.getOrDefault(true)
+    }
+
+    private fun isValidChildName(name: String): Boolean {
+        return name.isNotBlank() &&
+            name != "." &&
+            name != ".." &&
+            !File(name).isAbsolute &&
+            '/' !in name &&
+            '\\' !in name
     }
 
     private fun moveAcrossFilesystemsSafely(source: File, destination: File): Boolean {
@@ -1614,16 +1636,18 @@ class FileRepository(private val context: Context) {
 
     suspend fun permanentlyDeleteTrash(trashEntity: TrashEntity): Boolean = withContext(Dispatchers.IO) {
         val trashFile = File(trashEntity.trashPath)
-        if (trashFile.exists()) {
-            trashFile.deleteRecursively()
-        }
+        val deleted = !trashFile.exists() || trashFile.deleteRecursively()
+        if (!deleted) return@withContext false
+
         trashDao.deleteTrashById(trashEntity.id)
         true
     }
 
     suspend fun clearTrash(): Boolean = withContext(Dispatchers.IO) {
         val trashDir = File(baseWorkingDir, ".trash")
-        if (trashDir.exists()) trashDir.deleteRecursively()
+        val deleted = !trashDir.exists() || trashDir.deleteRecursively()
+        if (!deleted) return@withContext false
+
         trashDao.clearAllTrash()
         true
     }
@@ -1632,6 +1656,7 @@ class FileRepository(private val context: Context) {
         val src = File(sourcePath)
         val dest = File(targetDir, src.name)
         if (!src.exists()) return@withContext false
+        if (isUnsafeDestination(src, dest)) return@withContext false
 
         try {
             if (src.isDirectory) {
@@ -1657,6 +1682,7 @@ class FileRepository(private val context: Context) {
         val src = File(sourcePath)
         val dest = File(targetDir, src.name)
         if (!src.exists()) return@withContext false
+        if (isUnsafeDestination(src, dest)) return@withContext false
         val parent = src.parent ?: ""
         val isDir = src.isDirectory
 
@@ -1683,6 +1709,14 @@ class FileRepository(private val context: Context) {
 
     suspend fun zipFiles(sourcePaths: List<String>, targetZipPath: String): Boolean = withContext(Dispatchers.IO) {
         val zipFile = File(targetZipPath)
+        val canonicalZip = runCatching { zipFile.canonicalFile }.getOrNull() ?: return@withContext false
+        val selfTargeted = sourcePaths.any { sourcePath ->
+            val source = File(sourcePath)
+            val canonicalSource = runCatching { source.canonicalFile }.getOrNull() ?: return@any true
+            canonicalSource == canonicalZip ||
+                (source.isDirectory && canonicalZip.toPath().startsWith(canonicalSource.toPath()))
+        }
+        if (selfTargeted) return@withContext false
         try {
             ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
                 for (path in sourcePaths) {
