@@ -1717,8 +1717,18 @@ class FileRepository(private val context: Context) {
         try {
             ZipInputStream(FileInputStream(zipFile)).use { zis ->
                 var entry: ZipEntry? = zis.nextEntry
+                val targetCanonical = target.canonicalFile
                 while (entry != null) {
                     val outFile = File(target, entry.name)
+                    val outCanonical = try { outFile.canonicalFile } catch (_: IOException) {
+                        zis.closeEntry()
+                        entry = zis.nextEntry
+                        continue
+                    }
+                    val rootPath = targetCanonical.path + File.separator
+                    if (outCanonical.path != targetCanonical.path && !outCanonical.path.startsWith(rootPath)) {
+                        throw IOException("Unsafe ZIP entry path: ${entry.name}")
+                    }
                     if (entry.isDirectory) {
                         outFile.mkdirs()
                     } else {
