@@ -330,7 +330,7 @@ class KnowledgeGraphRepository(private val context: Context) {
         val metadataSummary = metadataSummaryBuilder.toString()
 
         // 2. Call AI vision if enabled & key provided
-        val base64Thumbnail = if (isAiReady(config) && file.exists() && file.canRead()) {
+        val base64Thumbnail = if (isAiReady(config)) {
             getCompressedBase64(file, uri, maxDimension = 768)
         } else null
 
