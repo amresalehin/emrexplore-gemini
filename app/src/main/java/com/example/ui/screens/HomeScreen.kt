@@ -1194,7 +1194,14 @@ fun HomeScreen(
                             CategoryType.DOCUMENTS,
                             CategoryType.ARCHIVES,
                             CategoryType.APKS
-                        )
+                        ).filter { (uiState.categoryCounts[it] ?: 0) > 0 }
+                        if (categories.isEmpty()) {
+                            Text(
+                                text = "No categorized files yet",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         categories.chunked(2).forEach { rowItems ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
