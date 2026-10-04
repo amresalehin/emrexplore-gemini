@@ -257,6 +257,12 @@ interface KgDao {
     @Query("SELECT * FROM kg_nodes WHERE id IN (:ids)")
     suspend fun getNodes(ids: List<String>): List<KgNodeEntity>
 
+    @Query("DELETE FROM kg_edges WHERE evidenceSource = :sourceFilePath")
+    suspend fun deleteEdgesByEvidenceSource(sourceFilePath: String)
+
+    @Query("DELETE FROM kg_nodes WHERE nodeType NOT IN ('DOCUMENT', 'IMAGE') AND id NOT IN (SELECT sourceNodeId FROM kg_edges UNION SELECT targetNodeId FROM kg_edges)")
+    suspend fun deleteOrphanedNonFileNodes()
+
     @Query("UPDATE kg_nodes SET degree = (SELECT COUNT(*) FROM kg_edges WHERE sourceNodeId = kg_nodes.id OR targetNodeId = kg_nodes.id)")
     suspend fun recomputeDegrees()
 
@@ -311,8 +317,8 @@ interface RagDao {
     @Query("SELECT * FROM rag_chunks WHERE filePath = :filePath ORDER BY chunkIndex ASC")
     suspend fun getChunksForFile(filePath: String): List<RagChunkEntity>
 
-    @Query("SELECT * FROM rag_chunks WHERE embeddingJson IS NOT NULL")
-    suspend fun getEmbeddedChunks(): List<RagChunkEntity>
+    @Query("SELECT * FROM rag_chunks WHERE embeddingModel = :embeddingModel AND embeddingJson IS NOT NULL LIMIT :limit OFFSET :offset")
+    suspend fun getEmbeddedChunksPage(embeddingModel: String, limit: Int, offset: Int): List<RagChunkEntity>
     @Query("SELECT * FROM rag_chunks WHERE chunkId IN (:ids)")
     suspend fun getChunksByIds(ids: List<String>): List<RagChunkEntity>
 
@@ -362,6 +368,9 @@ interface EntityMentionDao {
 
     @Query("SELECT DISTINCT sourceFilePath FROM entity_mentions WHERE entityId = :entityId")
     suspend fun getSourceFiles(entityId: String): List<String>
+
+    @Query("DELETE FROM entity_mentions")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -386,4 +395,7 @@ interface ModelRunDao {
 
     @Query("SELECT * FROM model_runs WHERE filePath = :path ORDER BY startedAt DESC LIMIT :limit")
     suspend fun getForFile(path: String, limit: Int = 20): List<ModelRunEntity>
+
+    @Query("DELETE FROM model_runs")
+    suspend fun clearAll()
 }
