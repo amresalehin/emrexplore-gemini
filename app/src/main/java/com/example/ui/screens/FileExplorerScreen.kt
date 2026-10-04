@@ -1520,7 +1520,7 @@ private fun FileListItem(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val subText = if (item.isDirectory) {
-                            "${item.childCount} items"
+                            if (item.childCount >= 0) "${item.childCount} items" else "Items unavailable"
                         } else {
                             formatFileSize(item.size)
                         }
@@ -1647,7 +1647,9 @@ private fun FileGridCard(
                 )
             } else {
                 Text(
-                    text = if (item.isDirectory) "${item.childCount} items" else formatFileSize(item.size),
+                    text = if (item.isDirectory) {
+                        if (item.childCount >= 0) "${item.childCount} items" else "Items unavailable"
+                    } else formatFileSize(item.size),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
