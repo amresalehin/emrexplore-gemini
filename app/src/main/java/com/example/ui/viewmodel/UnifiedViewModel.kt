@@ -348,7 +348,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     sort = sort
                 )
             } else if (filter == null) {
-                mediaRepository.favoritesPager()
+                mediaRepository.favoritesPager(sort)
             } else {
                 mediaRepository.pager(filter, sort)
             }
