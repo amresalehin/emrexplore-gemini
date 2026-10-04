@@ -38,9 +38,9 @@ import com.example.data.ai.RagAnswer
 import com.example.data.ai.AttachedAiFile
 import com.example.data.ai.AskAiChatMessage
 import com.example.data.local.AiProviderConfigEntity
-import com.example.data.local.BrainTopicEntity
-import com.example.data.local.KgEdgeEntity
-import com.example.data.local.KgNodeEntity
+import com.example.data.brain.BrainTopicEntity
+import com.example.data.brain.BrainEdgeEntity
+import com.example.data.brain.BrainNodeEntity
 import com.example.data.local.MediaMetadataEntity
 import com.example.data.metadata.MetadataExtractor
 import com.example.data.metadata.MetadataReport
@@ -236,8 +236,8 @@ data class UiState(
     val performanceMetrics: PerformanceMetrics = PerformanceMetrics(),
 
     // Knowledge Graph & RAG State
-    val kgNodes: List<KgNodeEntity> = emptyList(),
-    val kgEdges: List<KgEdgeEntity> = emptyList(),
+    val kgNodes: List<BrainNodeEntity> = emptyList(),
+    val kgEdges: List<BrainEdgeEntity> = emptyList(),
     val kgNodeCount: Int = 0,
     val kgEdgeCount: Int = 0,
     val kgChunkCount: Int = 0,
