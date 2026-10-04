@@ -3,6 +3,7 @@ import kotlin.math.roundToInt
 import kotlin.math.abs
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -596,12 +597,33 @@ fun GalleryScreen(
             }
         }
 
+        if (uiState.isGalleryAiProcessing) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                LinearProgressIndicator(
+                    progress = { uiState.galleryAiProgress },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    uiState.galleryAiStatus,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
         // Aves-style contextual selection bar. Selection is limited to explicitly selected items.
         if (uiState.gallerySelection.isNotEmpty()) {
             GallerySelectionBar(
                 count = uiState.gallerySelection.size,
                 onClear = { viewModel.clearGallerySelection() },
                 onFavorite = { viewModel.favoriteGallerySelection() },
+                onAiProcess = { viewModel.processGalleryAiSelection() },
                 onShare = {
                     val uris = ArrayList(uiState.gallerySelection.map { it.uri })
                     try {
@@ -1376,6 +1398,7 @@ private fun GallerySelectionBar(
     count: Int,
     onClear: () -> Unit,
     onFavorite: () -> Unit,
+    onAiProcess: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -1387,6 +1410,7 @@ private fun GallerySelectionBar(
             IconButton(onClick = onClear) { Icon(Icons.Default.Close, contentDescription = "Clear selection") }
             Text("$count selected", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             IconButton(onClick = onFavorite) { Icon(Icons.Default.Star, contentDescription = "Favorite selected") }
+            IconButton(onClick = onAiProcess) { Icon(Icons.Default.AutoAwesome, contentDescription = "AI process selected") }
             IconButton(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = "Share selected") }
             IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Delete selected") }
         }
