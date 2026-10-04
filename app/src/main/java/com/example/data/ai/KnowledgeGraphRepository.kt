@@ -625,10 +625,15 @@ class KnowledgeGraphRepository(private val context: Context) {
         }
 
         val metadataSummaryBuilder = StringBuilder()
+        val allowSensitiveLocation = ProviderType.fromString(config.providerType) == ProviderType.OLLAMA
         metadataReport?.summary?.let { s ->
             if (!s.make.isNullOrBlank()) metadataSummaryBuilder.append("Camera: ${s.make} ${s.model.orEmpty()}. ")
-            if (s.latitude != null && s.longitude != null) metadataSummaryBuilder.append("GPS: ${s.latitude}, ${s.longitude}. ")
-            if (!s.city.isNullOrBlank()) metadataSummaryBuilder.append("Location: ${s.city}, ${s.country.orEmpty()}. ")
+            if (allowSensitiveLocation && s.latitude != null && s.longitude != null) {
+                metadataSummaryBuilder.append("GPS: ${s.latitude}, ${s.longitude}. ")
+            }
+            if (allowSensitiveLocation && !s.city.isNullOrBlank()) {
+                metadataSummaryBuilder.append("Location: ${s.city}, ${s.country.orEmpty()}. ")
+            }
             if (!s.dateTimeOriginal.isNullOrBlank()) metadataSummaryBuilder.append("Date: ${s.dateTimeOriginal}. ")
             if (s.keywords.isNotEmpty()) metadataSummaryBuilder.append("Keywords: ${s.keywords.joinToString()}. ")
             if (!s.title.isNullOrBlank()) metadataSummaryBuilder.append("Title: ${s.title}. ")
