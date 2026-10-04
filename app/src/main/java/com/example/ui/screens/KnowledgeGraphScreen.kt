@@ -2267,7 +2267,7 @@ fun DeclutteredNodeSheet(
                     .height(180.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                items(items = connectedEdges, key = { "${edge.sourceNodeId}|${edge.relation}|${edge.targetNodeId}|${edge.evidenceSource.orEmpty()}" }) { edge ->
+                items(items = connectedEdges, key = { edge -> "${edge.sourceNodeId}|${edge.relation}|${edge.targetNodeId}|${edge.evidenceSource.orEmpty()}" }) { edge ->
                     val otherId = if (edge.sourceNodeId == node.id) edge.targetNodeId else edge.sourceNodeId
                     val otherNode = nodeMap[otherId]
                     if (otherNode != null) {
