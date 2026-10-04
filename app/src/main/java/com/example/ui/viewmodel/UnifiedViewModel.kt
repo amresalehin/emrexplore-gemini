@@ -397,6 +397,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
 
+        }
         // Collect Room Database Flows
         // Suggestions are stable during a sync; refresh once at startup and again after indexing completes.
         viewModelScope.launch(Dispatchers.IO) {
@@ -584,7 +585,6 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.update { it.copy(kgEdgeCount = count) }
             }
         }
-    }
 
 
     fun setTab(tab: MainTab) {
