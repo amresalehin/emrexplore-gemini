@@ -392,6 +392,11 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
 
         // Collect Room Database Flows
+        // Suggestions are stable during a sync; refresh once at startup and again after indexing completes.
+        viewModelScope.launch(Dispatchers.IO) {
+            val suggestions = try { kgRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
+            _uiState.update { it.copy(kgSmartSuggestions = suggestions) }
+        }
         viewModelScope.launch {
             repository.preferencesFlow.collectLatest { prefs ->
                 _uiState.update { current ->
@@ -439,8 +444,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         // Collect Knowledge Graph and AI config flows
         viewModelScope.launch {
             kgRepository.allNodesFlow.collectLatest { nodes ->
-                val suggestions = try { kgRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
-                _uiState.update { it.copy(kgNodes = nodes, kgNodeCount = nodes.size, kgSmartSuggestions = suggestions) }
+                _uiState.update { it.copy(kgNodes = nodes, kgNodeCount = nodes.size) }
             }
         }
         viewModelScope.launch {
