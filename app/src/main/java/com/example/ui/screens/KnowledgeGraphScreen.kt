@@ -258,7 +258,7 @@ fun BrainScreen(
                             )
                             Text(
                                 text = if (isIndexing) {
-                                    "Indexing storage (${(indexingProgress * 100).toInt()}%)…"
+                                    "Syncing Brain (${(indexingProgress * 100).toInt()}%)…"
                                 } else if (nodes.isEmpty()) {
                                     if (onDeviceBrainModel.status == OnDeviceBrainModelStatus.NOT_INSTALLED) {
                                         "Download the local Brain model to enable semantic search"
@@ -704,10 +704,10 @@ fun DeclutteredAskAiView(
                         } else {
                             listOf("Summarize this document", "What are the main key points?", "Explain the conclusion of this file")
                         }
-                    } else if (smartSuggestions.isNotEmpty()) {
+                    } else if (smartSuggestions.isNotEmpty() && localBrainReady && cloudAiReady) {
                         smartSuggestions.take(4)
                     } else {
-                        listOf("Find recent PDF receipts", "Find camera photos with location", "Summarize my stored documents")
+                        emptyList()
                     }
 
                     items(starterPrompts) { prompt ->
@@ -1276,6 +1276,7 @@ fun DeclutteredCanvasView(
     var activeNode by remember { mutableStateOf<BrainNodeEntity?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchOpen by remember { mutableStateOf(false) }
+    var showNodeList by rememberSaveable { mutableStateOf(false) }
     var layoutSeed by remember { mutableStateOf(42L) }
 
     var scale by remember { mutableFloatStateOf(1f) }
@@ -1459,6 +1460,12 @@ fun DeclutteredCanvasView(
                     }
 
                     IconButton(
+                        onClick = { showNodeList = !showNodeList },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Default.ViewList, contentDescription = if (showNodeList) "Hide accessible node list" else "Show accessible node list", modifier = Modifier.size(18.dp))
+                    }
+                    IconButton(
                         onClick = { isSearchOpen = true },
                         modifier = Modifier.size(32.dp)
                     ) {
@@ -1468,6 +1475,74 @@ fun DeclutteredCanvasView(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
                         )
+                    }
+                }
+            }
+        }
+
+        if (showNodeList) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 220.dp)
+                        .semantics { contentDescription = "Accessible Brain node list" }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    item {
+                        Text(
+                            "Accessible node list",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    items(filteredNodes.take(80), key = { it.id }) { node ->
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onNodeClick(node) }
+                                .semantics {
+                                    contentDescription = "${node.label}, ${node.nodeType}, ${degreeMap[node.id] ?: 0} connections"
+                                    role = Role.Button
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    getNodeIcon(node.nodeType),
+                                    contentDescription = null,
+                                    tint = getNodeColor(node.nodeType, primaryColor),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(node.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        "${node.nodeType} • ${degreeMap[node.id] ?: 0} connections",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (filteredNodes.size > 80) {
+                        item {
+                            Text(
+                                "Showing the first 80 nodes. Use Search to narrow the list.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -2037,7 +2112,7 @@ fun DeclutteredTopicsView(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Semantic subject clusters across your files",
+                    text = "Saved semantic filters that surface relevant files; Ask AI is for answering questions.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
