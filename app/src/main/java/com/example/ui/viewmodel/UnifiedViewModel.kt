@@ -538,9 +538,18 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         // unique work after process recreation instead of relying on ViewModel state.
         viewModelScope.launch {
             WorkManager.getInstance(getApplication<Application>())
-                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME)
+                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
                 .collectLatest { works ->
-                    val work = works.firstOrNull() ?: return@collectLatest
+                    val work = works.firstOrNull() ?: run {
+                        val ready = brainRepository.getOnDeviceBrainModelState()
+                        _uiState.update { state ->
+                            state.copy(
+                                isKgIndexing = false,
+                                onDeviceBrainModel = if (state.onDeviceBrainModel.status == OnDeviceBrainModelStatus.DOWNLOADING) state.onDeviceBrainModel else ready
+                            )
+                        }
+                        return@collectLatest
+                    }
                     val progress = work.progress
                     val total = progress.getInt("total", 0)
                     val current = progress.getInt("current", 0)
@@ -2582,6 +2591,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 onDeviceBrainModel = it.onDeviceBrainModel.copy(
                     status = OnDeviceBrainModelStatus.DOWNLOADING,
                     progress = 0f,
+                    downloadedBytes = 0L,
+                    totalBytes = 0L,
                     error = null
                 )
             )
@@ -2589,18 +2600,48 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
         WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
             BrainModelDownloadWorker.UNIQUE_NAME,
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.REPLACE,
             request
         )
     }
 
     fun deleteOnDeviceBrainModel() {
+        val workManager = WorkManager.getInstance(getApplication<Application>())
+        workManager.cancelUniqueWork(BrainModelDownloadWorker.UNIQUE_NAME)
+        workManager.cancelUniqueWork(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
+        workManager.cancelUniqueWork(com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME)
+
+        // Reflect the capability loss immediately; disk cleanup happens off the main thread.
+        _uiState.update {
+            it.copy(
+                onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(),
+                isKgIndexing = false,
+                kgIndexingProgress = 0f,
+                kgIndexingStatus = "Brain model unavailable"
+            )
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
-            brainRepository.deleteOnDeviceBrainModel()
-            _uiState.update {
-                it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState())
+            try {
+                brainRepository.deleteOnDeviceBrainModel()
+                _uiState.update {
+                    it.copy(
+                        onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(),
+                        isKgIndexing = false,
+                        kgIndexingProgress = 0f,
+                        kgIndexingStatus = "Brain model unavailable"
+                    )
+                }
+                showMessage("On-device Brain model removed")
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                _uiState.update {
+                    it.copy(
+                        onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(error.message),
+                        isKgIndexing = false
+                    )
+                }
             }
-            showMessage("On-device Brain model removed")
         }
     }
 
