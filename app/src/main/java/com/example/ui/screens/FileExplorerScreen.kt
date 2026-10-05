@@ -4,6 +4,7 @@ import android.content.Intent
 import android.widget.Toast
 import java.io.File
 import androidx.activity.compose.BackHandler
+import com.example.ui.viewmodel.LocalMainTabVisible
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -188,12 +189,12 @@ fun FileExplorerScreen(
     }
 
     // Intercept back button when search or filters are active
-    BackHandler(enabled = (uiState.explorerSearchActive || uiState.searchQuery.isNotEmpty() || hasActiveFilters) && !uiState.isSelectionMode) {
+    BackHandler(enabled = LocalMainTabVisible.current && (uiState.explorerSearchActive || uiState.searchQuery.isNotEmpty() || hasActiveFilters) && !uiState.isSelectionMode) {
         viewModel.resetExplorerSearchAndFilters()
     }
 
     // Intercept hardware back button when inside a subfolder
-    BackHandler(enabled = viewModel.canNavigateUp() && !uiState.isSelectionMode && !uiState.explorerSearchActive && uiState.searchQuery.isEmpty() && !hasActiveFilters) {
+    BackHandler(enabled = LocalMainTabVisible.current && viewModel.canNavigateUp() && !uiState.isSelectionMode && !uiState.explorerSearchActive && uiState.searchQuery.isEmpty() && !hasActiveFilters) {
         val navigated = viewModel.navigateUp()
         if (!navigated) {
             // Let default handler run
@@ -201,7 +202,7 @@ fun FileExplorerScreen(
     }
 
     // Intercept back button when selection mode is active
-    BackHandler(enabled = uiState.isSelectionMode) {
+    BackHandler(enabled = LocalMainTabVisible.current && uiState.isSelectionMode) {
         viewModel.clearSelection()
     }
 
