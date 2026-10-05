@@ -19,16 +19,6 @@ interface BrainAiGateway {
         config: AiProviderConfigEntity
     ): AnalysisResult
 
-    suspend fun embedTextPassages(
-        texts: List<String>,
-        config: AiProviderConfigEntity
-    ): List<FloatArray>
-
-    suspend fun embedTextQuery(
-        text: String,
-        config: AiProviderConfigEntity
-    ): FloatArray?
-
     suspend fun generateRagAnswer(
         question: String,
         contextText: String,
@@ -69,16 +59,6 @@ class DefaultBrainAiGateway(
         fileName: String,
         config: AiProviderConfigEntity
     ): AnalysisResult = client.analyzeImage(base64Jpeg, metadataSummary, fileName, config)
-
-    override suspend fun embedTextPassages(
-        texts: List<String>,
-        config: AiProviderConfigEntity
-    ): List<FloatArray> = client.embedTextPassages(texts, config)
-
-    override suspend fun embedTextQuery(
-        text: String,
-        config: AiProviderConfigEntity
-    ): FloatArray? = client.embedTextQuery(text, config)
 
     override suspend fun generateRagAnswer(
         question: String,
