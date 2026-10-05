@@ -1,0 +1,6 @@
+# Pinned ExifTool build inputs.
+# Set EXIFTOOL_SHA256 from the official source archive before generating release artifacts.
+EXIFTOOL_VERSION=13.59
+EXIFTOOL_SHA256=__SET_BY_CI_FROM_OFFICIAL_ARCHIVE__
+PERLCROSS_VERSION=1.9.0
+NDK_VERSION=27.2.12479018
