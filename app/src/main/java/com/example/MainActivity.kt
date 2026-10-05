@@ -242,15 +242,19 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                     .windowInsetsPadding(WindowInsets.navigationBars)
             ) {
                 // Decoupled Background File Operation Progress Banner & Controls
-                FileOperationBanner(
-                    progress = uiState.fileOperationProgress,
-                    onPause = { viewModel.pauseFileOperation() },
-                    onResume = { viewModel.resumeFileOperation() },
-                    onCancel = { viewModel.cancelFileOperation() },
-                    onRetry = { viewModel.retryFileOperation() },
-                    onDismiss = { viewModel.dismissFileOperation() },
-                    onResolveConflict = { resolution -> viewModel.resolveFileConflict(resolution) }
-                )
+                // Keep transient chrome bounded: an active operation gets the priority slot;
+                // the permission prompt returns as soon as the operation is idle.
+                if (uiState.fileOperationProgress.status != com.example.data.model.OperationStatus.IDLE) {
+                    FileOperationBanner(
+                        progress = uiState.fileOperationProgress,
+                        onPause = { viewModel.pauseFileOperation() },
+                        onResume = { viewModel.resumeFileOperation() },
+                        onCancel = { viewModel.cancelFileOperation() },
+                        onRetry = { viewModel.retryFileOperation() },
+                        onDismiss = { viewModel.dismissFileOperation() },
+                        onResolveConflict = { resolution -> viewModel.resolveFileConflict(resolution) }
+                    )
+                }
 
                 // Audio mini-player bar above navigation
                 AudioMiniPlayer(
@@ -302,11 +306,13 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
         }
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            StoragePermissionBanner(
-                permissionsState = storagePermissionsState,
-                allFilesAccessGranted = allFilesAccessGranted,
-                onGrantAllFilesAccess = { launchAllFilesAccessSettings(context, allFilesLauncher) }
-            )
+            if (uiState.fileOperationProgress.status == com.example.data.model.OperationStatus.IDLE) {
+                StoragePermissionBanner(
+                    permissionsState = storagePermissionsState,
+                    allFilesAccessGranted = allFilesAccessGranted,
+                    onGrantAllFilesAccess = { launchAllFilesAccessSettings(context, allFilesLauncher) }
+                )
+            }
             Box(modifier = Modifier.fillMaxSize().weight(1f)) {
                 PersistentTabHost(
                     uiState = uiState,
