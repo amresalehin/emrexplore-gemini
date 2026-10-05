@@ -175,6 +175,8 @@ fun FileExplorerScreen(
     var showDateFilterMenu by remember { mutableStateOf(false) }
     var showSizeFilterMenu by remember { mutableStateOf(false) }
     var activeMenuItem by remember { mutableStateOf<FileItem?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var deletePaths by remember { mutableStateOf<List<String>>(emptyList()) }
 
     val hasActiveFilters = uiState.explorerFilterType != ExplorerFilterType.ALL ||
         uiState.explorerDateFilter != ExplorerDateFilter.ALL ||
@@ -249,7 +251,10 @@ fun FileExplorerScreen(
                         }) {
                             Icon(Icons.Default.Archive, contentDescription = "Compress")
                         }
-                        IconButton(onClick = { viewModel.deleteSelected(toTrash = true) }) {
+                        IconButton(onClick = {
+                            deletePaths = uiState.selectedPaths.toList()
+                            showDeleteConfirm = deletePaths.isNotEmpty()
+                        }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                         }
                     }
@@ -1247,7 +1252,8 @@ fun FileExplorerScreen(
                                 text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
                                 leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                                 onClick = {
-                                    viewModel.deleteFile(item.path, toTrash = true)
+                                    deletePaths = listOf(item.path)
+                                    showDeleteConfirm = true
                                     activeMenuItem = null
                                 }
                             )
@@ -1405,6 +1411,34 @@ fun FileExplorerScreen(
                 TextButton(onClick = { showRenameDialog = false }) {
                     Text("Cancel")
                 }
+            }
+        )
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Move to Trash?") },
+            text = {
+                Text(
+                    if (deletePaths.size == 1) {
+                        "Move this item to Trash? You can restore it later."
+                    } else {
+                        "Move " + deletePaths.size + " selected items to Trash? You can restore them later."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        viewModel.deletePathsAfterConfirmation(deletePaths, toTrash = true)
+                        deletePaths = emptyList()
+                    }
+                ) { Text("Move to Trash") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
             }
         )
     }
