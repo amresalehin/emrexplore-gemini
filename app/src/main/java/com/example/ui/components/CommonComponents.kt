@@ -33,7 +33,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.VideogameAsset
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -360,7 +360,7 @@ fun FileTypeIconBadge(
             item.isVideo -> Icons.Default.Movie to ColorVideos
             item.isAudio -> Icons.Default.AudioFile to ColorAudio
             item.isArchive -> Icons.Default.Archive to ColorArchives
-            item.isApk -> Icons.Default.VideogameAsset to ColorApks
+            item.isApk -> Icons.Default.Android to ColorApks
             item.isDocument -> Icons.Default.Description to ColorDocuments
             else -> Icons.Default.Description to MaterialTheme.colorScheme.primary
         }
