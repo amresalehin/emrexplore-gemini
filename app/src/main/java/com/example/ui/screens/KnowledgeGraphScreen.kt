@@ -419,7 +419,7 @@ fun BrainScreen(
                 .fillMaxWidth()
         ) {
             when (selectedTab) {
-                GraphScreenTab.ASK_AI -> {
+                BrainScreenTab.ASK_AI -> {
                     DeclutteredAskAiView(
                         messages = askAiMessages,
                         attachedFile = attachedAiFile,
