@@ -213,6 +213,7 @@ data class UiState(
     val fullscreenLoading: Boolean = false,
     val activeTextFile: FileItem? = null,
     val textFileContent: String = "",
+    val savedTextFileContent: String = "",
     val isEditingText: Boolean = false,
     val activeZipFile: FileItem? = null,
     val zipEntries: List<String> = emptyList(),
@@ -369,6 +370,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     private var loadFilesJob: Job? = null
     private var fullscreenLoadJob: Job? = null
     private var explorerSearchJob: Job? = null
+    private var ragQueryJob: Job? = null
+    private var pendingDeletePaths: List<String> = emptyList()
 
     init {
         // Collect decoupled file operations progress
@@ -376,11 +379,26 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             repository.operationManager.progress.collect { progress ->
                 _uiState.update { it.copy(fileOperationProgress = progress) }
                 if (progress.status == OperationStatus.COMPLETED) {
-                    loadFiles()
-                    loadStorageStats()
                     if (progress.type == OperationType.COPY || progress.type == OperationType.MOVE) {
                         enqueueBrainMutationSync()
+                        _uiState.update { state ->
+                            if (state.clipboard != null) state.copy(clipboard = null) else state
+                        }
                     }
+                    if (progress.type == OperationType.DELETE) {
+                        val deleted = pendingDeletePaths
+                        pendingDeletePaths = emptyList()
+                        if (deleted.isNotEmpty()) {
+                            launch(Dispatchers.IO) {
+                                deleted.forEach { deletedPath ->
+                                    runCatching { brainRepository.removeIndexedSource(deletedPath) }
+                                }
+                            }
+                        }
+                    }
+                    loadFiles()
+                    refreshGallery()
+                    loadStorageStats()
                 }
             }
         }
@@ -1360,12 +1378,37 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun selectAll() {
-        val allPaths = _uiState.value.files.map { it.path }.toSet()
+        val state = _uiState.value
+        val queryOrFilterActive =
+            state.searchQuery.isNotBlank() ||
+                state.explorerSearchActive ||
+                state.explorerFilterType != ExplorerFilterType.ALL ||
+                state.explorerDateFilter != ExplorerDateFilter.ALL ||
+                state.explorerSizeFilter != ExplorerSizeFilter.ALL
+
+        if (!queryOrFilterActive && state.totalFilesInFolder > state.files.size) {
+            viewModelScope.launch {
+                val all = repository.getFilesPaged(
+                    dirPath = state.currentPath,
+                    page = 0,
+                    pageSize = state.totalFilesInFolder.coerceAtMost(10_000),
+                    sortOption = state.sortOption,
+                    showHidden = state.showHidden
+                ).items
+                _uiState.update { current ->
+                    current.copy(
+                        selectedPaths = all.map { it.path }.toSet(),
+                        isSelectionMode = all.isNotEmpty()
+                    )
+                }
+            }
+            return
+        }
+
+        val source = if (queryOrFilterActive) state.explorerSearchResults else state.files
+        val allPaths = source.map { it.path }.toSet()
         _uiState.update {
-            it.copy(
-                selectedPaths = allPaths,
-                isSelectionMode = allPaths.isNotEmpty()
-            )
+            it.copy(selectedPaths = allPaths, isSelectionMode = allPaths.isNotEmpty())
         }
     }
 
@@ -1422,12 +1465,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             repository.operationManager.startMove(clip.sourcePaths, targetDir)
         }
 
-        _uiState.update {
-            it.copy(
-                clipboard = null,
-                userMessage = "$actionName operation started in background"
-            )
-        }
+        _uiState.update { it.copy(userMessage = "$actionName operation started in background") }
     }
 
     // File Operation Controls
@@ -1497,35 +1535,21 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun deleteFile(path: String, toTrash: Boolean = true) {
-        viewModelScope.launch {
-            val ok = repository.deleteFile(path, toTrash)
-            if (ok) {
-                brainRepository.removeIndexedSource(path)
-                showMessage(if (toTrash) "Moved to Recycle Bin" else "Permanently deleted")
-                loadFiles()
-                refreshGallery()
-                loadStorageStats()
-            } else {
-                showMessage("Delete failed")
-            }
+        pendingDeletePaths = listOf(path)
+        repository.operationManager.startDelete(listOf(path), toTrash)
+        _uiState.update {
+            it.copy(userMessage = if (toTrash) "Delete operation started" else "Permanent delete started")
         }
     }
 
     fun deleteSelected(toTrash: Boolean = true) {
         val selected = _uiState.value.selectedPaths.toList()
-        viewModelScope.launch {
-            var count = 0
-            for (p in selected) {
-                if (repository.deleteFile(p, toTrash)) {
-                    brainRepository.removeIndexedSource(p)
-                    count++
-                }
-            }
-            clearSelection()
-            showMessage(if (toTrash) "Moved $count items to Recycle Bin" else "Deleted $count items")
-            loadFiles()
-            refreshGallery()
-            loadStorageStats()
+        if (selected.isEmpty()) return
+        pendingDeletePaths = selected
+        repository.operationManager.startDelete(selected, toTrash)
+        clearSelection()
+        _uiState.update {
+            it.copy(userMessage = if (toTrash) "Delete operation started" else "Permanent delete started")
         }
     }
 
@@ -2120,6 +2144,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 it.copy(
                     activeTextFile = fileItem,
                     textFileContent = text,
+                    savedTextFileContent = text,
                     isEditingText = false
                 )
             }
@@ -2127,10 +2152,27 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun closeTextEditor() {
+        val state = _uiState.value
+        if (state.activeTextFile != null && state.textFileContent != state.savedTextFileContent) {
+            showMessage("Unsaved changes — save or discard them before closing.")
+            return
+        }
         _uiState.update {
             it.copy(
                 activeTextFile = null,
                 textFileContent = "",
+                savedTextFileContent = "",
+                isEditingText = false
+            )
+        }
+    }
+
+    fun discardTextChanges() {
+        _uiState.update {
+            it.copy(
+                activeTextFile = null,
+                textFileContent = "",
+                savedTextFileContent = "",
                 isEditingText = false
             )
         }
@@ -2144,23 +2186,32 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(textFileContent = newContent) }
     }
 
-    fun saveTextFile() {
+    fun saveTextFile(closeWhenDone: Boolean = false) {
         val file = _uiState.value.activeTextFile ?: return
         val content = _uiState.value.textFileContent
         viewModelScope.launch {
             val ok = repository.writeText(file.path, content)
             if (ok) {
-                val reindexed = brainRepository.indexFile(
-                    File(file.path),
-                    config = brainRepository.getAiConfig(),
-                    force = true
-                )
+                val brainReady = brainRepository.isOnDeviceBrainModelReady()
+                val reindexed = if (brainReady) {
+                    brainRepository.indexFile(
+                        File(file.path),
+                        config = brainRepository.getAiConfig(),
+                        force = true
+                    )
+                } else true
                 showMessage(
-                    if (reindexed) "Saved changes to " + file.name
-                    else "Saved " + file.name + "; Brain reindex failed"
+                    when {
+                        !brainReady -> "Saved changes to " + file.name
+                        reindexed -> "Saved changes to " + file.name
+                        else -> "Saved changes to " + file.name + "; Brain will refresh later"
+                    }
                 )
-                _uiState.update { it.copy(isEditingText = false) }
+                _uiState.update {
+                    it.copy(isEditingText = false, savedTextFileContent = content)
+                }
                 loadFiles()
+                if (closeWhenDone) closeTextEditor()
             } else {
                 showMessage("Failed to save " + file.name)
             }
@@ -2464,6 +2515,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(askAiMessages = emptyList(), ragAnswer = null) }
     }
 
+    fun cancelRagQuery() {
+        ragQueryJob?.cancel()
+        ragQueryJob = null
+        _uiState.update { it.copy(isRagQuerying = false) }
+    }
+
     fun queryRag(question: String, attachedOverride: AttachedAiFile? = null) {
         val cleanQuestion = question.trim()
         if (cleanQuestion.isBlank()) {
@@ -2477,14 +2534,19 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             showMessage(message)
             return
         }
+
+        ragQueryJob?.cancel()
         val attached = attachedOverride ?: _uiState.value.attachedAiFile
+        val priorHistory = _uiState.value.askAiMessages
+            .filter { !it.isError }
+            .filter { message ->
+                if (attached != null) message.attachedFile?.path == attached.path
+                else message.attachedFile == null
+            }
+            .takeLast(8)
+            .map { if (it.isUser) "User" to it.text else "AI" to it.text }
 
-        val userMsg = AskAiChatMessage(
-            isUser = true,
-            text = cleanQuestion,
-            attachedFile = attached
-        )
-
+        val userMsg = AskAiChatMessage(isUser = true, text = cleanQuestion, attachedFile = attached)
         _uiState.update {
             it.copy(
                 isRagQuerying = true,
@@ -2492,25 +2554,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             )
         }
 
-        viewModelScope.launch {
-            val attachedPath = attached?.path
-            val history = _uiState.value.askAiMessages
-                .filter { !it.isError }
-                .filter { message ->
-                    if (attachedPath != null) {
-                        message.attachedFile?.path == attachedPath
-                    } else {
-                        message.attachedFile == null
-                    }
-                }
-                .takeLast(8)
-                .map { if (it.isUser) "User" to it.text else "AI" to it.text }
-
+        ragQueryJob = viewModelScope.launch {
             val answer = try {
                 if (attached != null) {
-                    brainRepository.queryFileSpecifically(attached.file, cleanQuestion, history)
+                    brainRepository.queryFileSpecifically(attached.file, cleanQuestion, priorHistory)
                 } else {
-                    brainRepository.queryRag(cleanQuestion, history)
+                    brainRepository.queryRag(cleanQuestion, priorHistory)
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
@@ -2520,6 +2569,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 )
             }
 
+            if (!isActive) return@launch
+
             val aiMsg = AskAiChatMessage(
                 isUser = false,
                 text = answer.answer,
@@ -2527,7 +2578,6 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 referencedNodes = answer.connectedNodes,
                 isError = !answer.isSuccessful
             )
-
             _uiState.update {
                 it.copy(
                     isRagQuerying = false,
@@ -2535,6 +2585,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     askAiMessages = it.askAiMessages + aiMsg
                 )
             }
+            ragQueryJob = null
         }
     }
 
