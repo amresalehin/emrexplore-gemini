@@ -40,6 +40,7 @@ class BrainRepository(private val context: Context) {
     private val db = AppDatabase.getDatabase(appContext)
     private val brainNodeDao = db.brainNodeDao()
     private val brainEdgeDao = db.brainEdgeDao()
+    private val brainEdgeEvidenceDao = db.brainEdgeEvidenceDao()
     private val brainTopicDao = db.brainTopicDao()
     private val brainChunkDao = db.brainChunkDao()
     private val brainDocumentDao = db.brainDocumentDao()
@@ -56,6 +57,7 @@ class BrainRepository(private val context: Context) {
         chunkDao = brainChunkDao,
         nodeDao = brainNodeDao,
         edgeDao = brainEdgeDao,
+        edgeEvidenceDao = brainEdgeEvidenceDao,
         runDao = brainRunDao,
         client = brainAi,
         db = db
@@ -98,6 +100,7 @@ class BrainRepository(private val context: Context) {
 
     suspend fun clearGraph() = withContext(Dispatchers.IO) {
         db.withTransaction {
+            brainEdgeEvidenceDao.clearAll()
             brainEdgeDao.clearAll()
             brainNodeDao.clearAll()
             brainChunkDao.clearAll()
@@ -233,11 +236,14 @@ class BrainRepository(private val context: Context) {
         db.withTransaction {
             for (path in paths) {
                 val fileNodeId = fileNodeId(path)
-                brainEdgeDao.deleteForFile(path, fileNodeId)
+                brainEdgeEvidenceDao.deleteForFile(path)
+                brainEdgeDao.deleteForFileNode(fileNodeId)
                 brainChunkDao.deleteForFile(path)
                 brainNodeDao.deleteFileNode(path)
                 brainDocumentDao.delete(path)
             }
+            brainEdgeEvidenceDao.refreshRepresentatives()
+            brainEdgeEvidenceDao.deleteEdgesWithoutEvidence()
         }
         brainNodeDao.deleteOrphans()
         brainNodeDao.recomputeDegrees()
