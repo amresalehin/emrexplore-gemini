@@ -45,7 +45,6 @@ data class BrainChunkEntity(
     val content: String,
     val embeddingJson: String,
     val embeddingModel: String,
-    val offlineEmbeddingJson: String,
     val locator: String = "",
     val pageNumber: Int? = null,
     val indexedAt: Long = System.currentTimeMillis()
