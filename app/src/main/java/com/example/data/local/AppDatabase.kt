@@ -12,6 +12,7 @@ import com.example.data.brain.BrainEdgeEntity
 import com.example.data.brain.BrainEdgeEvidenceEntity
 import com.example.data.brain.BrainNodeEntity
 import com.example.data.brain.BrainRunEntity
+import com.example.data.brain.BrainTopicEntity
 
 @Database(
     entities = [
@@ -26,14 +27,14 @@ import com.example.data.brain.BrainRunEntity
         PlaceSearchCacheEntity::class,
         AiProviderConfigEntity::class,
         BrainNodeEntity::class,
-        com.example.data.brain.BrainTopicEntity::class,
+        BrainTopicEntity::class,
         BrainEdgeEntity::class,
         BrainEdgeEvidenceEntity::class,
         BrainChunkEntity::class,
         BrainDocumentEntity::class,
         BrainRunEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -381,6 +382,42 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `brain_chunks_new` (
+                        `id` TEXT NOT NULL,
+                        `filePath` TEXT NOT NULL,
+                        `chunkIndex` INTEGER NOT NULL,
+                        `content` TEXT NOT NULL,
+                        `embeddingJson` TEXT NOT NULL,
+                        `embeddingModel` TEXT NOT NULL,
+                        `locator` TEXT NOT NULL,
+                        `pageNumber` INTEGER,
+                        `indexedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    INSERT OR REPLACE INTO `brain_chunks_new` (
+                        `id`, `filePath`, `chunkIndex`, `content`,
+                        `embeddingJson`, `embeddingModel`, `locator`,
+                        `pageNumber`, `indexedAt`
+                    )
+                    SELECT
+                        `id`, `filePath`, `chunkIndex`, `content`,
+                        `embeddingJson`, `embeddingModel`, `locator`,
+                        `pageNumber`, `indexedAt`
+                    FROM `brain_chunks`
+                """.trimIndent())
+                db.execSQL("DROP TABLE IF EXISTS `brain_chunks`")
+                db.execSQL("ALTER TABLE `brain_chunks_new` RENAME TO `brain_chunks`")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_chunks_filePath` ON `brain_chunks` (`filePath`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_chunks_embeddingModel` ON `brain_chunks` (`embeddingModel`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_chunks_indexedAt` ON `brain_chunks` (`indexedAt`)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -399,7 +436,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_9_10,
                         MIGRATION_10_11,
                         MIGRATION_11_12,
-                        MIGRATION_12_13
+                        MIGRATION_12_13,
+                        MIGRATION_13_14
                     )
                     .fallbackToDestructiveMigrationFrom(1, 2, 3, 5)
                     .fallbackToDestructiveMigrationOnDowngrade()
