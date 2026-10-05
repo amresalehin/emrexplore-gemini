@@ -469,7 +469,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                     isGalleryAiProcessing = false,
                                     isGalleryAiPaused = true,
                                     galleryAiProgress = if (total > 0) completed.toFloat() / total else 0f,
-                                    galleryAiStatus = "AI processing paused"
+                                    galleryAiStatus = "Brain processing paused"
                                 )
                             }
                         }
@@ -492,7 +492,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                             )
                         }
                         androidx.work.WorkInfo.State.SUCCEEDED -> {
-                            val processed = work.outputData.getInt("processed", current)
+                            val processed = work.outputData.getInt("indexed", current)
+                            galleryAiStore.clear()
                             _uiState.update {
                                 it.copy(
                                     isGalleryAiProcessing = false,
@@ -523,7 +524,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                     isGalleryAiProcessing = false,
                                     isGalleryAiPaused = paused,
                                     galleryAiProgress = if (total > 0) completed.toFloat() / total else 0f,
-                                    galleryAiStatus = if (paused) "AI processing paused" else "AI processing cancelled"
+                                    galleryAiStatus = if (paused) "Brain processing paused" else "Brain processing cancelled"
                                 )
                             }
                         }
@@ -1658,7 +1659,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         if (paths.size > 80) {
-            showMessage("AI processing is limited to 80 selected images per action")
+            showMessage("Brain processing is limited to 80 selected images per action")
             return
         }
 
