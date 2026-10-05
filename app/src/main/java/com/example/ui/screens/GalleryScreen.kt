@@ -789,7 +789,7 @@ fun GalleryScreen(
 }
 
 
-private sealed interface GalleryGridItem {
+sealed interface GalleryGridItem {
     data class Media(val item: MediaItem) : GalleryGridItem
     data class Header(val title: String) : GalleryGridItem
 }
