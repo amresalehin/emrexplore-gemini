@@ -50,6 +50,7 @@ class BrainRepository(private val context: Context) {
 
     private val client = AiProviderClient()
     private val brainAi = DefaultBrainAiGateway(client)
+    private val onDeviceEmbedding = OnDeviceEmbeddingEngine(appContext)
     private val contentReader = BrainContentReader(appContext)
     private val indexer = BrainIndexer(
         context = appContext,
@@ -60,14 +61,16 @@ class BrainRepository(private val context: Context) {
         edgeEvidenceDao = brainEdgeEvidenceDao,
         runDao = brainRunDao,
         client = brainAi,
-        db = db
+        db = db,
+        onDeviceEmbedding = onDeviceEmbedding
     )
     private val retriever = BrainRetriever(
         context = appContext,
         chunkDao = brainChunkDao,
         nodeDao = brainNodeDao,
         edgeDao = brainEdgeDao,
-        client = brainAi
+        client = brainAi,
+        onDeviceEmbedding = onDeviceEmbedding
     )
     private val fileRepository = FileRepository(appContext)
 
@@ -97,6 +100,27 @@ class BrainRepository(private val context: Context) {
 
     suspend fun listAiModels(config: AiProviderConfigEntity): List<AvailableAiModel> =
         client.listModels(normalizeAiConfig(config))
+
+    fun getOnDeviceBrainModelState(error: String? = null): OnDeviceBrainModelUiState =
+        onDeviceEmbedding.manager().uiState(error)
+
+    fun getOnDeviceBrainModelSpec(): OnDeviceBrainModelSpec =
+        onDeviceEmbedding.manager().defaultSpec()
+
+    suspend fun downloadOnDeviceBrainModel(
+        onProgress: (Float, Long, Long) -> Unit = { _, _, _ -> }
+    ) = withContext(Dispatchers.IO) {
+        onDeviceEmbedding.manager().downloadDefaultModel(onProgress)
+        onDeviceEmbedding.unload()
+    }
+
+    suspend fun deleteOnDeviceBrainModel() = withContext(Dispatchers.IO) {
+        onDeviceEmbedding.unload()
+        onDeviceEmbedding.manager().deleteDefaultModel()
+    }
+
+    fun isOnDeviceBrainModelReady(): Boolean = onDeviceEmbedding.isReady()
+
 
     suspend fun clearGraph() = withContext(Dispatchers.IO) {
         db.withTransaction {
