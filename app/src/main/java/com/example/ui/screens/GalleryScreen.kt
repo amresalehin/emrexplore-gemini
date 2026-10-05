@@ -633,6 +633,11 @@ fun GalleryScreen(
                     ) {
                         Text(if (uiState.isGalleryAiPaused) "Resume" else "Pause")
                     }
+                    TextButton(
+                        onClick = { viewModel.cancelGalleryAi() }
+                    ) {
+                        Text("Cancel")
+                    }
                 }
             }
         }
