@@ -510,6 +510,9 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             isFetchingModels = uiState.isFetchingAiModels,
             modelFetchError = uiState.aiModelFetchError,
             onFetchModels = { viewModel.fetchAiModels(it) },
+            onDeviceBrainModel = uiState.onDeviceBrainModel,
+            onDownloadOnDeviceBrainModel = { viewModel.downloadOnDeviceBrainModel() },
+            onDeleteOnDeviceBrainModel = { viewModel.deleteOnDeviceBrainModel() },
             onReindexAll = { viewModel.indexAllFilesForKnowledgeGraph() },
             onClearGraph = { viewModel.clearKnowledgeGraph() },
             onNavigateBack = { viewModel.setShowAiSettings(false) }
