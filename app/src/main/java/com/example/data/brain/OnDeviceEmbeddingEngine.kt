@@ -24,7 +24,7 @@ internal class BertWordPieceTokenizer(
         val map = HashMap<String, Int>(32_000)
         vocabFile.useLines(Charsets.UTF_8) { lines ->
             lines.forEachIndexed { index, token ->
-                map[token.trimEnd('\\r')] = index
+                map[token.trimEnd('\r')] = index
             }
         }
         vocab = map
