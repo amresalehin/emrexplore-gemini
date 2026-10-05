@@ -452,7 +452,7 @@ fun AiSettingsScreen(
                         Switch(checked = autoSync, onCheckedChange = { autoSync = it })
                     }
                     Text(
-                        "Privacy: the local model stays on this device. If you enable a cloud provider, only data required for that AI operation is sent to that provider. Ollama/local endpoints can keep processing on your device or LAN."
+                         "Privacy: the local model stays on this device. If you enable a cloud provider, only data required for that AI operation is sent to that provider. Ollama/local endpoints can keep processing on your device or LAN.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
