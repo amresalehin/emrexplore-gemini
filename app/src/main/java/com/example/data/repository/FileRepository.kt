@@ -1102,6 +1102,9 @@ class FileRepository(private val context: Context) {
         }
     }
 
+    private fun escapeSqlLike(value: String): String =
+        value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
     suspend fun searchExplorer(
         dirPath: String,
         query: String,
@@ -1206,6 +1209,9 @@ class FileRepository(private val context: Context) {
             ExplorerSearchScope.SUBFOLDERS -> {
                 val prefs = getPreferences()
                 var loadedFromRoom = false
+                val escapedPrefix = escapeSqlLike(effectiveDir.absolutePath + File.separator)
+                val escapedQuery = escapeSqlLike(q)
+
                 if (prefs.enableFastRoomSearch) {
                     val catString = when (filterType) {
                         ExplorerFilterType.IMAGES -> "IMAGES"
@@ -1216,50 +1222,57 @@ class FileRepository(private val context: Context) {
                         ExplorerFilterType.APKS -> "APKS"
                         else -> null
                     }
-                    val entities = if (catString != null) {
-                        fileIndexDao.searchFilesUnderPathByCategory(effectiveDir.absolutePath, q, catString, limit = 250)
-                    } else if (q.isNotEmpty()) {
-                        fileIndexDao.searchFilesUnderPath(effectiveDir.absolutePath, q, limit = 250)
-                    } else {
-                        fileIndexDao.getFilesByParent(effectiveDir.absolutePath)
-                    }
-                    if (entities.isNotEmpty()) {
-                        entities.forEach { entity ->
-                            val item = FileItem(
-                                name = entity.name,
-                                path = entity.path,
-                                size = entity.size,
-                                lastModified = entity.lastModified,
-                                isDirectory = entity.isDirectory,
-                                mimeType = entity.mimeType,
-                                extension = entity.extension,
-                                isFavorite = favSet.contains(entity.path),
-                                childCount = entity.childCount,
-                                uri = Uri.fromFile(File(entity.path))
+
+                    val entities = if (q.isNotEmpty()) {
+                        if (catString != null) {
+                            fileIndexDao.searchFilesUnderPathByCategory(
+                                root = effectiveDir.absolutePath,
+                                escapedPrefix = escapedPrefix,
+                                query = escapedQuery,
+                                category = catString
                             )
-                            if (filterPredicate(item)) {
-                                rawItems.add(item)
-                            }
+                        } else {
+                            fileIndexDao.searchFilesUnderPath(
+                                root = effectiveDir.absolutePath,
+                                escapedPrefix = escapedPrefix,
+                                query = escapedQuery
+                            )
                         }
-                        if (rawItems.isNotEmpty()) {
-                            loadedFromRoom = true
-                        }
+                    } else {
+                        fileIndexDao.getFilesRecursively(
+                            root = effectiveDir.absolutePath,
+                            escapedPrefix = escapedPrefix
+                        )
                     }
+
+                    entities.forEach { entity ->
+                        val item = FileItem(
+                            name = entity.name,
+                            path = entity.path,
+                            size = entity.size,
+                            lastModified = entity.lastModified,
+                            isDirectory = entity.isDirectory,
+                            mimeType = entity.mimeType,
+                            extension = entity.extension,
+                            isFavorite = favSet.contains(entity.path),
+                            childCount = entity.childCount,
+                            uri = Uri.fromFile(File(entity.path))
+                        )
+                        if (filterPredicate(item)) rawItems.add(item)
+                    }
+                    loadedFromRoom = entities.isNotEmpty() || q.isBlank()
                 }
 
                 if (!loadedFromRoom) {
-                    val targets = mutableListOf<File>()
                     if (effectiveDir.exists() && effectiveDir.isDirectory) {
-                        targets.add(effectiveDir)
-                    }
-                    if (effectiveDir.absolutePath == rootPath || effectiveDir.absolutePath.isBlank() || (effectiveDir.listFiles()?.size ?: 0) <= 2) {
-                        if (baseWorkingDir.exists() && !targets.contains(baseWorkingDir)) {
-                            targets.add(baseWorkingDir)
-                        }
-                    }
-                    for (target in targets) {
-                        scanDirectoryRecursive(target, filterPredicate, favSet, rawItems, maxDepth = 5, currentDepth = 0)
-                        if (rawItems.size >= 250) break
+                        scanDirectoryRecursive(
+                            effectiveDir,
+                            filterPredicate,
+                            favSet,
+                            rawItems,
+                            maxDepth = Int.MAX_VALUE,
+                            currentDepth = 0
+                        )
                     }
                 }
             }
