@@ -104,7 +104,7 @@ fun ZipViewerDialog(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text("Extract Here")
+                    Text("Extract to folder")
                 }
             }
         },
