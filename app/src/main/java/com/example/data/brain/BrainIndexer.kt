@@ -8,7 +8,6 @@ import com.example.data.ai.ExtractedEntity
 import com.example.data.ai.ExtractedRelation
 import com.example.data.ai.ProviderType
 import com.example.data.ai.isKeylessAiConfig
-import com.example.data.ai.OfflineEmbeddingEngine
 import com.example.data.local.AiProviderConfigEntity
 import java.io.File
 import java.util.Locale
@@ -71,17 +70,7 @@ class BrainIndexer(
                 return fail(path, "No indexable chunks could be created", startedAt)
             }
 
-            val embeddingBundle = embed(chunkTexts, config)
-            val embeddings = embeddingBundle.primary
-            val embeddingModel = embeddingBundle.primaryModel
-            if (chunkTexts.isNotEmpty() &&
-                (embeddings.size != chunkTexts.size ||
-                    embeddings.any { it.isEmpty() } ||
-                    embeddingBundle.offline.size != chunkTexts.size ||
-                    embeddingBundle.offline.any { it.isEmpty() })
-            ) {
-                return fail(path, "Embedding generation returned incomplete vectors", startedAt)
-            }
+            val (embeddings, embeddingModel) = embed(chunkTexts)
 
             val now = System.currentTimeMillis()
             val fileNode = BrainNodeEntity(
@@ -350,65 +339,30 @@ class BrainIndexer(
         }
     }
 
-    private data class EmbeddingBundle(
-        val primary: List<FloatArray>,
-        val primaryModel: String,
-        val offline: List<FloatArray>
-    )
-
-    private suspend fun embed(
-        texts: List<String>,
-        config: AiProviderConfigEntity
-    ): EmbeddingBundle {
+    private suspend fun embed(texts: List<String>): Pair<List<FloatArray>, String> {
         if (texts.isEmpty()) {
-            return EmbeddingBundle(emptyList(), onDeviceEmbedding.modelSignature(), emptyList())
+            return emptyList<FloatArray>() to onDeviceEmbedding.modelSignature()
+        }
+        if (!onDeviceEmbedding.isReady()) {
+            throw IllegalStateException("Download the on-device Brain model before indexing")
         }
 
-        // A real neural encoder is the preferred Brain representation. The model is
-        // downloaded explicitly by the user and then reused for every file/query.
-        val localReady = onDeviceEmbedding.isReady()
-        val local = runCatching { onDeviceEmbedding.embedTextPassages(texts) }.getOrNull()
-        if (localReady && (local == null || local.size != texts.size || local.any { it.isEmpty() })) {
-            // Once the user has installed the real neural model, a failed inference
-            // must not silently produce a fake semantic index. Preserve the last
-            // known-good Brain representation and retry later instead.
-            throw IllegalStateException("On-device Brain embedding inference failed")
-        }
-        if (local != null &&
-            local.size == texts.size &&
-            local.all { it.isNotEmpty() }
-        ) {
-            // Keep the historical offline field populated with the same real vectors so
-            // older retrieval code/data migrations cannot accidentally treat hash vectors
-            // as the canonical Brain representation.
-            return EmbeddingBundle(
-                primary = local,
-                primaryModel = onDeviceEmbedding.modelIdIfReady() ?: onDeviceEmbedding.modelSignature(),
-                offline = local
+        val vectors = runCatching {
+            onDeviceEmbedding.embedTextPassages(texts)
+        }.getOrElse { error ->
+            throw IllegalStateException(
+                "On-device Brain embedding failed: " + (error.message ?: "inference error"),
+                error
             )
         }
 
-        val configuredModel = config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() }
-        if (config.isEnabled && configuredModel.isNotBlank() &&
-            (isKeylessAiConfig(config) || config.apiKey.isNotBlank())
-        ) {
-            val online = runCatching {
-                client.embedTextPassages(texts, config)
-            }.getOrNull()
-
-            if (online != null &&
-                online.size == texts.size &&
-                online.all { it.isNotEmpty() }
-            ) {
-                val fallbackOffline = OfflineEmbeddingEngine.embedTextPassages(texts)
-                return EmbeddingBundle(online, configuredModel, fallbackOffline)
-            }
+        if (vectors.size != texts.size || vectors.any { it.isEmpty() }) {
+            throw IllegalStateException("On-device Brain returned an incomplete embedding batch")
         }
 
-        // Last-resort compatibility path only. It is intentionally never preferred over
-        // the downloaded neural model.
-        val deterministic = OfflineEmbeddingEngine.embedTextPassages(texts)
-        return EmbeddingBundle(deterministic, OfflineEmbeddingEngine.MODEL_NAME, deterministic)
+        val modelId = onDeviceEmbedding.modelIdIfReady()
+            ?: throw IllegalStateException("On-device Brain model is unavailable")
+        return vectors to modelId
     }
 
     private fun localAnalysis(input: BrainFileContent): AnalysisResult {
