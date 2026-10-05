@@ -48,6 +48,7 @@ import com.example.data.brain.BrainTopicFile
 import com.example.data.brain.BrainModelDownloadWorker
 import com.example.data.brain.OnDeviceBrainModelStatus
 import com.example.data.brain.OnDeviceBrainModelUiState
+import com.example.data.brain.OnDeviceBrainModelSpec
 import com.example.data.model.ConflictResolution
 import com.example.data.model.FileOperationProgress
 import com.example.data.model.OperationStatus
@@ -273,6 +274,9 @@ data class UiState(
     val brainTopicStatus: String = "",
     val aiModels: List<AvailableAiModel> = emptyList(),
     val aiVisionModels: List<AvailableAiModel> = emptyList(),
+    val aiEmbeddingModels: List<AvailableAiModel> = emptyList(),
+    val aiMultimodalEmbeddingModels: List<AvailableAiModel> = emptyList(),
+    val offlineBrainModels: List<OnDeviceBrainModelSpec> = emptyList(),
     val isFetchingAiModels: Boolean = false,
     val aiModelFetchError: String? = null,
     val onDeviceBrainModel: OnDeviceBrainModelUiState = OnDeviceBrainModelUiState(),
@@ -610,7 +614,13 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
         // On-device semantic model download is durable and independent of Brain indexing.
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update { it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState()) }
+            val specs = brainRepository.getOnDeviceBrainModelSpecs()
+            _uiState.update {
+                it.copy(
+                    offlineBrainModels = specs,
+                    onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState()
+                )
+            }
         }
         viewModelScope.launch {
             WorkManager.getInstance(getApplication<Application>())
@@ -2442,6 +2452,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(
                         aiModels = all.filter { model -> model.supportsChat },
                         aiVisionModels = all.filter { model -> model.supportsChat && model.supportsVision },
+                        aiEmbeddingModels = all.filter { model -> model.supportsEmbedding && !model.supportsMultimodalEmbedding },
+                        aiMultimodalEmbeddingModels = all.filter { model -> model.supportsMultimodalEmbedding },
                         isFetchingAiModels = false
                     )
                 }
@@ -2685,11 +2697,34 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun selectOnDeviceBrainModel(modelId: String) {
+        if (_uiState.value.onDeviceBrainModel.status == OnDeviceBrainModelStatus.DOWNLOADING) return
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                brainRepository.selectOnDeviceBrainModel(modelId)
+                brainRepository.getOnDeviceBrainModelState()
+            }.onSuccess { state ->
+                _uiState.update { it.copy(onDeviceBrainModel = state) }
+                showMessage("Offline Brain model selected")
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(error.message))
+                }
+                showMessage(error.message ?: "Could not select offline Brain model")
+            }
+        }
+    }
+
     fun downloadOnDeviceBrainModel() {
         val state = _uiState.value.onDeviceBrainModel
         if (state.status == OnDeviceBrainModelStatus.DOWNLOADING) return
 
         val request = OneTimeWorkRequestBuilder<BrainModelDownloadWorker>()
+            .setInputData(
+                androidx.work.workDataOf(
+                    BrainModelDownloadWorker.KEY_MODEL_ID to state.modelId
+                )
+            )
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
