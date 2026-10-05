@@ -58,6 +58,7 @@ import com.example.ui.components.getRequiredStoragePermissions
 import com.example.ui.components.isAllFilesAccessGranted
 import com.example.ui.components.launchAllFilesAccessSettings
 import com.example.ui.screens.AiSettingsScreen
+import com.example.ui.screens.BrainScreen
 import com.example.ui.screens.FileExplorerScreen
 import com.example.ui.screens.FilePropertiesDialog
 import com.example.ui.screens.FullscreenMediaViewer
