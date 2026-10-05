@@ -6,9 +6,9 @@ import org.json.JSONArray
 /**
  * Durable checkpoint for gallery Brain processing.
  *
- * Completed paths are removed immediately after both Brain indexing
- * succeed. Pausing/cancelling the WorkManager job therefore leaves the remaining
- * paths available for a later resume, even after process death.
+ * The pending path set is durable outside the ViewModel. A successful Brain run
+ * clears it; pausing/cancelling the WorkManager job leaves it available for resume,
+ * even after process death.
  */
 class GalleryBrainOperationStore(context: Context) {
     companion object {
