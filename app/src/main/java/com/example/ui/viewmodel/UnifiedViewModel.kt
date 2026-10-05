@@ -605,16 +605,11 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                             }
                         }
                         androidx.work.WorkInfo.State.SUCCEEDED -> {
-                            val wasDownloading = _uiState.value.onDeviceBrainModel.status ==
-                                OnDeviceBrainModelStatus.DOWNLOADING
                             val ready = brainRepository.getOnDeviceBrainModelState()
                             _uiState.update { it.copy(onDeviceBrainModel = ready) }
-                            // Only the download that just completed triggers the rebuild.
-                            // A historical SUCCEEDED WorkInfo must not reindex Brain on
-                            // every subsequent ViewModel/activity creation.
-                            if (wasDownloading && !_uiState.value.isKgIndexing) {
-                                indexAllFilesForKnowledgeGraph()
-                            }
+                            // BrainModelDownloadWorker enqueues the unique Brain index work
+                            // after the model is installed. Do not start a second indexing job
+                            // from the ViewModel; WorkManager is the single owner of that handoff.
                         }
                         androidx.work.WorkInfo.State.FAILED -> {
                             val error = work.outputData.getString("error") ?: "Model download failed"
