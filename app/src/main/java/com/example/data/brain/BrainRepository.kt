@@ -26,7 +26,7 @@ data class BrainSyncResult(
     val failed: Int
 )
 
-class BrainRepository(private val context: Context) {
+class BrainRepository(context: Context) {
     private val appContext = context.applicationContext
     private val db = AppDatabase.getDatabase(appContext)
     private val brainNodeDao = db.brainNodeDao()
