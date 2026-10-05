@@ -223,7 +223,9 @@ fun GalleryScreen(
     }
 
     val albumPagedMedia = if (selectedAlbumId != null) {
-        val albumFlow = viewModel.albumPagingFlow(selectedAlbumId)
+        val albumFlow = viewModel.albumPagingFlow(selectedAlbumId).map { pagingData: PagingData<MediaItem> ->
+            pagingData.map { media -> GalleryGridItem.Media(media) as GalleryGridItem }
+        }
         albumFlow.collectAsLazyPagingItems()
     } else null
 
@@ -241,7 +243,7 @@ fun GalleryScreen(
             android.Manifest.permission.READ_EXTERNAL_STORAGE
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-    Column(modifier = modifier.fillMaxSize())
+    Column(modifier = modifier.fillMaxSize()) {
 
         AnimatedVisibility(
             visible = chromeVisible,
@@ -518,7 +520,7 @@ fun GalleryScreen(
                                                         }
                                                     },
                                                     onClick = {
-                                                        groupBy = option
+                                                        viewModel.setGalleryGroupBy(option)
                                                         groupMenuVisible = false
                                                     }
                                                 )
