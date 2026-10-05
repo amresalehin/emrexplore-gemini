@@ -113,11 +113,9 @@ class ExifTool(private val context: Context) {
             add(file.absolutePath)
         }
 
-    private fun ensureInstalled() {
+    private suspend fun ensureInstalled() {
         if (!AssetExtractor.isInstalled(appContext)) {
-            kotlinx.coroutines.runBlocking {
-                AssetExtractor.ensureInstalled(appContext)
-            }
+            AssetExtractor.ensureInstalled(appContext)
         }
         check(ExifToolRunner.isInstalled(appContext)) {
             "ExifTool runtime is not installed for this ABI"
