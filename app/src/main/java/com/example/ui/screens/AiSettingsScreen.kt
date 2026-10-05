@@ -25,6 +25,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
@@ -36,6 +38,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,6 +70,8 @@ import androidx.compose.ui.unit.dp
 import com.example.data.ai.AvailableAiModel
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.ai.ProviderType
+import com.example.data.brain.OnDeviceBrainModelStatus
+import com.example.data.brain.OnDeviceBrainModelUiState
 import com.example.data.local.AiProviderConfigEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,6 +92,9 @@ fun AiSettingsScreen(
     isFetchingModels: Boolean = false,
     modelFetchError: String? = null,
     onFetchModels: (AiProviderConfigEntity) -> Unit = {},
+    onDeviceBrainModel: OnDeviceBrainModelUiState = OnDeviceBrainModelUiState(),
+    onDownloadOnDeviceBrainModel: () -> Unit = {},
+    onDeleteOnDeviceBrainModel: () -> Unit = {},
     onReindexAll: () -> Unit,
     onClearGraph: () -> Unit,
     onNavigateBack: () -> Unit,
@@ -307,7 +315,96 @@ fun AiSettingsScreen(
                     CompactInfo("Server: ${baseUrl.removeSuffix("/")}")
                 }
 
-                SectionTitle("MODELS")
+                SectionTitle("ON-DEVICE BRAIN")
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(onDeviceBrainModel.displayName, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "${onDeviceBrainModel.sizeLabel} · runs entirely on this device",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Text(
+                            "This neural embedding model is the primary Brain search/index model. Download it once; no embedding API key is required for semantic search after that.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+
+                        when (onDeviceBrainModel.status) {
+                            OnDeviceBrainModelStatus.NOT_INSTALLED -> {
+                                Button(
+                                    onClick = onDownloadOnDeviceBrainModel,
+                                    modifier = Modifier.fillMaxWidth().testTag("on_device_brain_download_btn"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Download model")
+                                }
+                            }
+                            OnDeviceBrainModelStatus.DOWNLOADING -> {
+                                LinearProgressIndicator(
+                                    progress = { onDeviceBrainModel.progress },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Text(
+                                    "Downloading ${(onDeviceBrainModel.progress * 100).toInt()}%…",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            OnDeviceBrainModelStatus.READY -> {
+                                Text(
+                                    "Ready — Brain will use this local model for document and query embeddings.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                OutlinedButton(
+                                    onClick = onDeleteOnDeviceBrainModel,
+                                    modifier = Modifier.fillMaxWidth().testTag("on_device_brain_delete_btn"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Remove local model")
+                                }
+                            }
+                            OnDeviceBrainModelStatus.ERROR -> {
+                                Text(
+                                    onDeviceBrainModel.error ?: "The model could not be downloaded.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Button(
+                                    onClick = onDownloadOnDeviceBrainModel,
+                                    modifier = Modifier.fillMaxWidth().testTag("on_device_brain_retry_btn"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Retry download")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                SectionTitle("PROVIDER MODELS")
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Fetch from provider", fontWeight = FontWeight.SemiBold)
@@ -335,37 +432,17 @@ fun AiSettingsScreen(
                 ModelPicker("Text embeddings", firstUsable(embeddings, embeddingModel), { showEmbeddingPicker = true }, "ai_text_embedding_model_field", embeddings)
                 ModelPicker("Image + text semantic search", firstUsable(multimodalEmbeddings, multimodalEmbeddingModel), { showMultimodalEmbeddingPicker = true }, "ai_multimodal_embedding_model_field", multimodalEmbeddings)
 
-                // Offline Fallback Information Banner
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                "Offline Embedding Fallback: Active",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                "On-device 256-D semantic embedding model acts as automatic fallback when offline or if provider embeddings are not configured.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    Text(
+                        "Deterministic hash vectors remain only as an emergency compatibility fallback. They are not the primary Brain semantic model.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(12.dp)
+                    )
                 }
 
                 SectionTitle("CHECK")
