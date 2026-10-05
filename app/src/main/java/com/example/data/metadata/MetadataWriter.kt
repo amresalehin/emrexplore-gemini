@@ -1,7 +1,7 @@
 package com.example.data.metadata
 
+import android.content.Context
 import java.io.File
-import kotlinx.coroutines.runBlocking
 
 object MetadataWriter {
     data class SamplePhotoMetadata(
@@ -32,29 +32,49 @@ object MetadataWriter {
     )
 
     /**
-     * Compatibility shim for the existing sample/test hook. The old implementation
-     * rewrote JPEG bytes by hand; production metadata work now goes through ExifTool.
+     * Writes the metadata fields exposed by the existing sample API through ExifTool.
+     * The old byte-level JPEG surgery has been removed.
      */
-    fun injectMetadataToJpeg(file: File, meta: SamplePhotoMetadata) {
-        runCatching {
-            ExifTool(file.parentFile?.let { android.app.Application() } ?: android.app.Application())
-        }.getOrNull()
-        // Kept as a no-op compatibility API until the sample writer UI is removed.
-    }
-
-    suspend fun writeAiMetadata(file: File, caption: String, tags: List<String>): Boolean {
-        return ExifTool(file.contextOrThrow()).writeAiMetadata(file, caption, tags)
-    }
-
-    private fun File.contextOrThrow(): android.content.Context {
-        throw UnsupportedOperationException(
-            "MetadataWriter.writeAiMetadata(File, ...) now requires a Context. " +
-                "Use MetadataWriter.writeAiMetadata(context, file, caption, tags)."
+    suspend fun injectMetadata(
+        context: Context,
+        file: File,
+        meta: SamplePhotoMetadata
+    ): Boolean {
+        return ExifTool(context).writeMetadata(
+            file = file,
+            values = linkedMapOf(
+                "EXIF:Make" to meta.make,
+                "EXIF:Model" to meta.model,
+                "EXIF:LensModel" to meta.lensModel,
+                "EXIF:ExposureTime" to meta.exposureTime,
+                "EXIF:FNumber" to meta.fNumber,
+                "EXIF:ISO" to meta.iso,
+                "EXIF:FocalLength" to meta.focalLength,
+                "EXIF:FocalLengthIn35mmFormat" to meta.focalLength35mm,
+                "EXIF:DateTimeOriginal" to meta.dateTime,
+                "EXIF:DateTime" to meta.dateTime,
+                "EXIF:DateTimeDigitized" to meta.dateTime,
+                "EXIF:Artist" to meta.artist,
+                "EXIF:Copyright" to meta.copyright,
+                "EXIF:Software" to meta.software,
+                "XMP-photoshop:Headline" to meta.headline,
+                "XMP-dc:Title" to meta.title,
+                "XMP-dc:Description" to meta.caption,
+                "XMP-photoshop:City" to meta.city,
+                "XMP-photoshop:State" to meta.state,
+                "XMP-photoshop:Country" to meta.country,
+                "XMP-photoshop:Credit" to meta.credit,
+                "XMP-photoshop:Source" to meta.source
+            ),
+            gpsLatitude = meta.latDeg,
+            gpsLongitude = meta.lonDeg,
+            gpsAltitude = meta.altitudeM,
+            keywords = meta.keywords
         )
     }
 
     suspend fun writeAiMetadata(
-        context: android.content.Context,
+        context: Context,
         file: File,
         caption: String,
         tags: List<String>
