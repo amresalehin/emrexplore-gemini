@@ -402,7 +402,6 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                             onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false, mimeType = "image/jpeg")) }
                         )
                     }
-                    }
                 }
             }
         }
