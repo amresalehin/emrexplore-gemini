@@ -125,8 +125,8 @@ class BrainRepository(context: Context) {
         force: Boolean = true,
         onProgress: suspend (current: Int, total: Int, path: String, outcome: BrainIndexOutcome) -> Unit = { _, _, _, _ -> }
     ): BrainSyncResult = withContext(Dispatchers.IO) {
-        fileRepository.indexStorage(force = true)
-
+        // FileRepository owns the canonical filesystem index. Brain consumes it;
+        // it must never recursively scan storage or rebuild the same index.
         val config = getAiConfig()
         val extensions = BrainContentReader.SUPPORTED_EXTENSIONS.map { it.lowercase(Locale.US) }
         val total = fileIndexDao.getBrainCandidateCount(extensions)
