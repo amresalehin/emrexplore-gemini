@@ -234,3 +234,13 @@ PR #3 remains intentionally **draft** until the Android CI workflow finishes suc
 - [x] Support SAF/content URIs through temporary app-private staging and copy-back.
 - [x] Package the runtime through ABI-specific `jniLibs` and document the native-artifact contract.
 - [ ] Provision and verify generated ExifTool native artifacts in CI before release builds.
+
+
+## Product model — one Brain, two capabilities
+
+- [x] Local Brain model is the canonical semantic search/index requirement.
+- [x] Cloud AI provider is optional and is not presented as enabling/disabling Brain.
+- [x] Ask AI explicitly distinguishes local retrieval from provider-backed generated answers.
+- [x] Gallery targeted processing uses the canonical BrainIndexWorker rather than a second AI pipeline.
+- [x] Brain empty states reflect model readiness instead of claiming indexing is ready when it cannot run.
+- [x] Settings explain what remains local and what data is sent to an optional cloud provider.
