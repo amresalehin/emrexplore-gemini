@@ -43,8 +43,6 @@ import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -381,7 +379,7 @@ fun FullscreenMediaViewer(
             }
         }
 
-        if (showControls && !showAiSheet) {
+        if (showControls && !showBrainSheet) {
             Surface(
                 shape = RoundedCornerShape(50),
                 color = Color.Black.copy(alpha = 0.62f),
@@ -390,7 +388,7 @@ fun FullscreenMediaViewer(
                     .padding(bottom = 76.dp)
             ) {
                 Text(
-                    text = "↑ Swipe up for AI details",
+                    text = "↑ Swipe up for Brain details",
                     color = Color.White,
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
@@ -582,52 +580,6 @@ fun FullscreenMediaViewer(
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
-    }
-}
-
-private fun parseJsonStrings(raw: String): List<String> {
-    return try {
-        val array = org.json.JSONArray(raw)
-        buildList(array.length()) {
-            for (index in 0 until array.length()) {
-                array.optString(index).trim().takeIf(String::isNotBlank)?.let(::add)
-            }
-        }.distinct().take(80)
-    } catch (_: Exception) {
-        emptyList()
-    }
-}
-
-private fun parseJsonEntities(raw: String): List<Pair<String, String>> {
-    return try {
-        val array = org.json.JSONArray(raw)
-        buildList(array.length()) {
-            for (index in 0 until array.length()) {
-                val item = array.optJSONObject(index) ?: continue
-                val name = item.optString("name").trim()
-                if (name.isNotBlank()) add(name to item.optString("type").trim())
-            }
-        }.distinctBy { it.first.lowercase() }.take(50)
-    } catch (_: Exception) {
-        emptyList()
-    }
-}
-
-private fun parseJsonRelations(raw: String): List<String> {
-    return try {
-        val array = org.json.JSONArray(raw)
-        buildList(array.length()) {
-            for (index in 0 until array.length()) {
-                val item = array.optJSONObject(index) ?: continue
-                val source = item.optString("source").trim()
-                val relation = item.optString("relation").trim()
-                val target = item.optString("target").trim()
-                val line = listOf(source, relation, target).filter { it.isNotBlank() }.joinToString(" → ")
-                if (line.isNotBlank()) add(line)
-            }
-        }.distinct().take(50)
-    } catch (_: Exception) {
-        emptyList()
     }
 }
 
