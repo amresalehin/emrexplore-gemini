@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -428,6 +429,11 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             onTestConnection = { viewModel.testAiConnection(it) },
             availableModels = uiState.aiModels,
             availableVisionModels = uiState.aiVisionModels,
+            availableEmbeddingModels = uiState.aiEmbeddingModels,
+            availableMultimodalEmbeddingModels = uiState.aiMultimodalEmbeddingModels,
+            offlineBrainModels = uiState.offlineBrainModels,
+            selectedOfflineBrainModelId = uiState.onDeviceBrainModel.modelId,
+            onSelectOfflineBrainModel = { viewModel.selectOnDeviceBrainModel(it) },
             isFetchingModels = uiState.isFetchingAiModels,
             modelFetchError = uiState.aiModelFetchError,
             onFetchModels = { viewModel.fetchAiModels(it) },
@@ -517,6 +523,7 @@ private fun TabHostPage(
     Box(
         modifier = modifier
             .alpha(if (visible) 1f else 0f)
+            .zIndex(if (visible) 1f else 0f)
             .pointerInput(visible) {
                 if (!visible) {
                     awaitPointerEventScope {
