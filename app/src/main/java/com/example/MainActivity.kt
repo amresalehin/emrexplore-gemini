@@ -166,48 +166,47 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
         mediaLocationGranted = granted
     }
 
+    var lastAllFilesAccessGranted by remember { mutableStateOf(allFilesAccessGranted) }
+
     val allFilesLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
-        val granted = isAllFilesAccessGranted()
-        allFilesAccessGranted = granted
-        if (granted) {
-            viewModel.onPermissionsGranted()
-        }
+        allFilesAccessGranted = isAllFilesAccessGranted()
+        showAllFilesDialog = false
     }
 
-    // Automatically check and refresh when the activity resumes (e.g. returning from system settings)
+    // Refresh storage only when All Files Access actually changes to granted.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         val granted = isAllFilesAccessGranted()
+        val changedToGranted = granted && !lastAllFilesAccessGranted
         allFilesAccessGranted = granted
-        if (granted) {
-            viewModel.onPermissionsGranted()
-        }
+        lastAllFilesAccessGranted = granted
+        if (changedToGranted) viewModel.onPermissionsGranted()
     }
 
     // Accompanist Permissions setup for reading and writing files to external storage
     val storagePermissions = remember { getRequiredStoragePermissions() }
     val storagePermissionsState = rememberMultiplePermissionsState(
         permissions = storagePermissions
-    ) { permissionsResultMap ->
-        val anyGranted = permissionsResultMap.values.any { it }
-        if (anyGranted) {
-            viewModel.onPermissionsGranted()
-        }
+    )
+
+    var lastRuntimePermissionsGranted by remember {
+        mutableStateOf(storagePermissionsState.allPermissionsGranted)
     }
 
-    // Auto-prompt permissions on initial start if not granted
-    LaunchedEffect(Unit) {
-        if (!storagePermissionsState.allPermissionsGranted) {
+    // First-run surfaces are sequenced: finish the All Files Access prompt before the
+    // runtime media permission sheet. This prevents overlapping permission surfaces.
+    LaunchedEffect(showAllFilesDialog, allFilesAccessGranted, storagePermissionsState.allPermissionsGranted) {
+        val runtimeGranted = storagePermissionsState.allPermissionsGranted
+        if (!showAllFilesDialog &&
+            (allFilesAccessGranted || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) &&
+            !runtimeGranted
+        ) {
             storagePermissionsState.launchMultiplePermissionRequest()
         }
-    }
-
-    // Reactively refresh data when permissions are newly granted
-    LaunchedEffect(storagePermissionsState.allPermissionsGranted) {
-        if (storagePermissionsState.allPermissionsGranted && uiState.files.isEmpty()) {
-            viewModel.onPermissionsGranted()
-        }
+        val changedToGranted = runtimeGranted && !lastRuntimePermissionsGranted
+        if (changedToGranted) viewModel.onPermissionsGranted()
+        lastRuntimePermissionsGranted = runtimeGranted
     }
 
     // At a tab root, Back returns to Home. Content-level handlers (folders/viewers/editors)
@@ -306,7 +305,7 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
         }
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            if (uiState.fileOperationProgress.status == com.example.data.model.OperationStatus.IDLE) {
+            if (uiState.fileOperationProgress.status == com.example.data.model.OperationStatus.IDLE && !showAllFilesDialog) {
                 StoragePermissionBanner(
                     permissionsState = storagePermissionsState,
                     allFilesAccessGranted = allFilesAccessGranted,
@@ -489,10 +488,8 @@ private fun PersistentTabHost(
                 onIndexAllFiles = viewModel::indexAllFilesForBrain,
                 onAskAiForFile = { node ->
                     node.sourceFilePath?.let { path ->
-                        val file = File(path)
-                        if (file.exists()) viewModel.attachAiFile(file)
+                        viewModel.askAiAboutFile(File(path))
                     }
-                    viewModel.queryRag("Tell me about this file: " + node.label)
                 },
                 brainTopics = uiState.brainTopics,
                 selectedBrainTopic = uiState.brainTopics.firstOrNull { it.id == uiState.selectedBrainTopicId },
