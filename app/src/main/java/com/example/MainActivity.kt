@@ -458,7 +458,7 @@ private fun PersistentTabHost(
             )
         }
         TabHostPage(uiState.currentTab == MainTab.BRAIN) {
-            KnowledgeGraphScreen(
+            BrainScreen(
                 nodes = uiState.kgNodes,
                 edges = uiState.kgEdges,
                 nodeCount = uiState.kgNodeCount,
