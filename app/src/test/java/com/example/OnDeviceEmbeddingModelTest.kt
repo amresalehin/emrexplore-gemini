@@ -2,6 +2,7 @@ package com.example
 
 import com.example.data.brain.BertWordPieceTokenizer
 import com.example.data.brain.BrainVectorCodec
+import com.example.data.brain.OnDeviceBrainModelCatalog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -42,6 +43,14 @@ class OnDeviceEmbeddingModelTest {
         } finally {
             vocab.delete()
         }
+    }
+
+    @Test
+    fun offlineModelCatalog_exposesDistinctSelectableModels() {
+        val models = OnDeviceBrainModelCatalog.all
+        assertTrue(models.size >= 2)
+        assertEquals(models.size, models.map { it.id }.distinct().size)
+        assertTrue(models.all { it.embeddingDimension == 384 })
     }
 
     @Test
