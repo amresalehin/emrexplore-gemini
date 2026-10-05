@@ -29,7 +29,7 @@ import com.example.data.media.MediaRepository
 import com.example.data.media.FullscreenMediaSource
 import com.example.data.media.MediaViewerWindow
 import com.example.data.media.MediaMetadataRepository
-import com.example.data.ai.GalleryAiOperationStore
+import com.example.data.ai.GalleryBrainOperationStore
 import com.example.data.brain.BrainRepository
 import com.example.data.ai.AvailableAiModel
 import com.example.data.brain.ConnectedDotsItem
@@ -288,7 +288,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     private val mediaRepository = MediaRepository(application)
     private val mediaMetadataRepository = MediaMetadataRepository(application.applicationContext)
     private val brainRepository = BrainRepository(application)
-    private val galleryAiStore = GalleryAiOperationStore(application.applicationContext)
+    private val galleryAiStore = GalleryBrainOperationStore(application.applicationContext)
     private val galleryFilterFlow = MutableStateFlow<MediaFilter?>(MediaFilter.ALL)
     private val galleryDateFilterFlow = MutableStateFlow(GalleryDateFilter.ALL)
     private val galleryLocationFilterFlow = MutableStateFlow(GalleryLocationFilter.ALL)
@@ -458,7 +458,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(isGalleryAiPaused = galleryAiStore.isPaused()) }
         viewModelScope.launch {
             WorkManager.getInstance(getApplication<Application>())
-                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
+                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME)
                 .collectLatest { works ->
                     val work = works.firstOrNull() ?: run {
                         if (galleryAiStore.isPaused()) {
@@ -488,7 +488,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                 isGalleryAiProcessing = true,
                                 isGalleryAiPaused = false,
                                 galleryAiProgress = if (total > 0) current.toFloat() / total else 0f,
-                                galleryAiStatus = if (path.isBlank()) "Processing gallery AI..." else "AI: " + File(path).name + " ($current/$total)"
+                                galleryAiStatus = if (path.isBlank()) "Processing with Brain..." else "Brain: " + File(path).name + " ($current/$total)"
                             )
                         }
                         androidx.work.WorkInfo.State.SUCCEEDED -> {
@@ -498,7 +498,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                     isGalleryAiProcessing = false,
                                     isGalleryAiPaused = false,
                                     galleryAiProgress = 1f,
-                                    galleryAiStatus = "AI enrichment complete ($processed processed)"
+                                    galleryAiStatus = "Brain processing complete ($processed processed)"
                                 )
                             }
                             refreshGallery()
@@ -510,7 +510,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                 it.copy(
                                     isGalleryAiProcessing = false,
                                     isGalleryAiPaused = hasPending,
-                                    galleryAiStatus = if (hasPending) "AI stopped — Resume to retry" else "AI processing failed"
+                                    galleryAiStatus = if (hasPending) "Brain stopped — Resume to retry" else "Brain processing failed"
                                 )
                             }
                         }
@@ -537,7 +537,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         // unique work after process recreation instead of relying on ViewModel state.
         viewModelScope.launch {
             WorkManager.getInstance(getApplication<Application>())
-                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
+                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME)
                 .collectLatest { works ->
                     val work = works.firstOrNull() ?: return@collectLatest
                     val progress = work.progress
@@ -1644,21 +1644,11 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun isGalleryAiConfigured(config: AiProviderConfigEntity): Boolean {
-        val provider = com.example.data.ai.ProviderType.fromString(config.providerType)
-        val localProvider = provider == com.example.data.ai.ProviderType.OLLAMA ||
-            provider == com.example.data.ai.ProviderType.CUSTOM ||
-            provider == com.example.data.ai.ProviderType.OPENAI_COMPATIBLE
-        return config.isEnabled && (localProvider || config.apiKey.isNotBlank())
-    }
-
     fun processGalleryAiSelection() {
         val selected = _uiState.value.gallerySelection.filter { !it.isVideo }
         if (selected.isEmpty()) return
-        val config = _uiState.value.aiConfig
-        if (!isGalleryAiConfigured(config)) {
-            _uiState.update { it.copy(isAiSettingsScreenOpen = true) }
-            showMessage("Configure and save an AI provider before processing gallery images")
+        if (!brainRepository.isOnDeviceBrainModelReady()) {
+            showMessage("Download the on-device Brain model before processing gallery images")
             return
         }
 
@@ -1689,19 +1679,29 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 isGalleryAiProcessing = true,
                 isGalleryAiPaused = false,
                 galleryAiProgress = if (total > 0) completed.toFloat() / total else 0f,
-                galleryAiStatus = "AI processing queued..."
+                galleryAiStatus = "Brain processing queued..."
             )
         }
 
-        enqueueGalleryAiWorker()
+        enqueueGalleryBrainWorker()
     }
 
-    private fun enqueueGalleryAiWorker() {
-        val workRequest = OneTimeWorkRequestBuilder<com.example.data.ai.GalleryAiWorker>().build()
+    private fun enqueueGalleryBrainWorker() {
+        val paths = galleryAiStore.pendingPaths()
+        if (paths.isEmpty()) return
+        val forcePaths = paths.filter { galleryAiStore.isForce(it) }
+        val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>()
+            .setInputData(
+                androidx.work.workDataOf(
+                    "paths" to paths.toTypedArray(),
+                    "forcePaths" to forcePaths.toTypedArray()
+                )
+            )
+            .build()
         WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
-            com.example.data.ai.GalleryAiWorker.UNIQUE_NAME,
-            ExistingWorkPolicy.KEEP,
-            workRequest
+            com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME,
+            ExistingWorkPolicy.REPLACE,
+            request
         )
     }
 
@@ -1715,11 +1715,11 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             it.copy(
                 isGalleryAiProcessing = false,
                 isGalleryAiPaused = true,
-                galleryAiStatus = "Pausing AI processing..."
+                galleryAiStatus = "Pausing Brain processing..."
             )
         }
         WorkManager.getInstance(getApplication<Application>())
-            .cancelUniqueWork(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
+            .cancelUniqueWork(com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME)
     }
 
     fun resumeGalleryAi() {
@@ -1736,10 +1736,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             showMessage("No pending gallery AI work")
             return
         }
-        val config = _uiState.value.aiConfig
-        if (!isGalleryAiConfigured(config)) {
-            _uiState.update { it.copy(isAiSettingsScreenOpen = true) }
-            showMessage("Configure and save an AI provider before resuming gallery AI")
+        if (!brainRepository.isOnDeviceBrainModelReady()) {
+            showMessage("Download the on-device Brain model before resuming gallery processing")
             return
         }
         galleryAiStore.setPaused(false)
@@ -1747,18 +1745,16 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             it.copy(
                 isGalleryAiProcessing = true,
                 isGalleryAiPaused = false,
-                galleryAiStatus = "Resuming AI processing..."
+                galleryAiStatus = "Resuming Brain processing..."
             )
         }
-        enqueueGalleryAiWorker()
+        enqueueGalleryBrainWorker()
     }
 
     fun reAnalyzeGalleryImage(item: MediaItem) {
         if (item.isVideo || item.path.isBlank()) return
-        val config = _uiState.value.aiConfig
-        if (!isGalleryAiConfigured(config)) {
-            _uiState.update { it.copy(isAiSettingsScreenOpen = true) }
-            showMessage("Configure and save an AI provider before re-analyzing")
+        if (!brainRepository.isOnDeviceBrainModelReady()) {
+            showMessage("Download the on-device Brain model before re-analyzing")
             return
         }
         startGalleryAiProcessing(listOf(item.path), force = true)
