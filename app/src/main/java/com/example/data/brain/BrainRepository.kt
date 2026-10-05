@@ -9,7 +9,6 @@ import com.example.data.ai.ProviderType
 import com.example.data.ai.isKeylessAiConfig
 import com.example.data.local.AiProviderConfigEntity
 import com.example.data.local.AppDatabase
-import com.example.data.repository.FileRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -61,7 +60,6 @@ class BrainRepository(context: Context) {
         edgeDao = brainEdgeDao,
         onDeviceEmbedding = onDeviceEmbedding
     )
-    private val fileRepository = FileRepository(appContext)
 
     val allNodesFlow: Flow<List<BrainNodeEntity>> = brainNodeDao.observePreview().map { it }
     val allEdgesFlow: Flow<List<BrainEdgeEntity>> = brainNodeDao.observeEdges().map { it }
