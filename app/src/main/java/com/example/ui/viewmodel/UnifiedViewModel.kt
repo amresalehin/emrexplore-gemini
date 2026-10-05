@@ -51,6 +51,7 @@ import com.example.data.brain.OnDeviceBrainModelUiState
 import com.example.data.model.ConflictResolution
 import com.example.data.model.FileOperationProgress
 import com.example.data.model.OperationStatus
+import com.example.data.model.OperationType
 import com.example.data.performance.PerformanceMetrics
 import com.example.data.performance.PerformanceMonitor
 import com.example.data.repository.FileRepository
@@ -377,6 +378,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 if (progress.status == OperationStatus.COMPLETED) {
                     loadFiles()
                     loadStorageStats()
+                    if (progress.type == OperationType.COPY || progress.type == OperationType.MOVE) {
+                        enqueueBrainMutationSync()
+                    }
                 }
             }
         }
@@ -1032,6 +1036,23 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repository.updateRememberLastDir(nextVal)
         }
+    }
+
+    private fun enqueueBrainMutationSync() {
+        if (!brainRepository.isOnDeviceBrainModelReady()) return
+        val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>()
+            .setInputData(
+                androidx.work.workDataOf(
+                    "force" to false,
+                    "refreshStorageIndex" to false
+                )
+            )
+            .build()
+        WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
+            com.example.data.ai.BrainIndexWorker.UNIQUE_NAME,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            request
+        )
     }
 
     fun reindexStorage(force: Boolean = true) {
