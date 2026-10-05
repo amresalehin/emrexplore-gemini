@@ -34,7 +34,7 @@ import com.example.data.brain.BrainTopicEntity
         BrainDocumentEntity::class,
         BrainRunEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -382,6 +382,53 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Brain owns semantic/media intelligence now. Drop the obsolete
+                // Gallery-AI cache columns while preserving EXIF/media metadata.
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `media_metadata_new` (
+                        `uri` TEXT NOT NULL,
+                        `path` TEXT NOT NULL,
+                        `size` INTEGER NOT NULL,
+                        `dateAdded` INTEGER NOT NULL,
+                        `make` TEXT,
+                        `model` TEXT,
+                        `lens` TEXT,
+                        `iso` INTEGER,
+                        `aperture` REAL,
+                        `focalLength` REAL,
+                        `latitude` REAL,
+                        `longitude` REAL,
+                        `hasGps` INTEGER NOT NULL,
+                        `capturedAt` INTEGER,
+                        `searchableText` TEXT NOT NULL,
+                        `indexedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`uri`)
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    INSERT OR REPLACE INTO `media_metadata_new` (
+                        `uri`, `path`, `size`, `dateAdded`, `make`, `model`,
+                        `lens`, `iso`, `aperture`, `focalLength`, `latitude`,
+                        `longitude`, `hasGps`, `capturedAt`, `searchableText`, `indexedAt`
+                    )
+                    SELECT
+                        `uri`, `path`, `size`, `dateAdded`, `make`, `model`,
+                        `lens`, `iso`, `aperture`, `focalLength`, `latitude`,
+                        `longitude`, `hasGps`, `capturedAt`, `searchableText`, `indexedAt`
+                    FROM `media_metadata`
+                """.trimIndent())
+                db.execSQL("DROP TABLE IF EXISTS `media_metadata`")
+                db.execSQL("ALTER TABLE `media_metadata_new` RENAME TO `media_metadata`")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_media_metadata_path` ON `media_metadata` (`path`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_media_metadata_make` ON `media_metadata` (`make`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_media_metadata_model` ON `media_metadata` (`model`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_media_metadata_hasGps` ON `media_metadata` (`hasGps`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_media_metadata_capturedAt` ON `media_metadata` (`capturedAt`)")
+            }
+        }
+
         private val MIGRATION_13_14 = object : Migration(13, 14) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("""
@@ -437,7 +484,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_10_11,
                         MIGRATION_11_12,
                         MIGRATION_12_13,
-                        MIGRATION_13_14
+                        MIGRATION_13_14,
+                        MIGRATION_14_15
                     )
                     .fallbackToDestructiveMigrationFrom(1, 2, 3, 5)
                     .fallbackToDestructiveMigrationOnDowngrade()
