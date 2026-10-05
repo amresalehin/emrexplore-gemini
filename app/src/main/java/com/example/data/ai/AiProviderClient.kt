@@ -32,9 +32,24 @@ class AiProviderClient {
             ProviderType.OLLAMA,
             ProviderType.OPENAI_COMPATIBLE,
             ProviderType.CUSTOM
-        ) && host in setOf("localhost", "127.0.0.1", "10.0.2.2")
+        ) && (
+            host in setOf("localhost", "127.0.0.1", "10.0.2.2") ||
+            isPrivateIpv4(host)
+        )
         if (url.scheme != "https" && !localEndpoint) throw IllegalArgumentException("Provider endpoint must use HTTPS")
         return url
+    }
+
+    private fun isPrivateIpv4(host: String): Boolean {
+        val parts = host.split('.')
+        if (parts.size != 4) return false
+        val octets = parts.mapNotNull { it.toIntOrNull() }
+        if (octets.size != 4 || octets.any { it !in 0..255 }) return false
+        val (a, b) = octets
+        return a == 10 ||
+            (a == 172 && b in 16..31) ||
+            (a == 192 && b == 168) ||
+            (a == 169 && b == 254)
     }
 
     private class AiHttpException(
