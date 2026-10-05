@@ -19,9 +19,13 @@ class BrainModelDownloadWorker(
     override suspend fun doWork(): Result {
         currentCoroutineContext().ensureActive()
         val manager = OnDeviceEmbeddingModelManager(applicationContext)
+        val requestedModelId = inputData.getString(KEY_MODEL_ID)
+        if (!requestedModelId.isNullOrBlank()) {
+            manager.selectModel(requestedModelId)
+        }
 
         return try {
-            manager.downloadDefaultModel { progress, downloaded, total ->
+            manager.downloadSelectedModel { progress, downloaded, total ->
                 setProgress(
                     workDataOf(
                         "progress" to progress,
@@ -63,5 +67,6 @@ class BrainModelDownloadWorker(
 
     companion object {
         const val UNIQUE_NAME = "emrexplore-brain-model-download"
+        const val KEY_MODEL_ID = "modelId"
     }
 }
