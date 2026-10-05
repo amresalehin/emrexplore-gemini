@@ -9,6 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.brain.BrainChunkEntity
 import com.example.data.brain.BrainDocumentEntity
 import com.example.data.brain.BrainEdgeEntity
+import com.example.data.brain.BrainEdgeEvidenceEntity
 import com.example.data.brain.BrainNodeEntity
 import com.example.data.brain.BrainRunEntity
 
@@ -27,6 +28,7 @@ import com.example.data.brain.BrainRunEntity
         BrainNodeEntity::class,
         com.example.data.brain.BrainTopicEntity::class,
         BrainEdgeEntity::class,
+        BrainEdgeEvidenceEntity::class,
         BrainChunkEntity::class,
         BrainDocumentEntity::class,
         BrainRunEntity::class
