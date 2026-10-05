@@ -4,20 +4,22 @@ import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
- * Single process boundary for the bundled ExifTool runtime.
+ * Application-facing ExifTool adapter.
  *
- * Commands are passed as argv entries (never through a shell). SAF/content URIs
- * are staged into an app-private temporary file and copied back after writes.
+ * ExifTool runs through the cross-compiled Perl interpreter shipped in jniLibs.
+ * AssetExtractor installs the ExifTool script/library tree and wires XS modules
+ * to the ABI-specific native libraries before the first invocation.
  */
 class ExifTool(private val context: Context) {
     private val appContext = context.applicationContext
 
     suspend fun readJson(file: File): String = withContext(Dispatchers.IO) {
-        require(file.isFile && file.canRead()) { "Unreadable metadata source: " + file.path }
+        ensureInstalled()
         run(listOf("-j", "-G1", "-a", "-s", "-n", "-struct", file.absolutePath))
     }
 
@@ -25,7 +27,7 @@ class ExifTool(private val context: Context) {
         val staged = stage(uri, displayName)
             ?: throw ExifToolException("Unable to open metadata URI")
         try {
-            run(listOf("-j", "-G1", "-a", "-s", "-n", "-struct", staged.absolutePath))
+            readJson(staged)
         } finally {
             staged.delete()
         }
@@ -41,9 +43,10 @@ class ExifTool(private val context: Context) {
     ): Boolean = withContext(Dispatchers.IO) {
         if (!file.isFile || !file.canRead() || !file.canWrite()) return@withContext false
         runCatching {
+            ensureInstalled()
             val args = buildList {
                 add("-overwrite_original")
-                values.filterValues { it.isNotBlank() }.forEach { (tag, value) ->
+                values.filterValues(String::isNotBlank).forEach { (tag, value) ->
                     add("-$tag=$value")
                 }
                 keywords.asSequence()
@@ -55,7 +58,7 @@ class ExifTool(private val context: Context) {
                 if (gpsLatitude.isFinite() && gpsLongitude.isFinite()) {
                     add("-GPSLatitude=$gpsLatitude")
                     add("-GPSLongitude=$gpsLongitude")
-                    add("-GPSAltitude=$gpsAltitude")
+                    if (gpsAltitude.isFinite()) add("-GPSAltitude=$gpsAltitude")
                 }
                 add(file.absolutePath)
             }
@@ -68,6 +71,7 @@ class ExifTool(private val context: Context) {
         withContext(Dispatchers.IO) {
             if (!file.isFile || !file.canRead() || !file.canWrite()) return@withContext false
             runCatching {
+                ensureInstalled()
                 run(buildAiWriteArgs(file, caption, tags))
                 true
             }.getOrDefault(false)
@@ -81,6 +85,7 @@ class ExifTool(private val context: Context) {
     ): Boolean = withContext(Dispatchers.IO) {
         val staged = stage(uri, displayName) ?: return@withContext false
         try {
+            ensureInstalled()
             run(buildAiWriteArgs(staged, caption, tags))
             copyBack(uri, staged)
             true
@@ -96,50 +101,44 @@ class ExifTool(private val context: Context) {
             add("-overwrite_original")
             val cleanCaption = caption.trim()
             if (cleanCaption.isNotBlank()) {
-                add("-XMP-dc:Description=" + cleanCaption)
-                add("-EXIF:ImageDescription=" + cleanCaption)
+                add("-XMP-dc:Description=$cleanCaption")
+                add("-EXIF:ImageDescription=$cleanCaption")
             }
             tags.asSequence()
                 .map(String::trim)
                 .filter(String::isNotBlank)
                 .distinct()
                 .take(MAX_KEYWORDS)
-                .forEach { add("-XMP-dc:Subject+=" + it) }
+                .forEach { add("-XMP-dc:Subject+=$it") }
             add(file.absolutePath)
         }
 
+    private fun ensureInstalled() {
+        if (!AssetExtractor.isInstalled(appContext)) {
+            kotlinx.coroutines.runBlocking {
+                AssetExtractor.ensureInstalled(appContext)
+            }
+        }
+        check(ExifToolRunner.isInstalled(appContext)) {
+            "ExifTool runtime is not installed for this ABI"
+        }
+    }
+
     private fun run(args: List<String>): String {
-        val executable = File(appContext.applicationInfo.nativeLibraryDir, EXECUTABLE_NAME)
-        check(executable.canExecute()) {
-            "Bundled ExifTool runtime is unavailable: " + executable.absolutePath
-        }
-
-        val command = buildList {
-            add(executable.absolutePath)
-            add("-charset")
-            add("filename=UTF8")
-            addAll(args)
-        }
-
+        val command = ExifToolRunner.buildBaseCommand(appContext, args)
         val process = ProcessBuilder(command)
-            .directory(appContext.filesDir)
-            .redirectErrorStream(false)
+            .redirectErrorStream(true)
             .start()
 
-        val stdout = process.inputStream.bufferedReader().use { it.readText() }
-        val stderr = process.errorStream.bufferedReader().use { it.readText() }
-
+        val output = process.inputStream.bufferedReader().use { it.readText() }
         if (!process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             process.destroyForcibly()
             throw ExifToolException("ExifTool timed out")
         }
         if (process.exitValue() != 0) {
-            throw ExifToolException(
-                "ExifTool failed (" + process.exitValue() + "): " +
-                    stderr.trim().take(MAX_ERROR_CHARS)
-            )
+            throw ExifToolException("ExifTool failed: " + output.take(MAX_ERROR_CHARS))
         }
-        return stdout
+        return output
     }
 
     private fun stage(uri: Uri, displayName: String): File? {
@@ -168,7 +167,6 @@ class ExifTool(private val context: Context) {
     class ExifToolException(message: String) : IllegalStateException(message)
 
     companion object {
-        private const val EXECUTABLE_NAME = "libexiftool.so"
         private const val TIMEOUT_SECONDS = 45L
         private const val MAX_ERROR_CHARS = 2_000
         private const val MAX_KEYWORDS = 50
