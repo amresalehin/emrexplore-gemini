@@ -160,14 +160,6 @@ interface FileIndexDao {
     @Query("SELECT category, COUNT(*) as count, SUM(size) as totalSize FROM indexed_files WHERE isDirectory = 0 GROUP BY category")
     suspend fun getCategoryStats(): List<CategoryStatTuple>
 
-    @Query("""
-        SELECT * FROM indexed_files
-        WHERE isDirectory = 0
-          AND (path = :path OR path LIKE :pathPrefix || '/%')
-        ORDER BY path ASC
-    """)
-    suspend fun getFilesUnderPathForBrain(path: String, pathPrefix: String): List<IndexedFileEntity>
-
     @Query("SELECT * FROM indexed_files WHERE isDirectory = 0 ORDER BY lastModified DESC LIMIT :limit")
     suspend fun getAllNonDirectoryFiles(limit: Int = 300): List<IndexedFileEntity>
 
