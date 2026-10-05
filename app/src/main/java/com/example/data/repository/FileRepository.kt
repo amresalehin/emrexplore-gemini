@@ -96,7 +96,7 @@ class FileRepository(
             }
             reconcileMutation(relocatedPaths, removedPaths)
         },
-        deleteFile = { path, toTrash -> deleteFile(path, toTrash) }
+        deleteFile = { path, toTrash -> deleteFileInternal(path, toTrash) }
     )
 
     fun invalidateFolderCache(dirPath: String? = null) {
@@ -1635,9 +1635,7 @@ class FileRepository(
         val isDir = oldFile.isDirectory
         val renamed = oldFile.renameTo(newFile)
         if (renamed) {
-            invalidateFolderCache(parent)
-            removeIndexedPath(oldPath, isDir)
-            indexFileOrDir(newFile)
+            reconcileMutation(listOf(oldPath to newFile.absolutePath), emptyList())
         }
         renamed
     }
@@ -1690,6 +1688,14 @@ class FileRepository(
         }
     }
     suspend fun deleteFile(path: String, toTrash: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val success = deleteFileInternal(path, toTrash)
+        if (success) {
+            reconcileMutation(emptyList(), listOf(path))
+        }
+        success
+    }
+
+    private suspend fun deleteFileInternal(path: String, toTrash: Boolean): Boolean = withContext(Dispatchers.IO) {
         val file = File(path)
         if (!file.exists()) return@withContext false
         val parent = file.parent ?: ""
@@ -1701,7 +1707,6 @@ class FileRepository(
             val success = moveAcrossFilesystemsSafely(file, targetTrashFile)
             if (success) {
                 invalidateFolderCache(parent)
-                removeIndexedPath(path, isDir)
                 trashDao.insertTrash(
                     TrashEntity(
                         originalPath = path,
@@ -1718,7 +1723,6 @@ class FileRepository(
             val deleted = if (file.isDirectory) file.deleteRecursively() else file.delete()
             if (deleted) {
                 invalidateFolderCache(parent)
-                removeIndexedPath(path, isDir)
             }
             deleted
         }
@@ -1735,8 +1739,7 @@ class FileRepository(
 
         if (success) {
             trashDao.deleteTrashById(trashEntity.id)
-            origFile.parent?.let { invalidateFolderCache(it) }
-            indexFileOrDir(origFile)
+            reconcileMutation(listOf(trashEntity.trashPath to trashEntity.originalPath), emptyList())
         }
         success
     }
@@ -1771,8 +1774,7 @@ class FileRepository(
             } else {
                 src.copyTo(dest, overwrite = true)
             }
-            invalidateFolderCache(targetDir)
-            indexFileOrDir(dest)
+            reconcileMutation(listOf(sourcePath to dest.absolutePath), emptyList())
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1792,15 +1794,7 @@ class FileRepository(
             val moved = moveAcrossFilesystemsSafely(src, dest)
             if (!moved) return@withContext false
 
-            invalidateFolderCache(parent)
-            invalidateFolderCache(targetDir)
-            removeIndexedPath(sourcePath, isDir)
-            indexFileOrDir(dest)
-            if (dest.isDirectory) {
-                val batch = mutableListOf<IndexedFileEntity>()
-                scanDirForIndexing(dest, batch, Int.MAX_VALUE, 0, onBatchFlushed = {})
-                if (batch.isNotEmpty()) fileIndexDao.insertAll(batch)
-            }
+            reconcileMutation(listOf(sourcePath to dest.absolutePath), emptyList())
             true
         } catch (e: Exception) {
             e.printStackTrace()
