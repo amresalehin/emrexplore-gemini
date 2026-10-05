@@ -71,6 +71,8 @@ import com.example.ui.screens.TextEditorScreen
 import com.example.ui.screens.ZipViewerDialog
 import com.example.ui.theme.EmrExploreTheme
 import com.example.ui.viewmodel.MainTab
+import com.example.data.ai.ProviderType
+import com.example.data.ai.isKeylessAiConfig
 import com.example.ui.viewmodel.UnifiedViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -358,7 +360,9 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                             nodeCount = uiState.kgNodeCount,
                             edgeCount = uiState.kgEdgeCount,
                             aiConfig = uiState.aiConfig,
-                            apiConfigured = uiState.aiConfigLoaded && uiState.aiConfig.isEnabled,
+                            apiConfigured = uiState.aiConfigLoaded &&
+                                uiState.aiConfig.isEnabled &&
+                                (isKeylessAiConfig(uiState.aiConfig) || uiState.aiConfig.apiKey.isNotBlank()),
                             isIndexing = uiState.isKgIndexing,
                             indexingProgress = uiState.kgIndexingProgress,
                             indexingStatus = uiState.kgIndexingStatus,
