@@ -475,7 +475,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
-        // Gallery AI is WorkManager-backed and its queue/checkpoint is durable outside
+        // Gallery Brain processing is WorkManager-backed and its queue/checkpoint is durable outside
         // the ViewModel. Reattaching here keeps the UI accurate after process death.
         _uiState.update { it.copy(isGalleryAiPaused = galleryAiStore.isPaused()) }
         viewModelScope.launch {
@@ -1768,7 +1768,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun pauseGalleryAi() {
         if (!galleryAiStore.hasPendingWork()) {
-            showMessage("No gallery AI processing is active")
+            showMessage("No gallery Brain processing is active")
             return
         }
         galleryAiStore.setPaused(true)
