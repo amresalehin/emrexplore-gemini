@@ -1202,12 +1202,18 @@ class FileRepository(private val context: Context) {
             }
 
             ExplorerSearchScope.SUBFOLDERS -> {
-                val prefs = getPreferences()
-                var loadedFromRoom = false
-                val escapedPrefix = escapeSqlLike(effectiveDir.absolutePath + File.separator)
-                val escapedQuery = escapeSqlLike(q)
-
-                
+                if (effectiveDir.exists() && effectiveDir.isDirectory) {
+                    scanDirectoryRecursive(
+                        effectiveDir,
+                        filterPredicate,
+                        favSet,
+                        rawItems,
+                        maxDepth = Int.MAX_VALUE,
+                        currentDepth = 0,
+                        maxResults = 1000
+                    )
+                }
+            }
 
             ExplorerSearchScope.ALL_STORAGE -> {
                 val prefs = getPreferences()
@@ -1273,12 +1279,13 @@ class FileRepository(private val context: Context) {
         favSet: Set<String>,
         outList: MutableList<FileItem>,
         maxDepth: Int,
-        currentDepth: Int
+        currentDepth: Int,
+        maxResults: Int = 1000
     ) {
-        if (currentDepth > maxDepth || !dir.exists() || !dir.isDirectory || outList.size >= 250) return
+        if (currentDepth > maxDepth || !dir.exists() || !dir.isDirectory || outList.size >= maxResults) return
         val list = dir.listFiles() ?: return
         for (file in list) {
-            if (outList.size >= 250) return
+            if (outList.size >= maxResults) return
             val name = file.name
             if (name.startsWith(".") && name != ".trash") continue
             val item = toFileItem(file, favSet)
@@ -1293,7 +1300,7 @@ class FileRepository(private val context: Context) {
                 if (predicate(item)) {
                     outList.add(item)
                 }
-                scanDirectoryRecursive(file, predicate, favSet, outList, maxDepth, currentDepth + 1)
+                scanDirectoryRecursive(file, predicate, favSet, outList, maxDepth, currentDepth + 1, maxResults)
             } else {
                 if (predicate(item)) {
                     outList.add(item)
