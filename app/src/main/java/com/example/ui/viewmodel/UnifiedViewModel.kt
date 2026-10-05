@@ -140,10 +140,8 @@ data class UiState(
     val currentTab: MainTab = MainTab.HOME,
     // File Explorer
     val currentPath: String = "",
-    val explorerTabs: List<ExplorerTab> = listOf(
-        ExplorerTab(id = "default_tab", title = "Storage", path = "/storage/emulated/0")
-    ),
-    val activeExplorerTabId: String = "default_tab",
+    val explorerTabs: List<ExplorerTab> = emptyList(),
+    val activeExplorerTabId: String = "",
     val files: List<FileItem> = emptyList(),
     val searchQuery: String = "",
     val sortOption: SortOption = SortOption.NAME_ASC,
@@ -775,7 +773,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun openNewExplorerTab(path: String = repository.rootPath) {
+    fun openNewExplorerTab(path: String = _uiState.value.currentPath.ifBlank { repository.rootPath }) {
         val targetPath = if (path.isNotBlank() && File(path).exists()) path else repository.rootPath
         val title = resolveTabTitle(targetPath)
         val newTab = ExplorerTab(
@@ -805,6 +803,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 activeExplorerTabId = tabId,
                 currentPath = targetTab.path,
                 searchQuery = "",
+                explorerSearchActive = false,
+                explorerSearchResults = emptyList(),
+                explorerFilterType = ExplorerFilterType.ALL,
+                explorerDateFilter = ExplorerDateFilter.ALL,
+                explorerSizeFilter = ExplorerSizeFilter.ALL,
+                explorerFilterBarVisible = false,
                 isSelectionMode = false,
                 selectedPaths = emptySet()
             )
@@ -865,7 +869,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             val cached = repository.getCachedFiles(path, _uiState.value.showHidden)
             if (!cached.isNullOrEmpty()) {
                 val sorted = sortFiles(cached, _uiState.value.sortOption)
-                val initialItems = if (sorted.size <= 300) sorted else sorted.take(120)
+                val initialItems = sorted.take(120)
                 val hasMore = sorted.size > initialItems.size
                 _uiState.update {
                     it.copy(
@@ -1391,7 +1395,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 val all = repository.getFilesPaged(
                     dirPath = state.currentPath,
                     page = 0,
-                    pageSize = state.totalFilesInFolder.coerceAtMost(10_000),
+                    pageSize = state.totalFilesInFolder.coerceAtLeast(1),
                     sortOption = state.sortOption,
                     showHidden = state.showHidden
                 ).items
@@ -1542,8 +1546,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun deleteSelected(toTrash: Boolean = true) {
-        val selected = _uiState.value.selectedPaths.toList()
+    fun deletePathsAfterConfirmation(paths: List<String>, toTrash: Boolean = true) {
+        val selected = paths.distinct().filter { it.isNotBlank() }
         if (selected.isEmpty()) return
         pendingDeletePaths = selected
         repository.operationManager.startDelete(selected, toTrash)
@@ -1551,6 +1555,10 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update {
             it.copy(userMessage = if (toTrash) "Delete operation started" else "Permanent delete started")
         }
+    }
+
+    fun deleteSelected(toTrash: Boolean = true) {
+        deletePathsAfterConfirmation(_uiState.value.selectedPaths.toList(), toTrash)
     }
 
     fun zipSelected(zipName: String) {
