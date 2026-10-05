@@ -116,10 +116,10 @@ interface FileIndexDao {
     @Query("SELECT * FROM indexed_files WHERE category = :category AND name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
     suspend fun searchFilesByCategory(query: String, category: String, limit: Int = 100): List<IndexedFileEntity>
 
-    @Query("SELECT * FROM indexed_files WHERE (path = :root OR path LIKE :escapedPrefix || '%' ESCAPE '\\') AND name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
+    @Query("SELECT * FROM indexed_files WHERE (path = :root OR path LIKE :escapedPrefix || '%' ESCAPE '\\') AND LOWER(name) LIKE '%' || LOWER(:query) || '%' ESCAPE '\\' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
     suspend fun searchFilesUnderPath(root: String, escapedPrefix: String, query: String, limit: Int = 1000): List<IndexedFileEntity>
 
-    @Query("SELECT * FROM indexed_files WHERE (path = :root OR path LIKE :escapedPrefix || '%' ESCAPE '\\') AND category = :category AND name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
+    @Query("SELECT * FROM indexed_files WHERE (path = :root OR path LIKE :escapedPrefix || '%' ESCAPE '\\') AND category = :category AND LOWER(name) LIKE '%' || LOWER(:query) || '%' ESCAPE '\\' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
     suspend fun searchFilesUnderPathByCategory(root: String, escapedPrefix: String, query: String, category: String, limit: Int = 1000): List<IndexedFileEntity>
 
     @Query("SELECT * FROM indexed_files WHERE path = :root OR path LIKE :escapedPrefix || '%' ESCAPE '\\' ORDER BY isDirectory DESC, name ASC")
