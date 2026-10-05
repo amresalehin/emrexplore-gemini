@@ -507,11 +507,16 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                         }
                         androidx.work.WorkInfo.State.FAILED -> {
                             val hasPending = galleryAiStore.hasPendingWork()
+                            val error = work.outputData.getString("error")
                             _uiState.update {
                                 it.copy(
                                     isGalleryAiProcessing = false,
                                     isGalleryAiPaused = hasPending,
-                                    galleryAiStatus = if (hasPending) "Brain stopped — Resume to retry" else "Brain processing failed"
+                                    galleryAiStatus = if (hasPending) {
+                                        "Brain stopped — Resume to retry" + (error?.let { ": $it" } ?: "")
+                                    } else {
+                                        error ?: "Brain processing failed"
+                                    }
                                 )
                             }
                         }
@@ -1733,6 +1738,21 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             .cancelUniqueWork(com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME)
     }
 
+    fun cancelGalleryAi() {
+        val hadWork = galleryAiStore.hasPendingWork() || galleryAiStore.isPaused()
+        WorkManager.getInstance(getApplication<Application>())
+            .cancelUniqueWork(com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME)
+        galleryAiStore.clear()
+        _uiState.update {
+            it.copy(
+                isGalleryAiProcessing = false,
+                isGalleryAiPaused = false,
+                galleryAiProgress = 0f,
+                galleryAiStatus = if (hadWork) "Brain processing cancelled" else "Ready"
+            )
+        }
+    }
+
     fun resumeGalleryAi() {
         if (!galleryAiStore.hasPendingWork()) {
             galleryAiStore.clear()
@@ -2414,12 +2434,23 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun queryRag(question: String, attachedOverride: AttachedAiFile? = null) {
-        if (question.isBlank()) return
+        val cleanQuestion = question.trim()
+        if (cleanQuestion.isBlank()) {
+            _uiState.update { it.copy(ragAnswer = RagAnswer("Please enter a question.", isSuccessful = false)) }
+            showMessage("Please enter a question")
+            return
+        }
+        if (cleanQuestion.length > 4000) {
+            val message = "Question is too long. Please keep it under 4,000 characters."
+            _uiState.update { it.copy(ragAnswer = RagAnswer(message, isSuccessful = false)) }
+            showMessage(message)
+            return
+        }
         val attached = attachedOverride ?: _uiState.value.attachedAiFile
 
         val userMsg = AskAiChatMessage(
             isUser = true,
-            text = question.trim(),
+            text = cleanQuestion,
             attachedFile = attached
         )
 
@@ -2444,10 +2475,18 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 .takeLast(8)
                 .map { if (it.isUser) "User" to it.text else "AI" to it.text }
 
-            val answer = if (attached != null && attached.file.exists()) {
-                brainRepository.queryFileSpecifically(attached.file, question.trim(), history)
-            } else {
-                brainRepository.queryRag(question.trim(), history)
+            val answer = try {
+                if (attached != null && attached.file.exists()) {
+                    brainRepository.queryFileSpecifically(attached.file, cleanQuestion, history)
+                } else {
+                    brainRepository.queryRag(cleanQuestion, history)
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                RagAnswer(
+                    answer = "Brain query failed: " + (error.message ?: "unknown error"),
+                    isSuccessful = false
+                )
             }
 
             val aiMsg = AskAiChatMessage(
