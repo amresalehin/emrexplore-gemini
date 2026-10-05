@@ -325,8 +325,7 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                     transitionSpec = { fadeIn() togetherWith fadeOut() },
                     label = "TabContent"
                 ) { targetTab ->
-                    key(targetTab) {
-                        when (targetTab) {
+                    when (targetTab) {
                         MainTab.HOME -> HomeScreen(
                             uiState = uiState,
                             viewModel = viewModel
@@ -373,6 +372,7 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                             onDetachFile = { viewModel.detachAiFile() },
                             onClearChat = { viewModel.clearAskAiChat() },
                             onQueryRag = { viewModel.queryRag(it) },
+            onCancelRag = { viewModel.cancelRagQuery() },
                             onIndexAllFiles = { viewModel.indexAllFilesForKnowledgeGraph() },
                             onAskAiForFile = { node ->
                                 val path = node.sourceFilePath
@@ -432,7 +432,10 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             onContentChange = { viewModel.updateTextContent(it) },
             onToggleEdit = { viewModel.toggleTextEditing(it) },
             onSave = { viewModel.saveTextFile() },
-            onClose = { viewModel.closeTextEditor() }
+            onSaveAndClose = { viewModel.saveTextFile(closeWhenDone = true) },
+            onDiscard = { viewModel.discardTextChanges() },
+            onClose = { viewModel.closeTextEditor() },
+            isDirty = uiState.textFileContent != uiState.savedTextFileContent
         )
     }
 
