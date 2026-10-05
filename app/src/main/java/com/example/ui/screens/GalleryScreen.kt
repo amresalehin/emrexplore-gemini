@@ -744,9 +744,9 @@ fun GalleryScreen(
                     } else {
                         PagedMediaGrid(
                             items = pagedMedia,
-                        gridState = galleryGridState,
-                        columns = uiState.galleryColumns,
-                        onItemClick = { item ->
+                            gridState = galleryGridState,
+                            columns = uiState.galleryColumns,
+                            onItemClick = { item ->
                             if (uiState.gallerySelection.isNotEmpty()) viewModel.toggleGallerySelection(item)
                             else {
                             val loaded = pagedMedia.itemSnapshotList.items.filterIsInstance<GalleryGridItem.Media>().map { it.item }
@@ -769,7 +769,7 @@ fun GalleryScreen(
                             )
                             }
                         },
-                        onItemLongClick = { item -> viewModel.toggleGallerySelection(item) },
+                            onItemLongClick = { item -> viewModel.toggleGallerySelection(item) },
                             selectedPaths = uiState.gallerySelection.map { it.path }.toSet()
                         )
                     }
