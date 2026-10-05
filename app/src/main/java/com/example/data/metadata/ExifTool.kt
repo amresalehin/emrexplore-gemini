@@ -31,6 +31,39 @@ class ExifTool(private val context: Context) {
         }
     }
 
+    suspend fun writeMetadata(
+        file: File,
+        values: Map<String, String>,
+        gpsLatitude: Double,
+        gpsLongitude: Double,
+        gpsAltitude: Double,
+        keywords: List<String>
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!file.isFile || !file.canRead() || !file.canWrite()) return@withContext false
+        runCatching {
+            val args = buildList {
+                add("-overwrite_original")
+                values.filterValues { it.isNotBlank() }.forEach { (tag, value) ->
+                    add("-$tag=$value")
+                }
+                keywords.asSequence()
+                    .map(String::trim)
+                    .filter(String::isNotBlank)
+                    .distinct()
+                    .take(MAX_KEYWORDS)
+                    .forEach { add("-XMP-dc:Subject+=$it") }
+                if (gpsLatitude.isFinite() && gpsLongitude.isFinite()) {
+                    add("-GPSLatitude=$gpsLatitude")
+                    add("-GPSLongitude=$gpsLongitude")
+                    add("-GPSAltitude=$gpsAltitude")
+                }
+                add(file.absolutePath)
+            }
+            run(args)
+            true
+        }.getOrDefault(false)
+    }
+
     suspend fun writeAiMetadata(file: File, caption: String, tags: List<String>): Boolean =
         withContext(Dispatchers.IO) {
             if (!file.isFile || !file.canRead() || !file.canWrite()) return@withContext false
