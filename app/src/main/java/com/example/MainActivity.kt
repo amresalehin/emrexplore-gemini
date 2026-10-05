@@ -9,10 +9,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -21,6 +17,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
@@ -39,7 +38,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -273,28 +271,28 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                     NavigationBarItem(
                         selected = uiState.currentTab == MainTab.HOME,
                         onClick = { viewModel.setTab(MainTab.HOME) },
-                        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                        label = { Text("Home") },
+                        icon = { Icon(Icons.Default.Home, contentDescription = stringResource(com.example.R.string.nav_home_cd)) },
+                        label = { Text(stringResource(com.example.R.string.nav_home)) },
                         modifier = Modifier.testTag("nav_item_home")
                     )
                     NavigationBarItem(
                         selected = uiState.currentTab == MainTab.FILES,
                         onClick = { viewModel.setTab(MainTab.FILES) },
-                        icon = { Icon(Icons.Default.Folder, contentDescription = "Files") },
-                        label = { Text("Files") },
+                        icon = { Icon(Icons.Default.Folder, contentDescription = stringResource(com.example.R.string.nav_files_cd)) },
+                        label = { Text(stringResource(com.example.R.string.nav_files)) },
                         modifier = Modifier.testTag("nav_item_files")
                     )
                     NavigationBarItem(
                         selected = uiState.currentTab == MainTab.GALLERY,
                         onClick = { viewModel.setTab(MainTab.GALLERY) },
-                        icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = "Gallery") },
-                        label = { Text("Gallery") },
+                        icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = stringResource(com.example.R.string.nav_gallery_cd)) },
+                        label = { Text(stringResource(com.example.R.string.nav_gallery)) },
                         modifier = Modifier.testTag("nav_item_gallery")
                     )
                     NavigationBarItem(
                         selected = uiState.currentTab == MainTab.BRAIN,
                         onClick = { viewModel.setTab(MainTab.BRAIN) },
-                        icon = { Icon(Icons.Default.Psychology, contentDescription = "Brain & Graph") },
+                        icon = { Icon(Icons.Default.Psychology, contentDescription = stringResource(com.example.R.string.nav_brain_cd)) },
                         label = { Text("Brain") },
                         modifier = Modifier.testTag("nav_item_brain")
                     )
@@ -302,107 +300,19 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             }
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            // Permissions Banner for external storage & All Files Access
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             StoragePermissionBanner(
                 permissionsState = storagePermissionsState,
                 allFilesAccessGranted = allFilesAccessGranted,
-                onGrantAllFilesAccess = {
-                    launchAllFilesAccessSettings(context, allFilesLauncher)
-                }
+                onGrantAllFilesAccess = { launchAllFilesAccessSettings(context, allFilesLauncher) }
             )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f)
-            ) {
-                AnimatedContent(
-                    targetState = uiState.currentTab,
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                    label = "TabContent"
-                ) { targetTab ->
-                    when (targetTab) {
-                        MainTab.HOME -> HomeScreen(
-                            uiState = uiState,
-                            viewModel = viewModel
-                        )
-                        MainTab.FILES -> FileExplorerScreen(
-                            uiState = uiState,
-                            viewModel = viewModel
-                        )
-                        MainTab.GALLERY -> GalleryScreen(
-                            uiState = uiState,
-                            viewModel = viewModel,
-                            onOpenBrainSettings = {
-                                viewModel.setTab(MainTab.BRAIN)
-                                viewModel.setShowAiSettings(true)
-                            },
-                            onRequestMediaLocationPermission = {
-                                if (
-                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                                    !mediaLocationGranted
-                                ) {
-                                    mediaLocationLauncher.launch(
-                                        Manifest.permission.ACCESS_MEDIA_LOCATION
-                                    )
-                                }
-                            }
-                        )
-                        MainTab.BRAIN -> KnowledgeGraphScreen(
-                            nodes = uiState.kgNodes,
-                            edges = uiState.kgEdges,
-                            nodeCount = uiState.kgNodeCount,
-                            edgeCount = uiState.kgEdgeCount,
-                            aiConfig = uiState.aiConfig,
-                            apiConfigured = uiState.aiConfigLoaded &&
-                                uiState.aiConfig.isEnabled &&
-                                (isKeylessAiConfig(uiState.aiConfig) || uiState.aiConfig.apiKey.isNotBlank()),
-                            isIndexing = uiState.isKgIndexing,
-                            indexingProgress = uiState.kgIndexingProgress,
-                            indexingStatus = uiState.kgIndexingStatus,
-                            ragAnswer = uiState.ragAnswer,
-                            isRagQuerying = uiState.isRagQuerying,
-                            onDeviceBrainModel = uiState.onDeviceBrainModel,
-                            smartSuggestions = uiState.kgSmartSuggestions,
-                            askAiMessages = uiState.askAiMessages,
-                            attachedAiFile = uiState.attachedAiFile,
-                            onAttachFile = { viewModel.attachAiFile(it) },
-                            onDetachFile = { viewModel.detachAiFile() },
-                            onClearChat = { viewModel.clearAskAiChat() },
-                            onQueryRag = { viewModel.queryRag(it) },
-            onCancelRag = { viewModel.cancelRagQuery() },
-                            onIndexAllFiles = { viewModel.indexAllFilesForKnowledgeGraph() },
-                            onAskAiForFile = { node ->
-                                val path = node.sourceFilePath
-                                if (path != null) {
-                                    val file = File(path)
-                                    if (file.exists()) {
-                                        viewModel.attachAiFile(file)
-                                    }
-                                }
-                                viewModel.queryRag("Tell me about this file: ${node.label}")
-                            },
-                            brainTopics = uiState.brainTopics,
-                            selectedBrainTopic = uiState.brainTopics.firstOrNull { it.id == uiState.selectedBrainTopicId },
-                            brainTopicRelevantFiles = uiState.brainTopicRelevantFiles,
-                            isBrainTopicLoading = uiState.isBrainTopicLoading,
-                            brainTopicStatus = uiState.brainTopicStatus,
-                            onSelectBrainTopic = { viewModel.selectBrainTopic(it) },
-                            onSaveBrainTopic = { heading, description, existingId ->
-                                viewModel.saveBrainTopic(heading, description, existingId)
-                            },
-                            onDeleteBrainTopic = { viewModel.deleteBrainTopic(it) },
-                            onOpenAiSettings = { viewModel.setShowAiSettings(true) },
-                            onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false)) },
-                            onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false, mimeType = "image/jpeg")) }
-                        )
-                    }
-                }
+            Box(modifier = Modifier.fillMaxSize().weight(1f)) {
+                PersistentTabHost(
+                    uiState = uiState,
+                    viewModel = viewModel,
+                    mediaLocationGranted = mediaLocationGranted,
+                    mediaLocationLauncher = mediaLocationLauncher
+                )
             }
         }
     }
@@ -521,4 +431,93 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             onNavigateBack = { viewModel.setShowAiSettings(false) }
         )
     }
+}
+
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+private fun PersistentTabHost(
+    uiState: com.example.ui.viewmodel.UiState,
+    viewModel: UnifiedViewModel,
+    mediaLocationGranted: Boolean,
+    mediaLocationLauncher: androidx.activity.result.ActivityResultLauncher<String>
+) {
+    Box(Modifier.fillMaxSize()) {
+        TabHostPage(uiState.currentTab == MainTab.HOME) { HomeScreen(uiState, viewModel) }
+        TabHostPage(uiState.currentTab == MainTab.FILES) { FileExplorerScreen(uiState, viewModel) }
+        TabHostPage(uiState.currentTab == MainTab.GALLERY) {
+            GalleryScreen(
+                uiState = uiState,
+                viewModel = viewModel,
+                onOpenBrainSettings = { viewModel.setTab(MainTab.BRAIN); viewModel.setShowAiSettings(true) },
+                onRequestMediaLocationPermission = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !mediaLocationGranted) {
+                        mediaLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+                    }
+                }
+            )
+        }
+        TabHostPage(uiState.currentTab == MainTab.BRAIN) {
+            KnowledgeGraphScreen(
+                nodes = uiState.kgNodes,
+                edges = uiState.kgEdges,
+                nodeCount = uiState.kgNodeCount,
+                edgeCount = uiState.kgEdgeCount,
+                aiConfig = uiState.aiConfig,
+                apiConfigured = uiState.aiConfigLoaded && uiState.aiConfig.isEnabled &&
+                    (isKeylessAiConfig(uiState.aiConfig) || uiState.aiConfig.apiKey.isNotBlank()),
+                isIndexing = uiState.isKgIndexing,
+                indexingProgress = uiState.kgIndexingProgress,
+                indexingStatus = uiState.kgIndexingStatus,
+                ragAnswer = uiState.ragAnswer,
+                isRagQuerying = uiState.isRagQuerying,
+                onDeviceBrainModel = uiState.onDeviceBrainModel,
+                smartSuggestions = uiState.kgSmartSuggestions,
+                askAiMessages = uiState.askAiMessages,
+                attachedAiFile = uiState.attachedAiFile,
+                onAttachFile = viewModel::attachAiFile,
+                onDetachFile = viewModel::detachAiFile,
+                onClearChat = viewModel::clearAskAiChat,
+                onQueryRag = viewModel::queryRag,
+                onCancelRag = viewModel::cancelRagQuery,
+                onIndexAllFiles = viewModel::indexAllFilesForKnowledgeGraph,
+                onAskAiForFile = { node ->
+                    node.sourceFilePath?.let { path ->
+                        val file = File(path)
+                        if (file.exists()) viewModel.attachAiFile(file)
+                    }
+                    viewModel.queryRag("Tell me about this file: " + node.label)
+                },
+                brainTopics = uiState.brainTopics,
+                selectedBrainTopic = uiState.brainTopics.firstOrNull { it.id == uiState.selectedBrainTopicId },
+                brainTopicRelevantFiles = uiState.brainTopicRelevantFiles,
+                isBrainTopicLoading = uiState.isBrainTopicLoading,
+                brainTopicStatus = uiState.brainTopicStatus,
+                onSelectBrainTopic = viewModel::selectBrainTopic,
+                onSaveBrainTopic = viewModel::saveBrainTopic,
+                onDeleteBrainTopic = viewModel::deleteBrainTopic,
+                onOpenAiSettings = { viewModel.setShowAiSettings(true) },
+                onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(file.name, file.absolutePath, file.length(), file.lastModified(), false)) },
+                onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(file.name, file.absolutePath, file.length(), file.lastModified(), false, mimeType = "image/jpeg")) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun TabHostPage(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .alpha(if (visible) 1f else 0f)
+            .pointerInput(visible) {
+                if (!visible) {
+                    awaitPointerEventScope {
+                        while (true) awaitPointerEvent()
+                    }
+                }
+            }
+    ) { content() }
 }
