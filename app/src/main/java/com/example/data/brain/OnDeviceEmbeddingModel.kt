@@ -552,7 +552,7 @@ class OnDeviceEmbeddingEngine(
 
                 val first = output[0]
                 when (first) {
-                    is FloatArray -> output.map { it as FloatArray }
+                    is FloatArray -> output.map { (it as FloatArray).copyOf().also { vector -> normalize(vector) } }
                     is Array<*> -> output.mapIndexed { batchIndex, batchValue ->
                         val sequence = batchValue as? Array<*>
                             ?: throw IllegalStateException("Unexpected ONNX tensor rank")
@@ -577,9 +577,10 @@ class OnDeviceEmbeddingEngine(
             else -> throw IllegalStateException("Unsupported ONNX Brain output tensor")
         }
 
-        return pooled.map { vector ->
-            if (vector.size != expectedDimension) vector.copyOf(expectedDimension) else vector
+        if (pooled.any { it.size != expectedDimension }) {
+            throw IllegalStateException("On-device Brain embedding dimension mismatch")
         }
+        return pooled
     }
 
     private fun normalize(vector: FloatArray) {
