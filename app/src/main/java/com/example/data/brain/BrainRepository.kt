@@ -138,6 +138,7 @@ class BrainRepository(private val context: Context) {
             if (candidates.isEmpty()) break
 
             for (candidate in candidates) {
+                lastPath = candidate.path
                 if (candidate.name.startsWith(".") ||
                     candidate.path.split(File.separatorChar).any { segment -> segment == ".trash" }
                 ) {
@@ -166,7 +167,6 @@ class BrainRepository(private val context: Context) {
                     else -> failed++
                 }
                 processed++
-                lastPath = candidate.path
                 onProgress(processed, total, candidate.path, outcome)
             }
 
