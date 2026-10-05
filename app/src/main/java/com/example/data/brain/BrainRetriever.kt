@@ -60,7 +60,7 @@ class BrainRetriever(
         }
 
         var bestHits = fuseRanks(offlineHits, onlineHits, limit)
-        if (bestHits.isEmpty() || offlineHits.firstOrNull()?.score ?: 0f < MIN_VECTOR_SCORE) {
+        if (bestHits.size < limit) {
             bestHits = mergeLexicalFallback(clean, bestHits, limit)
         }
 
@@ -89,7 +89,14 @@ class BrainRetriever(
             .distinct()
             .take(MAX_RELATED_NODES)
             .toList()
-        val relatedNodes = if (neighborIds.isEmpty()) emptyList() else nodeDao.getByIds(neighborIds)
+        val relatedNodesRaw = if (neighborIds.isEmpty()) emptyList() else nodeDao.getByIds(neighborIds)
+        val relatedNodes = if (safe) {
+            relatedNodesRaw
+        } else {
+            relatedNodesRaw.map { node ->
+                node.copy(summary = BrainPrivacy.redactSensitive(node.summary))
+            }
+        }
 
         val nodeMap = (fileNodes + relatedNodes).associateBy { it.id }
         val evidence = edges.asSequence()
@@ -228,7 +235,7 @@ class BrainRetriever(
         return fused.values
             .sortedWith(compareByDescending<RankScore> { it.rrf }.thenByDescending { it.bestSimilarity })
             .take(limit)
-            .map { BrainSearchHit(it.chunk, it.bestSimilarity) }
+            .map { BrainSearchHit(it.chunk, it.rrf) }
     }
 
     private suspend fun mergeLexicalFallback(
@@ -236,22 +243,35 @@ class BrainRetriever(
         existing: List<BrainSearchHit>,
         limit: Int
     ): List<BrainSearchHit> {
-        val byId = LinkedHashMap<String, BrainSearchHit>()
-        existing.forEach { byId[it.chunk.id] = it }
+        if (existing.size >= limit) return existing.take(limit)
 
+        val existingIds = existing.asSequence().map { it.chunk.id }.toHashSet()
+        val lexicalScores = LinkedHashMap<String, Float>()
         val tokens = tokenize(question)
+
         for (token in tokens) {
             val candidates = chunkDao.lexical(token, 8)
             for (chunk in candidates) {
+                if (chunk.id in existingIds) continue
                 val score = lexicalScore(chunk.content, tokens)
-                val current = byId[chunk.id]
-                if (current == null || score > current.score) {
-                    byId[chunk.id] = BrainSearchHit(chunk, score)
-                }
+                lexicalScores[chunk.id] = maxOf(lexicalScores[chunk.id] ?: 0f, score)
             }
         }
 
-        return byId.values.sortedByDescending { it.score }.take(limit)
+        if (lexicalScores.isEmpty()) return existing
+
+        val lexicalIds = lexicalScores
+            .entries
+            .sortedByDescending { it.value }
+            .take((limit - existing.size).coerceAtLeast(0))
+            .map { it.key }
+
+        val chunks = chunkDao.getByIds(lexicalIds).associateBy { it.id }
+        val lexicalHits = lexicalIds.mapNotNull { id ->
+            chunks[id]?.let { chunk -> BrainSearchHit(chunk, lexicalScores[id] ?: 0f) }
+        }
+
+        return (existing + lexicalHits).take(limit)
     }
 
     private fun tokenize(value: String): List<String> =
