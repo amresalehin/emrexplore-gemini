@@ -83,11 +83,14 @@ class FileRepository(private val context: Context) {
 
     private val statCache = java.util.concurrent.ConcurrentHashMap<String, CachedStat>()
 
-    val operationManager = FileOperationManager { affectedPaths ->
-        for (dir in affectedPaths) {
-            invalidateFolderCache(dir)
-        }
-    }
+    val operationManager = FileOperationManager(
+        onFilesMutated = { affectedPaths ->
+            for (dir in affectedPaths) {
+                invalidateFolderCache(dir)
+            }
+        },
+        deleteFile = { path, toTrash -> deleteFile(path, toTrash) }
+    )
 
     fun invalidateFolderCache(dirPath: String? = null) {
         if (dirPath == null) {
