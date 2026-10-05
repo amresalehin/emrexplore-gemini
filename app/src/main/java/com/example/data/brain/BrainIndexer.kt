@@ -25,6 +25,7 @@ class BrainIndexer(
     private val chunkDao: BrainChunkDao,
     private val nodeDao: BrainNodeDao,
     private val edgeDao: BrainEdgeDao,
+    private val edgeEvidenceDao: BrainEdgeEvidenceDao,
     private val runDao: BrainRunDao,
     private val client: BrainAiGateway,
     private val db: AppDatabase
@@ -96,6 +97,22 @@ class BrainIndexer(
             val nodes = linkedMapOf<String, BrainNodeEntity>()
             nodes[fileNode.id] = fileNode
             val edges = linkedMapOf<String, BrainEdgeEntity>()
+            val edgeEvidence = linkedMapOf<String, BrainEdgeEvidenceEntity>()
+
+            fun recordEdge(edge: BrainEdgeEntity) {
+                addEdge(edges, edge)
+                edgeEvidence.putIfAbsent(
+                    edge.sourceNodeId + "|" + edge.targetNodeId + "|" + edge.relation + "|" + path,
+                    BrainEdgeEvidenceEntity(
+                        sourceNodeId = edge.sourceNodeId,
+                        targetNodeId = edge.targetNodeId,
+                        relation = edge.relation,
+                        evidenceSource = path,
+                        evidenceSnippet = edge.evidenceSnippet,
+                        createdAt = edge.createdAt
+                    )
+                )
+            }
 
             val entities = LinkedHashMap<String, BrainNodeEntity>()
             fun entityNode(name: String, type: String, confidence: Float = 0.6f): BrainNodeEntity {
@@ -119,8 +136,7 @@ class BrainIndexer(
                 if (clean.isBlank()) continue
                 val node = entityNode(clean, entity.type, entity.confidence)
                 nodes[node.id] = node
-                addEdge(
-                    edges,
+                recordEdge(
                     BrainEdgeEntity(
                         sourceNodeId = fileNode.id,
                         targetNodeId = node.id,
@@ -173,8 +189,7 @@ class BrainIndexer(
                         summary = "Exact coordinates: " + meta.latitude + ", " + meta.longitude,
                         confidence = 1f
                     )
-                    addEdge(
-                        edges,
+                    recordEdge(
                         BrainEdgeEntity(
                             sourceNodeId = fileNode.id,
                             targetNodeId = location.id,
@@ -222,13 +237,17 @@ class BrainIndexer(
             )
 
             withTransaction {
-                edgeDao.deleteForFile(path, fileNode.id)
+                edgeEvidenceDao.deleteForFile(path)
+                edgeEvidenceDao.refreshRepresentatives()
+                edgeEvidenceDao.deleteEdgesWithoutEvidence()
+                edgeDao.deleteForFileNode(fileNode.id)
                 chunkDao.deleteForFile(path)
                 nodeDao.deleteFileNode(path)
                 documentDao.delete(path)
 
                 if (nodes.isNotEmpty()) nodeDao.insertAll(nodes.values.toList())
                 if (edges.isNotEmpty()) edgeDao.insertAll(edges.values.toList())
+                if (edgeEvidence.isNotEmpty()) edgeEvidenceDao.insertAll(edgeEvidence.values.toList())
                 if (chunks.isNotEmpty()) chunkDao.insertAll(chunks)
                 documentDao.insert(document)
             }
