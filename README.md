@@ -40,7 +40,8 @@ data/brain/
 ├── BrainRetriever.kt       # semantic retrieval + bounded graph expansion
 ├── BrainRepository.kt      # single public Brain boundary
 ├── BrainModelDownloadWorker.kt
-├── OnDeviceEmbeddingModel.kt # model catalog, downloader, tokenizer, ONNX inference
+├── OnDeviceBrainModel.kt   # model catalog and downloader
+├── OnDeviceEmbeddingEngine.kt # tokenizer, ONNX inference, vector codec
 └── BrainModels.kt          # Brain/UI data models
 ```
 
