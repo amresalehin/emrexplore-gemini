@@ -59,7 +59,7 @@ A failed index preserves the previous known-good Brain representation.
 ### On-device semantic model
 Brain downloads a real semantic embedding model only when the user requests it, stores it in app-private storage, and executes it locally with ONNX Runtime. The current catalog uses [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2): a 384-dimensional BERT-family encoder with a 256-token sentence-transformer sequence limit. The ARM64 INT8 ONNX export is about 23 MB; the generic FP32 ONNX export is about 90 MB.
 
-The model is downloaded only after the user requests it from AI settings. It is written through temporary files, the ONNX weights are SHA-256 verified before activation, and Brain automatically reindexes after a successful model install so document vectors and query vectors are produced by the same local model. ONNX Runtime provides an Android package for running ONNX models on-device and includes XNNPACK support for mobile inference.
+The model is downloaded only after the user requests it from AI settings. It is written through temporary files, the ONNX weights are SHA-256 verified before activation, and Brain automatically reindexes after a successful model install so document and query vectors are produced by the same local model. ONNX Runtime provides an Android package for running ONNX models on-device and includes XNNPACK support for mobile inference.
 
 ### Retrieval
 When the local neural model is installed, it is the only Brain semantic retrieval space and the query encoder. Brain does not maintain a second synthetic/hash embedding space.
