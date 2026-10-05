@@ -289,11 +289,22 @@ class FileOperationManager(
                         OperationType.DELETE -> {
                             _progress.update { current -> current.copy(currentFileName = src.name) }
                             if (src.isDirectory) {
-                                src.deleteRecursively()
+                                deleteRecursivelyWithProgress(src) { deletedFile ->
+                                    processedFilesCount++
+                                    _progress.update { current ->
+                                        current.copy(
+                                            currentFileName = deletedFile.name,
+                                            filesProcessed = processedFilesCount
+                                        )
+                                    }
+                                }
                             } else {
-                                src.delete()
+                                checkPausedOrCancelled()
+                                if (!src.delete()) {
+                                    throw IOException("Could not delete " + src.name)
+                                }
+                                processedFilesCount++
                             }
-                            processedFilesCount++
                             _progress.update { current ->
                                 current.copy(filesProcessed = processedFilesCount)
                             }
@@ -337,6 +348,25 @@ class FileOperationManager(
         }
     }
 
+    private suspend fun deleteRecursivelyWithProgress(
+        dir: File,
+        onFileDeleted: suspend (File) -> Unit
+    ) {
+        checkPausedOrCancelled()
+        val children = dir.listFiles() ?: throw IOException("Could not list " + dir.name)
+        for (child in children) {
+            checkPausedOrCancelled()
+            if (child.isDirectory) {
+                deleteRecursivelyWithProgress(child, onFileDeleted)
+            } else {
+                if (!child.delete()) throw IOException("Could not delete " + child.name)
+                onFileDeleted(child)
+            }
+        }
+        checkPausedOrCancelled()
+        if (!dir.delete()) throw IOException("Could not delete " + dir.name)
+        onFileDeleted(dir)
+    }
     private suspend fun copyRecursivelyWithProgress(
         src: File,
         dest: File,
