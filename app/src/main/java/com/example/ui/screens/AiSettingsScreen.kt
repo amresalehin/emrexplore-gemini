@@ -321,7 +321,7 @@ fun AiSettingsScreen(
                         }
 
                         Text(
-                            "This neural embedding model is the canonical Brain search/index model. Download it once; semantic search and indexing work without a cloud provider."
+                            "This neural embedding model is the canonical Brain search/index model. Download it once; semantic search and indexing work without a cloud provider.",
                             style = MaterialTheme.typography.bodySmall
                         )
 
@@ -350,7 +350,7 @@ fun AiSettingsScreen(
                             }
                             OnDeviceBrainModelStatus.READY -> {
                                 Text(
-                                    "Ready — semantic search and Brain indexing are available locally."
+                                    "Ready — semantic search and Brain indexing are available locally.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.SemiBold
