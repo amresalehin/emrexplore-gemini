@@ -183,19 +183,38 @@ class BrainIndexer(
             if (input.isImage && ProviderType.fromString(config.providerType) == ProviderType.OLLAMA) {
                 val meta = input.metadata?.summary
                 if (meta?.latitude != null && meta.longitude != null) {
-                    val locationName = meta.city?.takeIf { it.isNotBlank() } ?: "Geo"
-                    val location = entityNode(locationName, "LOCATION", 1f)
-                    nodes[location.id] = location.copy(
-                        summary = "Exact coordinates: " + meta.latitude + ", " + meta.longitude,
+                    meta.city?.takeIf { it.isNotBlank() }?.let { city ->
+                        val cityNode = entityNode(city, "LOCATION", 0.9f)
+                        nodes[cityNode.id] = cityNode.copy(
+                            summary = "Shared city/region metadata from indexed photos.",
+                            confidence = maxOf(cityNode.confidence, 0.9f)
+                        )
+                        recordEdge(
+                            BrainEdgeEntity(
+                                sourceNodeId = fileNode.id,
+                                targetNodeId = cityNode.id,
+                                relation = "LOCATED_IN",
+                                weight = 0.9f,
+                                evidenceSnippet = "City: " + city,
+                                evidenceSource = path
+                            )
+                        )
+                    }
+
+                    val coordinateKey = meta.latitude.toString() + "," + meta.longitude.toString()
+                    val exactLocation = entityNode(coordinateKey, "LOCATION_EXACT", 1f)
+                    nodes[exactLocation.id] = exactLocation.copy(
+                        label = "Exact location",
+                        summary = "Exact coordinates: " + coordinateKey,
                         confidence = 1f
                     )
                     recordEdge(
                         BrainEdgeEntity(
                             sourceNodeId = fileNode.id,
-                            targetNodeId = location.id,
+                            targetNodeId = exactLocation.id,
                             relation = "LOCATED_AT",
                             weight = 1f,
-                            evidenceSnippet = "Exact coordinates: " + meta.latitude + ", " + meta.longitude,
+                            evidenceSnippet = "Exact coordinates: " + coordinateKey,
                             evidenceSource = path
                         )
                     )
