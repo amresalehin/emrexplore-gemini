@@ -5,9 +5,9 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.example.data.brain.BrainRepository
+import kotlinx.coroutines.ensureActive
 import com.example.data.repository.FileRepository
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 
 /**
  * Single Brain indexing pipeline.
@@ -35,6 +35,7 @@ class BrainIndexWorker(appContext: Context, params: WorkerParameters) : Coroutin
 
             if (paths.isNotEmpty()) {
                 val fileRepository = FileRepository(applicationContext)
+                val targetedStore = BrainTargetedOperationStore(applicationContext)
                 val config = brainRepository.getAiConfig()
                 var indexed = 0
                 var failed = 0
@@ -50,7 +51,13 @@ class BrainIndexWorker(appContext: Context, params: WorkerParameters) : Coroutin
                         false
                     }
 
-                    if (success) indexed++ else failed++
+                    if (success) {
+                        indexed++
+                        targetedStore.markCompleted(path)
+                    } else {
+                        failed++
+                    }
+                    currentCoroutineContext().ensureActive()
                     setProgress(
                         workDataOf(
                             "current" to index + 1,
