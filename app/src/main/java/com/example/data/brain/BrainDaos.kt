@@ -17,7 +17,12 @@ interface BrainDocumentDao {
     @Query("SELECT path FROM brain_documents")
     suspend fun getAllPaths(): List<String>
 
-    @Query("SELECT path FROM brain_documents WHERE path = :path OR path LIKE :prefix || '/%'")
+    @Query("""
+        SELECT path
+        FROM brain_documents
+        WHERE path = :path
+           OR substr(path, 1, length(:prefix)) = :prefix
+    """)
     suspend fun getPathsUnder(path: String, prefix: String): List<String>
 
     @Query("DELETE FROM brain_documents WHERE path = :path")
