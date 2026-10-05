@@ -260,8 +260,7 @@ fun AiSettingsScreen(
 
             Text("The local Brain model is the canonical semantic-search engine. Cloud AI is an optional answer generator.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-            SectionTitle("CLOUD AI — OPTIONAL")
-                OutlinedCard(
+            OutlinedCard(
                     modifier = Modifier.fillMaxWidth().clickable { showProviderPicker = true },
                     shape = RoundedCornerShape(14.dp)
                 ) {
