@@ -158,7 +158,7 @@ enum class BrainScreenTab(val label: String, val icon: ImageVector) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun KnowledgeGraphScreen(
+fun BrainScreen(
     nodes: List<BrainNodeEntity>,
     edges: List<BrainEdgeEntity>,
     nodeCount: Int = nodes.size,
