@@ -143,7 +143,6 @@ import com.example.data.brain.OnDeviceBrainModelStatus
 import com.example.data.model.MediaAlbum
 import com.example.data.model.MediaItem
 import com.example.data.media.MediaAlbumRepository
-import com.example.data.media.MediaRepository
 import com.example.data.media.FullscreenMediaSource
 import com.example.ui.viewmodel.GallerySubTab
 import com.example.ui.viewmodel.GallerySortOption
@@ -171,9 +170,9 @@ fun GalleryScreen(
     var filterMenuVisible by remember { mutableStateOf(false) }
     var sortMenuVisible by remember { mutableStateOf(false) }
     var groupMenuVisible by remember { mutableStateOf(false) }
-    var groupBy by remember { mutableStateOf("Month") }
+    val groupBy = uiState.galleryGroupBy
 
-    val groupedPagingFlow: Flow<PagingData<GalleryGridItem>> = remember(groupBy) {
+    val groupedPagingFlow: Flow<PagingData<GalleryGridItem>> = remember(groupBy, selectedAlbumId) {
         viewModel.galleryPagingFlow.map { pagingData: PagingData<MediaItem> ->
             val mediaData: PagingData<GalleryGridItem> = pagingData.map { media -> GalleryGridItem.Media(media) }
             if (groupBy == "None") {
@@ -224,11 +223,7 @@ fun GalleryScreen(
     }
 
     val albumPagedMedia = if (selectedAlbumId != null) {
-        val albumFlow: Flow<PagingData<GalleryGridItem>> = remember(selectedAlbumId, uiState.gallerySortOption) {
-            MediaRepository(context).albumPager(selectedAlbumId, uiState.gallerySortOption).map { pagingData: PagingData<MediaItem> ->
-                pagingData.map { media -> GalleryGridItem.Media(media) as GalleryGridItem }
-            }
-        }
+        val albumFlow = viewModel.albumPagingFlow(selectedAlbumId)
         albumFlow.collectAsLazyPagingItems()
     } else null
 
