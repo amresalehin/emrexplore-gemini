@@ -2621,7 +2621,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>()
-            .setInputData(androidx.work.workDataOf("force" to true))
+            .setInputData(
+                androidx.work.workDataOf(
+                    "force" to true,
+                    "refreshStorageIndex" to true
+                )
+            )
             .build()
         WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
             com.example.data.ai.BrainIndexWorker.UNIQUE_NAME,
