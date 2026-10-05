@@ -196,9 +196,9 @@ This file is the engineering source of truth. Completed work is recorded once. O
 
 ## 10. Performance and observability
 
-- [ ] Keep Brain indexing memory bounded for very large libraries.
+- [x] Keep Brain indexing memory bounded for very large libraries.
 - [ ] Keep image preview and metadata work bounded by dimensions/file size.
-- [ ] Avoid whole-library materialization during Brain synchronization.
+- [x] Avoid whole-library materialization during Brain synchronization.
 - [ ] Avoid unbounded text reads and whole-file strings.
 - [ ] Add instrumentation for index duration, chunks created, embedding failures, graph nodes/edges, and retrieval latency.
 - [ ] Add migration and database-growth benchmarks.
