@@ -130,10 +130,11 @@ class BrainRepository(private val context: Context) {
         var skipped = 0
         var failed = 0
         var processed = 0
+        var lastPath = ""
         val pageSize = 256
 
-        while (processed < total) {
-            val candidates = fileIndexDao.getBrainCandidatesPage(extensions, pageSize, processed)
+        while (true) {
+            val candidates = fileIndexDao.getBrainCandidatesPage(extensions, lastPath, pageSize)
             if (candidates.isEmpty()) break
 
             for (candidate in candidates) {
@@ -165,6 +166,7 @@ class BrainRepository(private val context: Context) {
                     else -> failed++
                 }
                 processed++
+                lastPath = candidate.path
                 onProgress(processed, total, candidate.path, outcome)
             }
 
