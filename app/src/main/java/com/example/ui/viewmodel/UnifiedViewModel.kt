@@ -75,6 +75,7 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.work.Constraints
 import androidx.work.NetworkType
+import androidx.work.BackoffPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -2580,6 +2581,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build()
             )
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, java.time.Duration.ofSeconds(10))
             .build()
 
         _uiState.update {
