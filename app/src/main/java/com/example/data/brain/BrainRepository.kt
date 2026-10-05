@@ -299,7 +299,12 @@ class BrainRepository(context: Context) {
             RagAnswer(answer, connectedNodes = listOf(node), isSuccessful = true, latencyMs = System.currentTimeMillis() - started)
         } catch (error: Exception) {
             if (error is CancellationException) throw error
-            RagAnswer(localFileAnswer(file, input) + "\n\nAI service error: " + (error.message ?: "unknown error"), brainNodeDao.getByFilePath(file.absolutePath)?.let { listOf(it) }.orEmpty(), isSuccessful = false, latencyMs = System.currentTimeMillis() - started)
+            RagAnswer(
+                answer = localFileAnswer(file, input) + "\n\nAI service error: " + (error.message ?: "unknown error"),
+                connectedNodes = brainNodeDao.getByFilePath(file.absolutePath)?.let { listOf(it) }.orEmpty(),
+                isSuccessful = false,
+                latencyMs = System.currentTimeMillis() - started
+            )
         }
     }
 
@@ -313,8 +318,8 @@ class BrainRepository(context: Context) {
         val (context, evidence) = retriever.buildContext(retrieval, config)
         if (context.isBlank()) return@withContext RagAnswer("The Brain index matched sources, but their files are no longer readable. Sync Brain to refresh the index.", retrieval.hits.map { it.chunk }, retrieval.relatedNodes, false, System.currentTimeMillis() - started)
 
-        val answer: String
-        val successful: Boolean
+        var answer = ""
+        var successful = false
         if (isAiReady(config)) {
             try {
                 answer = brainAi.generateRagAnswer(clean, context, evidence, chatHistory.filter { it.first.isNotBlank() && it.second.isNotBlank() }, config)
