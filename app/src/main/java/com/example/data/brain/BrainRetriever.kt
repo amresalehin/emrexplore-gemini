@@ -166,34 +166,4 @@ class BrainRetriever(
         return drainTop(queue, limit)
     }
 
-    private fun fuseRanks(
-        offlineHits: List<BrainSearchHit>,
-        onlineHits: List<BrainSearchHit>,
-        limit: Int
-    ): List<BrainSearchHit> {
-        data class RankScore(
-            val chunk: BrainChunkEntity,
-            val rrf: Float
-        )
-
-        val fused = mutableMapOf<String, RankScore>()
-        fun addRanks(hits: List<BrainSearchHit>) {
-            hits.forEachIndexed { index, hit ->
-                val contribution = 1f / (RRF_K + index + 1)
-                val current = fused[hit.chunk.id]
-                fused[hit.chunk.id] = RankScore(
-                    chunk = hit.chunk,
-                    rrf = (current?.rrf ?: 0f) + contribution
-                )
-            }
-        }
-
-        addRanks(offlineHits)
-        addRanks(onlineHits)
-
-        return fused.values
-            .sortedWith(compareByDescending<RankScore> { it.rrf }.thenBy { it.chunk.id })
-            .take(limit)
-            .map { BrainSearchHit(it.chunk, it.rrf) }
-    }
 
