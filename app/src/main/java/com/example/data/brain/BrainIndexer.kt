@@ -100,6 +100,7 @@ class BrainIndexer(
             val edgeEvidence = linkedMapOf<String, BrainEdgeEvidenceEntity>()
 
             fun recordEdge(edge: BrainEdgeEntity) {
+                if (edge.sourceNodeId == edge.targetNodeId) return
                 addEdge(edges, edge)
                 edgeEvidence.putIfAbsent(
                     edge.sourceNodeId + "|" + edge.targetNodeId + "|" + edge.relation + "|" + path,
