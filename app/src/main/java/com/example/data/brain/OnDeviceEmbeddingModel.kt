@@ -283,7 +283,7 @@ class OnDeviceEmbeddingModelManager(context: Context) {
     }
 }
 
-private class BertWordPieceTokenizer(
+internal class BertWordPieceTokenizer(
     vocabFile: File,
     private val maxTokens: Int
 ) {
