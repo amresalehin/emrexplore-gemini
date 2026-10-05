@@ -284,7 +284,7 @@ fun KnowledgeGraphScreen(
                     ) {
                         IconButton(
                             onClick = onIndexAllFiles,
-                            enabled = !isIndexing && onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
+                            enabled = !isIndexing && localBrainReady,
                             modifier = Modifier
                                 .size(38.dp)
                                 .testTag("kg_sync_button")
@@ -440,6 +440,7 @@ fun KnowledgeGraphScreen(
                     DeclutteredCanvasView(
                         nodes = nodes,
                         edges = edges,
+                        localBrainReady = onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
                         onNodeClick = { selectedNode = it },
                         onOpenFile = onOpenFile,
                         onOpenImage = onOpenImage,
@@ -1262,6 +1263,7 @@ private fun copyUriToTempFile(context: Context, uri: Uri): File? {
 fun DeclutteredCanvasView(
     nodes: List<BrainNodeEntity>,
     edges: List<BrainEdgeEntity>,
+    localBrainReady: Boolean = false,
     onNodeClick: (BrainNodeEntity) -> Unit,
     onOpenFile: (File) -> Unit,
     onOpenImage: (File) -> Unit,
