@@ -304,13 +304,6 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     fun albumPagingFlow(albumId: String): Flow<PagingData<MediaItem>> =
         mediaRepository.albumPager(albumId, _uiState.value.gallerySortOption)
 
-    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
-    fun albumGridPagingFlow(albumId: String): Flow<PagingData<com.example.ui.screens.GalleryGridItem>> =
-        mediaRepository.albumPager(albumId, _uiState.value.gallerySortOption)
-            .map { pagingData ->
-                pagingData.map { media -> com.example.ui.screens.GalleryGridItem.Media(media) as com.example.ui.screens.GalleryGridItem }
-            }
-
     private fun todayDateString(): String =
         java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
 
