@@ -236,6 +236,11 @@ class BrainRepository(context: Context) {
         brainNodeDao.recomputeDegrees()
     }
 
+    suspend fun getBrainNode(path: String): BrainNodeEntity? = withContext(Dispatchers.IO) {
+        if (path.isBlank()) return@withContext null
+        brainNodeDao.getByFilePath(path)
+    }
+
     suspend fun recomputeGraphDegrees() = withContext(Dispatchers.IO) {
         brainNodeDao.deleteOrphans()
         brainNodeDao.recomputeDegrees()
