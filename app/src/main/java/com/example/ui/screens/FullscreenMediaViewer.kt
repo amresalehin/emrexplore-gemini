@@ -73,7 +73,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.data.local.BrainNodeEntity
+import com.example.data.brain.BrainNodeEntity
 import com.example.data.model.FileItem
 import com.example.data.model.MediaItem
 import com.example.ui.components.formatDate
