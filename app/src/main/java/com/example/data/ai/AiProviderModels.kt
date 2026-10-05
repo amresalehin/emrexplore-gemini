@@ -25,7 +25,7 @@ enum class ProviderType(
         displayName = "OpenAI-compatible",
         description = "NVIDIA NIM, OpenAI, Groq, or any compatible endpoint",
         defaultBaseUrl = "https://integrate.api.nvidia.com/v1",
-        defaultModel = "nvidia/nemotron-3-super-120b-a12b",
+        defaultModel = "nvidia/nemotron-3-super-120b",
         defaultVisionModel = "meta/llama-3.2-11b-vision-instruct",
         defaultTextEmbeddingModel = "nvidia/nv-embedqa-e5-v5",
         defaultMultimodalEmbeddingModel = "nvidia/llama-nemotron-embed-vl-1b-v2",
