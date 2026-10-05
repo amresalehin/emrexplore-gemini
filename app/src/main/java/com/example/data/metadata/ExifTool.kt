@@ -122,6 +122,7 @@ class ExifTool(private val context: Context) {
         }
     }
 
+    @Suppress("NewApi")
     private fun run(args: List<String>): String {
         val command = ExifToolRunner.buildBaseCommand(appContext, args)
         val process = ProcessBuilder(command)
