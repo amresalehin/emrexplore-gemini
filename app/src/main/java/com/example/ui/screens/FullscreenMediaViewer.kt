@@ -43,8 +43,8 @@ import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -75,7 +75,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.data.local.MediaMetadataEntity
+import com.example.data.local.BrainNodeEntity
 import com.example.data.model.FileItem
 import com.example.data.model.MediaItem
 import com.example.ui.components.formatDate
@@ -92,8 +92,8 @@ fun FullscreenMediaViewer(
     onIndexChange: (Int) -> Unit,
     onToggleFavorite: (FileItem) -> Unit,
     onInspectMetadata: (MediaItem) -> Unit = {},
-    onLoadAiMetadata: suspend (MediaItem) -> MediaMetadataEntity? = { null },
-    onReAnalyzeAi: (MediaItem) -> Unit = {}
+    onLoadBrainNode: suspend (MediaItem) -> BrainNodeEntity? = { null },
+    onReindexWithBrain: (MediaItem) -> Unit = {}
 ) {
     BackHandler { onClose() }
 
@@ -102,9 +102,9 @@ fun FullscreenMediaViewer(
     val currentItem = mediaList.getOrNull(localIndex)
     var showControls by remember { mutableStateOf(true) }
     var showInfoSheet by remember { mutableStateOf(false) }
-    var showAiSheet by remember { mutableStateOf(false) }
-    var aiMetadata by remember { mutableStateOf<MediaMetadataEntity?>(null) }
-    var isLoadingAiMetadata by remember { mutableStateOf(false) }
+    var showBrainSheet by remember { mutableStateOf(false) }
+    var brainNode by remember { mutableStateOf<BrainNodeEntity?>(null) }
+    var isLoadingBrainNode by remember { mutableStateOf(false) }
     var rotationDegrees by remember { mutableFloatStateOf(0f) }
 
     // Zoom & Pan state
@@ -115,14 +115,14 @@ fun FullscreenMediaViewer(
     // Reset zoom when index changes
     LaunchedEffect(currentItem?.path) {
         val item = currentItem ?: return@LaunchedEffect
-        showAiSheet = false
-        isLoadingAiMetadata = true
-        aiMetadata = try {
-            onLoadAiMetadata(item)
+        showBrainSheet = false
+        isLoadingBrainNode = true
+        brainNode = try {
+            onLoadBrainNode(item)
         } catch (_: Exception) {
             null
         }
-        isLoadingAiMetadata = false
+        isLoadingBrainNode = false
     }
 
     LaunchedEffect(currentIndex) {
@@ -175,7 +175,7 @@ fun FullscreenMediaViewer(
                             ) {
                                 swipeUpDistance = 0f
                                 swipeHorizontalDistance = 0f
-                                showAiSheet = true
+                                showBrainSheet = true
                                 showControls = true
                             }
                         } else {
@@ -444,20 +444,10 @@ fun FullscreenMediaViewer(
         }
     }
 
-    // AI enrichment sheet — opened by swiping up on the image.
-    if (showAiSheet) {
-        val tags = remember(aiMetadata?.aiTagsJson) {
-            parseJsonStrings(aiMetadata?.aiTagsJson.orEmpty())
-        }
-        val entities = remember(aiMetadata?.aiEntitiesJson) {
-            parseJsonEntities(aiMetadata?.aiEntitiesJson.orEmpty())
-        }
-        val relations = remember(aiMetadata?.aiRelationsJson) {
-            parseJsonRelations(aiMetadata?.aiRelationsJson.orEmpty())
-        }
-
+    // Brain analysis sheet — the Gallery reads AI-derived knowledge only from Brain.
+    if (showBrainSheet) {
         ModalBottomSheet(
-            onDismissRequest = { showAiSheet = false },
+            onDismissRequest = { showBrainSheet = false },
             sheetState = rememberModalBottomSheetState()
         ) {
             Column(
@@ -473,36 +463,32 @@ fun FullscreenMediaViewer(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "AI Analysis",
+                            text = "Brain Analysis",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = if (aiMetadata?.aiProcessedAt ?: 0L > 0L) {
-                                "Saved AI enrichment"
-                            } else {
-                                "Not analyzed yet"
-                            },
+                            text = if (brainNode != null) "Indexed by Brain" else "Not indexed yet",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     if (!currentItem.isVideo) {
                         Button(
-                            onClick = { onReAnalyzeAi(currentItem) },
+                            onClick = { onReindexWithBrain(currentItem) },
                             contentPadding = ButtonDefaults.ContentPadding
                         ) {
-                            Text("Re-analyze")
+                            Text("Re-index")
                         }
                     }
                 }
 
-                if (isLoadingAiMetadata) {
+                if (isLoadingBrainNode) {
                     Text(
-                        text = "Loading saved AI analysis…",
+                        text = "Loading Brain analysis…",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                } else if (aiMetadata == null || aiMetadata?.aiProcessedAt == 0L) {
+                } else if (brainNode == null) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -510,80 +496,37 @@ fun FullscreenMediaViewer(
                     ) {
                         Text(
                             text = if (currentItem.isVideo) {
-                                "AI gallery enrichment is available for images."
+                                "Brain indexing is currently available for supported documents and images."
                             } else {
-                                "This image has not been analyzed yet."
+                                "This image has not been indexed by Brain yet."
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(16.dp)
                         )
                     }
                 } else {
-                    aiMetadata?.aiCaption?.takeIf { it.isNotBlank() }?.let { caption ->
-                        Text(
-                            text = "DESCRIPTION",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                    MediaInfoRow("Brain node", brainNode?.nodeType.orEmpty())
+                    brainNode?.summary
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { summary ->
                             Text(
-                                text = caption,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(16.dp)
+                                text = "SUMMARY",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
                             )
-                        }
-                    }
-
-                    if (tags.isNotEmpty()) {
-                        Text(
-                            text = "TAGS",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            itemsIndexed(tags, key = { _, tag -> tag }) { _, tag ->
-                                AssistChip(
-                                    onClick = {},
-                                    label = { Text("#$tag") },
-                                    colors = AssistChipDefaults.assistChipColors()
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = summary,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.padding(16.dp)
                                 )
                             }
                         }
-                    }
-
-                    if (entities.isNotEmpty()) {
-                        Text(
-                            text = "DETECTED CONCEPTS",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        entities.forEach { (name, type) ->
-                            MediaInfoRow(type.ifBlank { "ENTITY" }, name)
-                        }
-                    }
-
-                    if (relations.isNotEmpty()) {
-                        Text(
-                            text = "RELATIONS",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        relations.forEach { relation ->
-                            MediaInfoRow("Connection", relation)
-                        }
-                    }
-
-                    aiMetadata?.aiModel?.takeIf { it.isNotBlank() }?.let { model ->
-                        MediaInfoRow("AI model", model)
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
