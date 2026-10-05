@@ -366,7 +366,14 @@ class BrainIndexer(
 
         // A real neural encoder is the preferred Brain representation. The model is
         // downloaded explicitly by the user and then reused for every file/query.
+        val localReady = onDeviceEmbedding.isReady()
         val local = runCatching { onDeviceEmbedding.embedTextPassages(texts) }.getOrNull()
+        if (localReady && (local == null || local.size != texts.size || local.any { it.isEmpty() })) {
+            // Once the user has installed the real neural model, a failed inference
+            // must not silently produce a fake semantic index. Preserve the last
+            // known-good Brain representation and retry later instead.
+            throw IllegalStateException("On-device Brain embedding inference failed")
+        }
         if (local != null &&
             local.size == texts.size &&
             local.all { it.isNotEmpty() }
