@@ -194,6 +194,54 @@ fun AiSettingsScreen(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            SectionTitle("LOCAL BRAIN — REQUIRED")
+            OutlinedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Enable Brain locally", fontWeight = FontWeight.Bold)
+                            Text("The local model powers semantic search, indexing, Topics and Graph.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Text("Brain retrieval is local-first. Download the model below; cloud AI is optional and only supplies generated answers or optional enrichment.", style = MaterialTheme.typography.bodySmall)
+                    when (onDeviceBrainModel.status) {
+                        OnDeviceBrainModelStatus.NOT_INSTALLED -> {
+                            Button(onClick = onDownloadOnDeviceBrainModel, modifier = Modifier.fillMaxWidth().testTag("on_device_brain_download_btn"), shape = RoundedCornerShape(12.dp)) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Download local Brain model")
+                            }
+                        }
+                        OnDeviceBrainModelStatus.DOWNLOADING -> {
+                            LinearProgressIndicator(progress = { onDeviceBrainModel.progress }, modifier = Modifier.fillMaxWidth())
+                            Text("Downloading ${(onDeviceBrainModel.progress * 100).toInt()}%…", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        }
+                        OnDeviceBrainModelStatus.READY -> {
+                            Text("Ready — semantic indexing and search are available.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                            OutlinedButton(onClick = onDeleteOnDeviceBrainModel, modifier = Modifier.fillMaxWidth().testTag("on_device_brain_delete_btn"), shape = RoundedCornerShape(12.dp)) {
+                                Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Remove local model")
+                            }
+                        }
+                        OnDeviceBrainModelStatus.ERROR -> {
+                            Text(onDeviceBrainModel.error ?: "The local model could not be downloaded.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                            Button(onClick = onDownloadOnDeviceBrainModel, modifier = Modifier.fillMaxWidth().testTag("on_device_brain_retry_btn"), shape = RoundedCornerShape(12.dp)) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Retry download")
+                            }
+                        }
+                    }
+                }
+            }
+
+            SectionTitle("CLOUD AI — OPTIONAL")
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)),
@@ -203,26 +251,14 @@ fun AiSettingsScreen(
                     Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Optional cloud AI", fontWeight = FontWeight.Bold)
-                        Text(
-                            "Generated answers, cloud enrichment and optional image understanding. Local Brain search does not depend on this.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text("Enable cloud AI answers", fontWeight = FontWeight.Bold)
+                        Text("Optional: only prompts, attached files, or context needed for cloud-generated answers are sent to the configured provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Switch(
-                        checked = isEnabled,
-                        onCheckedChange = { isEnabled = it },
-                        modifier = Modifier.testTag("ai_enabled_switch")
-                    )
+                    Switch(checked = isEnabled, onCheckedChange = { isEnabled = it }, modifier = Modifier.testTag("ai_enabled_switch"))
                 }
             }
 
-            Text(
-                "Local Brain is separate from cloud AI. Downloading the local model enables semantic search and indexing on this device.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text("The local Brain model is the canonical semantic-search engine. Cloud AI is an optional answer generator.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             SectionTitle("CLOUD AI — OPTIONAL")
                 OutlinedCard(
@@ -291,7 +327,7 @@ fun AiSettingsScreen(
                     )
                     CompactInfo("Works with OpenAI-compatible endpoints such as OpenAI, NVIDIA NIM, Groq, or your own server. Fetch models after changing it.")
                 } else if (selectedProvider == ProviderType.OLLAMA) {
-                    CompactInfo("No API key is required for Ollama. Use localhost or 10.0.2.2 for local connections.")
+                    CompactInfo("Ollama is local-first. Same device → 127.0.0.1:11434. Android Emulator → 10.0.2.2:11434. Another computer on your LAN → use its private IP, e.g. 192.168.1.20:11434.")
                 } else {
                     CompactInfo("Server: ${baseUrl.removeSuffix("/")}")
                 }
@@ -409,7 +445,19 @@ fun AiSettingsScreen(
                     Text("No cost metadata is assumed; only explicitly free models pass this filter.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                     Switch(checked = freeOnly, onCheckedChange = { freeOnly = it })
                 }
-                modelFetchError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                modelFetchError?.let { error ->
+                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Selected model needs attention", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text(error, color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodySmall)
+                            OutlinedButton(onClick = { onFetchModels(draftConfig()) }, enabled = !isFetchingModels, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (isFetchingModels) "Refreshing models…" else "Refresh available models")
+                            }
+                        }
+                    }
+                }
 
                 ModelPicker("General files / chat", firstUsable(chats, chatModel), { showChatPicker = true }, "ai_chat_model_field", chats)
                 ModelPicker("Vision / image understanding + caption", firstUsable(visions, visionModel), { showVisionPicker = true }, "ai_vision_model_field", visions)
@@ -440,6 +488,24 @@ fun AiSettingsScreen(
                 }
 
                 HorizontalDivider()
+                SectionTitle("AI DATA & PRIVACY")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Local Brain", fontWeight = FontWeight.SemiBold)
+                        Text("Embeddings, Graph data and Topics stay on this device.", style = MaterialTheme.typography.bodySmall)
+                        Text("Cloud providers", fontWeight = FontWeight.SemiBold)
+                        Text("When enabled, only data needed for the requested cloud answer or enrichment is sent to the configured provider.", style = MaterialTheme.typography.bodySmall)
+                        Text("Ollama", fontWeight = FontWeight.SemiBold)
+                        Text("Requests go only to the endpoint you configure: same device, emulator host, or a private LAN server.", style = MaterialTheme.typography.bodySmall)
+                        Text("Location & .env files", fontWeight = FontWeight.SemiBold)
+                        Text("Precise GPS is omitted from metadata sent to cloud providers. .env files are indexed as text; keep API keys and other secrets out of files Brain can ingest.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+
                 TextButton(onClick = { showAdvanced = !showAdvanced }, modifier = Modifier.fillMaxWidth()) {
                     Text(if (showAdvanced) "Hide advanced options" else "Advanced options")
                 }
