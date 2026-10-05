@@ -338,6 +338,10 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                         MainTab.GALLERY -> GalleryScreen(
                             uiState = uiState,
                             viewModel = viewModel,
+                            onOpenBrainSettings = {
+                                viewModel.setTab(MainTab.BRAIN)
+                                viewModel.setShowAiSettings(true)
+                            },
                             onRequestMediaLocationPermission = {
                                 if (
                                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
@@ -361,6 +365,7 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                             indexingStatus = uiState.kgIndexingStatus,
                             ragAnswer = uiState.ragAnswer,
                             isRagQuerying = uiState.isRagQuerying,
+                            onDeviceBrainModel = uiState.onDeviceBrainModel,
                             smartSuggestions = uiState.kgSmartSuggestions,
                             askAiMessages = uiState.askAiMessages,
                             attachedAiFile = uiState.attachedAiFile,
