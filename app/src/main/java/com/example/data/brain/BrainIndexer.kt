@@ -165,8 +165,7 @@ class BrainIndexer(
                 nodes[target.id] = target
 
                 val relationName = relation.relation.trim().uppercase(Locale.US).ifBlank { "ASSOCIATED_WITH" }
-                addEdge(
-                    edges,
+                recordEdge(
                     BrainEdgeEntity(
                         sourceNodeId = sourceId,
                         targetNodeId = target.id,
