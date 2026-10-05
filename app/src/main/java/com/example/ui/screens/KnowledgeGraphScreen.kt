@@ -284,7 +284,7 @@ fun KnowledgeGraphScreen(
                     ) {
                         IconButton(
                             onClick = onIndexAllFiles,
-                            enabled = !isIndexing && localBrainReady,
+                            enabled = !isIndexing && onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
                             modifier = Modifier
                                 .size(38.dp)
                                 .testTag("kg_sync_button")
