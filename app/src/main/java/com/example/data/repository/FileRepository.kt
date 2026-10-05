@@ -414,7 +414,7 @@ class FileRepository(private val context: Context) {
                 .map { it.absolutePath }
                 .toSet()
 
-            for (indexed in fileIndexDao.getIndexedChildren(dir.absolutePath)) {
+            for (indexed in fileIndexDao.getFilesByParent(dir.absolutePath)) {
                 if (indexed.path !in actualPaths) {
                     fileIndexDao.deleteByPathTree(indexed.path, indexed.path)
                 }
