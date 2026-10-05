@@ -187,26 +187,26 @@ class BrainRepository(context: Context) {
 
     suspend fun indexPath(path: File, config: AiProviderConfigEntity) = withContext(Dispatchers.IO) {
         if (!path.exists()) return@withContext
+
         if (path.isFile) {
             indexFile(path, config, force = true)
             return@withContext
         }
 
-        val visited = mutableSetOf<String>()
-        val stack = ArrayDeque<File>().apply { add(path) }
-        while (stack.isNotEmpty()) {
-            val dir = stack.removeLast()
-            val canonical = runCatching { dir.canonicalPath }.getOrNull() ?: dir.absolutePath
-            if (!visited.add(canonical)) continue
+        // This bridge consumes the canonical FileRepository index. Brain never
+        // recursively walks the filesystem for a second indexing pass.
+        val normalizedPath = path.absolutePath.trimEnd(File.separatorChar)
+        val candidates = fileIndexDao.getFilesUnderPathForBrain(
+            normalizedPath,
+            normalizedPath
+        )
 
-            val children = dir.listFiles() ?: continue
-            for (child in children) {
-                if (child.name.startsWith(".") || child.name == ".trash") continue
-                if (child.isDirectory) stack.add(child)
-                else if (child.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS) {
-                    indexFile(child, config, force = true)
-                }
-            }
+        for (candidate in candidates) {
+            currentCoroutineContext().ensureActive()
+            val file = File(candidate.path)
+            if (!file.exists() || !file.isFile || !file.canRead()) continue
+            if (candidate.extension.lowercase(Locale.US) !in BrainContentReader.SUPPORTED_EXTENSIONS) continue
+            indexFile(file, config, force = true)
         }
         brainNodeDao.recomputeDegrees()
     }
