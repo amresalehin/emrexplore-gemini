@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import com.example.data.ai.AvailableAiModel
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.ai.ProviderType
+import com.example.data.ai.isKeylessAiConfig
 import com.example.data.brain.OnDeviceBrainModelStatus
 import com.example.data.brain.OnDeviceBrainModelUiState
 import com.example.data.local.AiProviderConfigEntity
@@ -160,7 +161,7 @@ fun AiSettingsScreen(
                     Column {
                         Text("AI Setup", fontWeight = FontWeight.Bold)
                         Text(
-                            if (isEnabled) "Brain enabled" else "Brain is off",
+                            if (isEnabled) "Cloud AI enabled" else "Cloud AI optional",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -202,9 +203,9 @@ fun AiSettingsScreen(
                     Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Enable Brain", fontWeight = FontWeight.Bold)
+                        Text("Optional cloud AI", fontWeight = FontWeight.Bold)
                         Text(
-                            "Semantic search, file understanding and image analysis.",
+                            "Generated answers, cloud enrichment and optional image understanding. Local Brain search does not depend on this.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -217,10 +218,13 @@ fun AiSettingsScreen(
                 }
             }
 
-            if (!isEnabled) {
-                Text("Nothing is sent to an AI provider while Brain is off.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                SectionTitle("PROVIDER")
+            Text(
+                "Local Brain is separate from cloud AI. Downloading the local model enables semantic search and indexing on this device.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            SectionTitle("CLOUD AI — OPTIONAL")
                 OutlinedCard(
                     modifier = Modifier.fillMaxWidth().clickable { showProviderPicker = true },
                     shape = RoundedCornerShape(14.dp)
@@ -292,7 +296,7 @@ fun AiSettingsScreen(
                     CompactInfo("Server: ${baseUrl.removeSuffix("/")}")
                 }
 
-                SectionTitle("ON-DEVICE BRAIN")
+                SectionTitle("LOCAL BRAIN MODEL — REQUIRED FOR SEMANTIC SEARCH")
                 OutlinedCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp)
@@ -317,7 +321,7 @@ fun AiSettingsScreen(
                         }
 
                         Text(
-                            "This neural embedding model is the primary Brain search/index model. Download it once; no embedding API key is required for semantic search after that.",
+                            "This neural embedding model is the canonical Brain search/index model. Download it once; semantic search and indexing work without a cloud provider."
                             style = MaterialTheme.typography.bodySmall
                         )
 
@@ -346,7 +350,7 @@ fun AiSettingsScreen(
                             }
                             OnDeviceBrainModelStatus.READY -> {
                                 Text(
-                                    "Ready — Brain will use this local model for document and query embeddings.",
+                                    "Ready — semantic search and Brain indexing are available locally."
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.SemiBold
@@ -380,6 +384,9 @@ fun AiSettingsScreen(
                         }
                     }
                 }
+
+                val cloudReady = isEnabled && (isKeylessAiConfig(draftConfig()) || apiKey.trim().isNotBlank())
+                CompactInfo(if (cloudReady) "Cloud AI is configured. It is used only for generated answers and optional enrichment." else "Cloud AI is not configured. You can still use the local Brain for semantic search; generated answers require a configured provider.")
 
                 SectionTitle("PROVIDER MODELS")
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -445,12 +452,11 @@ fun AiSettingsScreen(
                         Switch(checked = autoSync, onCheckedChange = { autoSync = it })
                     }
                     Text(
-                        "API keys stay in private app storage. Cloud providers receive data required for the AI operation.",
+                        "Privacy: the local model stays on this device. If you enable a cloud provider, only data required for that AI operation is sent to that provider. Ollama/local endpoints can keep processing on your device or LAN."
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            }
             Spacer(Modifier.height(8.dp))
         }
     }
