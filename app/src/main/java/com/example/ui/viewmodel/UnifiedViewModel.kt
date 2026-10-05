@@ -245,29 +245,29 @@ data class UiState(
     val performanceMetrics: PerformanceMetrics = PerformanceMetrics(),
 
     // Knowledge Graph & RAG State
-    val kgNodes: List<BrainNodeEntity> = emptyList(),
-    val kgEdges: List<BrainEdgeEntity> = emptyList(),
-    val kgNodeCount: Int = 0,
-    val kgEdgeCount: Int = 0,
-    val kgChunkCount: Int = 0,
+    val brainNodes: List<BrainNodeEntity> = emptyList(),
+    val brainEdges: List<BrainEdgeEntity> = emptyList(),
+    val brainNodeCount: Int = 0,
+    val brainEdgeCount: Int = 0,
+    val brainChunkCount: Int = 0,
     val aiConfig: AiProviderConfigEntity = AiProviderConfigEntity(),
     val isTestingAiConnection: Boolean = false,
     val aiTestResult: ConnectionTestResult? = null,
     val isAiSettingsScreenOpen: Boolean = false,
     val aiConfigLoaded: Boolean = false,
-    val isKgIndexing: Boolean = false,
+    val isBrainIndexing: Boolean = false,
     val isGalleryAiProcessing: Boolean = false,
     val isGalleryAiPaused: Boolean = false,
     val galleryAiProgress: Float = 0f,
     val galleryAiStatus: String = "Ready",
-    val kgIndexingProgress: Float = 0f,
-    val kgIndexingStatus: String = "Ready",
+    val brainIndexingProgress: Float = 0f,
+    val brainIndexingStatus: String = "Ready",
     val ragAnswer: RagAnswer? = null,
     val isRagQuerying: Boolean = false,
     val askAiMessages: List<AskAiChatMessage> = emptyList(),
     val attachedAiFile: AttachedAiFile? = null,
     val activeFileConnectedDots: List<ConnectedDotsItem> = emptyList(),
-    val kgSmartSuggestions: List<String> = emptyList(),
+    val brainSmartSuggestions: List<String> = emptyList(),
     val brainTopics: List<BrainTopicEntity> = emptyList(),
     val selectedBrainTopicId: String? = null,
     val brainTopicRelevantFiles: List<BrainTopicFile> = emptyList(),
@@ -445,7 +445,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         // Suggestions are stable during a sync; refresh once at startup and again after indexing completes.
         viewModelScope.launch(Dispatchers.IO) {
             val suggestions = try { brainRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
-            _uiState.update { it.copy(kgSmartSuggestions = suggestions) }
+            _uiState.update { it.copy(brainSmartSuggestions = suggestions) }
         }
         viewModelScope.launch {
             repository.preferencesFlow.collectLatest { prefs ->
@@ -571,7 +571,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                         val ready = brainRepository.getOnDeviceBrainModelState()
                         _uiState.update { state ->
                             state.copy(
-                                isKgIndexing = false,
+                                isBrainIndexing = false,
                                 onDeviceBrainModel = if (state.onDeviceBrainModel.status == OnDeviceBrainModelStatus.DOWNLOADING) state.onDeviceBrainModel else ready
                             )
                         }
@@ -584,27 +584,27 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     when (work.state) {
                         androidx.work.WorkInfo.State.RUNNING -> _uiState.update {
                             it.copy(
-                                isKgIndexing = true,
-                                kgIndexingProgress = if (total > 0) current.toFloat() / total else 0f,
-                                kgIndexingStatus = if (path.isBlank()) "Indexing Brain..." else "Indexing " + File(path).name + " ($current/$total)"
+                                isBrainIndexing = true,
+                                brainIndexingProgress = if (total > 0) current.toFloat() / total else 0f,
+                                brainIndexingStatus = if (path.isBlank()) "Indexing Brain..." else "Indexing " + File(path).name + " ($current/$total)"
                             )
                         }
                         androidx.work.WorkInfo.State.ENQUEUED -> _uiState.update {
-                            it.copy(isKgIndexing = true, kgIndexingStatus = "Brain indexing queued...")
+                            it.copy(isBrainIndexing = true, brainIndexingStatus = "Brain indexing queued...")
                         }
                         androidx.work.WorkInfo.State.SUCCEEDED -> {
                             _uiState.update {
                                 it.copy(
-                                    isKgIndexing = false,
-                                    kgIndexingProgress = 1f
+                                    isBrainIndexing = false,
+                                    brainIndexingProgress = 1f
                                 )
                             }
                             refreshBrainTopicFiles(_uiState.value.selectedBrainTopicId)
                         }
                         else -> _uiState.update {
                             it.copy(
-                                isKgIndexing = false,
-                                kgIndexingProgress = it.kgIndexingProgress
+                                isBrainIndexing = false,
+                                brainIndexingProgress = it.brainIndexingProgress
                             )
                         }
                     }
@@ -684,12 +684,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         // Collect Knowledge Graph and AI config flows
         viewModelScope.launch {
             brainRepository.allNodesFlow.collectLatest { nodes ->
-                _uiState.update { it.copy(kgNodes = nodes) }
+                _uiState.update { it.copy(brainNodes = nodes) }
             }
         }
         viewModelScope.launch {
             brainRepository.allEdgesFlow.collectLatest { edges ->
-                _uiState.update { it.copy(kgEdges = edges) }
+                _uiState.update { it.copy(brainEdges = edges) }
             }
         }
         viewModelScope.launch {
@@ -725,17 +725,17 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
         viewModelScope.launch {
             brainRepository.chunkCountFlow.collectLatest { count ->
-                _uiState.update { it.copy(kgChunkCount = count) }
+                _uiState.update { it.copy(brainChunkCount = count) }
             }
         }
         viewModelScope.launch {
             brainRepository.nodeCountFlow.collectLatest { count ->
-                _uiState.update { it.copy(kgNodeCount = count) }
+                _uiState.update { it.copy(brainNodeCount = count) }
             }
         }
         viewModelScope.launch {
             brainRepository.edgeCountFlow.collectLatest { count ->
-                _uiState.update { it.copy(kgEdgeCount = count) }
+                _uiState.update { it.copy(brainEdgeCount = count) }
             }
         }
 
@@ -2476,7 +2476,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun clearKnowledgeGraph() {
+    fun clearBrainIndex() {
         viewModelScope.launch {
             brainRepository.clearGraph()
             _uiState.update { it.copy(ragAnswer = null, activeFileConnectedDots = emptyList()) }
@@ -2744,9 +2744,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update {
             it.copy(
                 onDeviceBrainModel = unavailable,
-                isKgIndexing = false,
-                kgIndexingProgress = 0f,
-                kgIndexingStatus = "Brain model unavailable"
+                isBrainIndexing = false,
+                brainIndexingProgress = 0f,
+                brainIndexingStatus = "Brain model unavailable"
             )
         }
 
@@ -2756,9 +2756,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.update {
                     it.copy(
                         onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(),
-                        isKgIndexing = false,
-                        kgIndexingProgress = 0f,
-                        kgIndexingStatus = "Brain model unavailable"
+                        isBrainIndexing = false,
+                        brainIndexingProgress = 0f,
+                        brainIndexingStatus = "Brain model unavailable"
                     )
                 }
                 showMessage("On-device Brain model removed")
@@ -2767,24 +2767,24 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.update {
                     it.copy(
                         onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(error.message),
-                        isKgIndexing = false
+                        isBrainIndexing = false
                     )
                 }
             }
         }
     }
 
-    fun indexAllFilesForKnowledgeGraph() {
-        if (_uiState.value.isKgIndexing) return
+    fun indexAllFilesForBrain() {
+        if (_uiState.value.isBrainIndexing) return
         if (!brainRepository.isOnDeviceBrainModelReady()) {
             showMessage("Download the on-device Brain model before indexing.")
             return
         }
         _uiState.update {
             it.copy(
-                isKgIndexing = true,
-                kgIndexingProgress = 0f,
-                kgIndexingStatus = "Brain indexing queued..."
+                isBrainIndexing = true,
+                brainIndexingProgress = 0f,
+                brainIndexingStatus = "Brain indexing queued..."
             )
         }
         val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>()
@@ -2812,9 +2812,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     when (info.state) {
                         androidx.work.WorkInfo.State.RUNNING -> _uiState.update { state ->
                             state.copy(
-                                isKgIndexing = true,
-                                kgIndexingProgress = if (total > 0) current.toFloat() / total else 0f,
-                                kgIndexingStatus = if (path.isBlank()) "Indexing Brain..." else "Indexing: " + File(path).name + " (" + current + "/" + total + ")"
+                                isBrainIndexing = true,
+                                brainIndexingProgress = if (total > 0) current.toFloat() / total else 0f,
+                                brainIndexingStatus = if (path.isBlank()) "Indexing Brain..." else "Indexing: " + File(path).name + " (" + current + "/" + total + ")"
                             )
                         }
                         androidx.work.WorkInfo.State.SUCCEEDED -> {
@@ -2824,21 +2824,21 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                             val suggestions = try { brainRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
                             _uiState.update { state ->
                                 state.copy(
-                                    isKgIndexing = false,
-                                    kgIndexingProgress = 1f,
-                                    kgIndexingStatus = "Brain ready — " + indexed + " indexed, " + skipped + " skipped, " + failed + " failed",
-                                    kgSmartSuggestions = suggestions
+                                    isBrainIndexing = false,
+                                    brainIndexingProgress = 1f,
+                                    brainIndexingStatus = "Brain ready — " + indexed + " indexed, " + skipped + " skipped, " + failed + " failed",
+                                    brainSmartSuggestions = suggestions
                                 )
                             }
                             return@collectLatest
                         }
                         androidx.work.WorkInfo.State.FAILED -> {
                             val error = info.outputData.getString("error") ?: "Brain indexing failed"
-                            _uiState.update { state -> state.copy(isKgIndexing = false, kgIndexingStatus = error) }
+                            _uiState.update { state -> state.copy(isBrainIndexing = false, brainIndexingStatus = error) }
                             return@collectLatest
                         }
                         androidx.work.WorkInfo.State.CANCELLED -> {
-                            _uiState.update { state -> state.copy(isKgIndexing = false, kgIndexingStatus = "Brain indexing cancelled") }
+                            _uiState.update { state -> state.copy(isBrainIndexing = false, brainIndexingStatus = "Brain indexing cancelled") }
                             return@collectLatest
                         }
                         else -> Unit
