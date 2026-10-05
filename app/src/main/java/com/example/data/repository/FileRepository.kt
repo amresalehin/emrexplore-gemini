@@ -58,7 +58,13 @@ data class PagedDirectoryResult(
     val hasMore: Boolean
 )
 
-class FileRepository(private val context: Context) {
+class FileRepository(
+    private val context: Context,
+    private val onBrainMutation: suspend (
+        relocatedPaths: List<Pair<String, String>>,
+        removedPaths: List<String>
+    ) -> Unit = { _, _ -> }
+) {
 
     private val db = AppDatabase.getDatabase(context)
     private val favoriteDao = db.favoriteDao()
@@ -84,10 +90,11 @@ class FileRepository(private val context: Context) {
     private val statCache = java.util.concurrent.ConcurrentHashMap<String, CachedStat>()
 
     val operationManager = FileOperationManager(
-        onFilesMutated = { affectedPaths ->
+        onFilesMutated = { relocatedPaths, removedPaths, affectedPaths ->
             for (dir in affectedPaths) {
                 invalidateFolderCache(dir)
             }
+            reconcileMutation(relocatedPaths, removedPaths)
         },
         deleteFile = { path, toTrash -> deleteFile(path, toTrash) }
     )
@@ -99,6 +106,114 @@ class FileRepository(private val context: Context) {
         } else {
             folderCache.remove(dirPath)
             statCache.keys.removeIf { it.startsWith(dirPath) }
+        }
+    }
+
+    suspend fun reconcileMutation(
+        relocatedPaths: List<Pair<String, String>>,
+        removedPaths: List<String>
+    ) = withContext(Dispatchers.IO) {
+        for ((oldPath, newPath) in relocatedPaths) {
+            reconcileRelocation(oldPath, newPath)
+        }
+        for (oldPath in removedPaths.distinct()) {
+            removeIndexedPath(oldPath, fileIndexDao.getByPath(oldPath)?.isDirectory ?: File(oldPath).isDirectory)
+            removeDerivedPath(oldPath)
+        }
+        onBrainMutation(relocatedPaths, removedPaths)
+    }
+
+    private suspend fun reconcileRelocation(oldPath: String, newPath: String) {
+        val oldEntity = fileIndexDao.getByPath(oldPath)
+        val oldIsDirectory = oldEntity?.isDirectory ?: File(oldPath).isDirectory
+        val oldStillExists = File(oldPath).exists()
+
+        if (oldStillExists) {
+            copyDerivedPath(oldPath, newPath)
+        } else {
+            migrateDerivedPath(oldPath, newPath)
+            removeIndexedPath(oldPath, oldIsDirectory)
+        }
+
+        val destination = File(newPath)
+        if (destination.exists()) {
+            indexFileOrDir(destination)
+        }
+        invalidateFolderCache(File(oldPath).parent)
+        invalidateFolderCache(File(newPath).parent)
+    }
+
+    private suspend fun migrateDerivedPath(oldPath: String, newPath: String) {
+        val favorites = favoriteDao.getFavoritesUnderPath(oldPath, oldPath)
+        favorites.forEach { favorite ->
+            favoriteDao.removeFavorite(favorite.path)
+            favoriteDao.addFavorite(favorite.copy(path = mapMutationPath(favorite.path, oldPath, newPath), name = File(mapMutationPath(favorite.path, oldPath, newPath)).name))
+        }
+
+        val recents = recentDao.getRecentsUnderPath(oldPath, oldPath)
+        recents.forEach { recent ->
+            recentDao.removeRecent(recent.path)
+            recentDao.addRecent(recent.copy(path = mapMutationPath(recent.path, oldPath, newPath), name = File(mapMutationPath(recent.path, oldPath, newPath)).name))
+        }
+
+        val bookmarks = bookmarkDao.getBookmarksUnderPath(oldPath, oldPath)
+        bookmarks.forEach { bookmark ->
+            bookmarkDao.removeBookmark(bookmark.path)
+            bookmarkDao.addBookmark(bookmark.copy(path = mapMutationPath(bookmark.path, oldPath, newPath), name = File(mapMutationPath(bookmark.path, oldPath, newPath)).name))
+        }
+
+        val metadata = db.mediaMetadataDao().getByPathTree(oldPath, oldPath)
+        metadata.forEach { item ->
+            val mappedPath = mapMutationPath(item.path, oldPath, newPath)
+            db.mediaMetadataDao().insertOrUpdate(item.copy(path = mappedPath))
+        }
+    }
+
+    private suspend fun copyDerivedPath(oldPath: String, newPath: String) {
+        val favorites = favoriteDao.getFavoritesUnderPath(oldPath, oldPath)
+        favorites.forEach { favorite ->
+            val mappedPath = mapMutationPath(favorite.path, oldPath, newPath)
+            favoriteDao.addFavorite(favorite.copy(path = mappedPath, name = File(mappedPath).name))
+        }
+
+        val recents = recentDao.getRecentsUnderPath(oldPath, oldPath)
+        recents.forEach { recent ->
+            val mappedPath = mapMutationPath(recent.path, oldPath, newPath)
+            recentDao.addRecent(recent.copy(path = mappedPath, name = File(mappedPath).name))
+        }
+
+        val bookmarks = bookmarkDao.getBookmarksUnderPath(oldPath, oldPath)
+        bookmarks.forEach { bookmark ->
+            val mappedPath = mapMutationPath(bookmark.path, oldPath, newPath)
+            bookmarkDao.addBookmark(bookmark.copy(path = mappedPath, name = File(mappedPath).name))
+        }
+
+        val metadata = db.mediaMetadataDao().getByPathTree(oldPath, oldPath)
+        metadata.forEach { item ->
+            if (item.uri.startsWith("file:")) {
+                val mappedPath = mapMutationPath(item.path, oldPath, newPath)
+                db.mediaMetadataDao().insertOrUpdate(
+                    item.copy(
+                        uri = Uri.fromFile(File(mappedPath)).toString(),
+                        path = mappedPath
+                    )
+                )
+            }
+        }
+    }
+
+    private suspend fun removeDerivedPath(path: String) {
+        favoriteDao.getFavoritesUnderPath(path, path).forEach { favoriteDao.removeFavorite(it.path) }
+        recentDao.getRecentsUnderPath(path, path).forEach { recentDao.removeRecent(it.path) }
+        bookmarkDao.getBookmarksUnderPath(path, path).forEach { bookmarkDao.removeBookmark(it.path) }
+        db.mediaMetadataDao().getByPathTree(path, path).forEach { db.mediaMetadataDao().delete(it.uri) }
+    }
+
+    private fun mapMutationPath(path: String, oldPath: String, newPath: String): String {
+        return if (path == oldPath) {
+            newPath
+        } else {
+            newPath + path.removePrefix(oldPath)
         }
     }
 
