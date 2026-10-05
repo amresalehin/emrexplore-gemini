@@ -1821,7 +1821,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         if (selected.isEmpty()) return
         viewModelScope.launch {
             var count = 0
-            selected.forEach { media -> if (repository.deleteFile(media.path, toTrash)) count++ }
+            selected.forEach { media ->
+                if (repository.deleteFile(media.path, toTrash)) {
+                    brainRepository.removeIndexedSource(media.path)
+                    count++
+                }
+            }
             clearGallerySelection()
             refreshGallery()
             loadStorageStats()
