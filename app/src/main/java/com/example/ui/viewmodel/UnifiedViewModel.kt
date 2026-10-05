@@ -2611,6 +2611,10 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun indexAllFilesForKnowledgeGraph() {
         if (_uiState.value.isKgIndexing) return
+        if (!brainRepository.isOnDeviceBrainModelReady()) {
+            showMessage("Download the on-device Brain model before indexing.")
+            return
+        }
         _uiState.update {
             it.copy(
                 isKgIndexing = true,
