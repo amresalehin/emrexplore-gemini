@@ -1,171 +1,114 @@
-# emrexplore — Engineering Task List
+## P0 — users will hit these
 
-Target branch: `gemini` (repository default branch)
+### 1. Files “Move to Trash?” permanently deletes
 
-## P0 — Fix immediately
+Confirm dialog: *“Move this item to Trash? You can restore it later.”*  
+`deletePathsAfterConfirmation(..., toTrash = true)` then `FileOperationManager` **ignores `toTrash`** and calls `File.delete()` / `deleteRecursively()`.
 
-- [ ] **Align GitHub Actions with the default branch**
-  - Update `.github/workflows/build-apk.yml` push and pull-request branch filters from `main` to `gemini`.
-  - Keep `workflow_dispatch`.
-  - Verify that a push to `gemini` starts the APK workflow.
-  - Verify that pull requests targeting `gemini` run unit tests, lint, and debug APK build.
+Gallery delete uses the real trash path. Explorer does not. Recycle Bin on Home is disconnected from the main Files tab.
 
-- [ ] **Establish a reliable default-branch build gate**
-  - Require the CI workflow to pass before merging changes into `gemini`.
-  - Ensure failures in tests or lint fail the workflow.
-  - Document the required checks in the repository.
+### 2. Videos do not play
 
-## P1 — Architecture and scalability
+`FullscreenMediaViewer` draws a Play overlay on an `AsyncImage`. Tap toggles chrome. No `ExoPlayer`, no `Intent.ACTION_VIEW`. Gallery’s video path is a poster frame.
 
-- [ ] **Split `UnifiedViewModel` by feature**
-  - Extract file explorer state/actions.
-  - Extract gallery/media state/actions.
-  - Extract file-operation state/actions.
-  - Extract AI/RAG state/actions.
-  - Extract knowledge-graph/Brain state/actions.
-  - Keep cross-feature coordination in small use-case/service classes.
-  - Preserve existing UI behavior while reducing ViewModel responsibilities.
+### 3. Copy / move / delete do not update derived stores
 
-- [ ] **Decompose `AiProviderClient`**
-  - Separate Gemini transport from OpenAI-compatible transport.
-  - Separate model discovery from inference.
-  - Separate embedding APIs from chat/vision APIs.
-  - Extract response/JSON parsing into testable components.
-  - Keep endpoint validation and credential handling centralized.
+Explorer paste goes through `FileOperationManager`, which only invalidates an in-memory folder cache. After a move:
 
-- [ ] **Make Brain indexing incremental**
-  - Replace full materialization from `getAllIndexedFilesForBrain()` with paged/batched reads.
-  - Process bounded batches through the indexing pipeline.
-  - Avoid holding all indexed files, chunks, embeddings, and graph candidates in memory simultaneously.
-  - Add progress reporting at batch boundaries.
+- Live listing looks fine
+- `indexed_files`, favorites, recents, bookmarks keep old paths
+- Brain sync is a deferred WorkManager job that often **no-ops for 5 minutes** (`indexStorage` skip window) with `refreshStorageIndex = false`
 
-- [ ] **Audit recursive filesystem work**
-  - Identify all full-tree scans and repeated directory walks.
-  - Avoid duplicate traversal for the same operation.
-  - Prefer indexed/Room-backed queries for search and category views where possible.
-  - Add safeguards for very large directory trees.
+This is exactly the still-open P0 in `task.md` §3.
 
-## P1 — Testing and data integrity
+### 4. First-run indexing races permission
 
-- [ ] **Add file-operation tests**
-  - Copy: success, overwrite, skip, keep-both.
-  - Move: same-filesystem rename and cross-filesystem fallback.
-  - Delete: trash and permanent delete.
-  - Cancellation during large copies.
-  - Pause/resume during large copies.
-  - Partial-copy cleanup after failure.
-  - Disk-space failure.
-  - Nested-directory operations.
+ViewModel `init` calls `indexStorage()` with no permission check. If storage is unreadable, it indexes `filesDir`. After grant, `onPermissionsGranted()` latches `permissionsInitialized = true` forever — later grants (runtime media after All Files) are ignored, and gallery is not refreshed.
 
-- [ ] **Add Room migration tests**
-  - Test each supported migration path into database version 11.
-  - Insert representative data before migration.
-  - Assert data preservation after migration.
-  - Validate recreated tables, indices, null/default behavior, and constraints.
-  - Consider exporting Room schemas for migration review.
+### 5. Gallery Back dumps you on Home
 
-- [ ] **Add AI client tests**
-  - Endpoint validation.
-  - HTTPS enforcement and permitted local endpoints.
-  - Authentication failures.
-  - Model-not-found handling.
-  - Gemini response parsing.
-  - OpenAI-compatible response parsing.
-  - Embedding response parsing.
-  - Malformed JSON fallback behavior.
-  - Multimodal request construction.
+Explorer clears search/selection first. Gallery only handles Back inside an album. Search, filters, and multi-select fall through to `MainActivity` → `setTab(HOME)`. Query and selection stay dirty.
 
-- [ ] **Add WorkManager tests**
-  - Gallery AI checkpoint/resume.
-  - Pause behavior.
-  - Retry behavior.
-  - Missing/invalid configuration.
-  - Missing/unreadable files.
-  - Cancellation propagation.
-  - Completion and failure bookkeeping.
+### 6. Home category drill-down shows the previous category
 
-- [ ] **Expand Android/UI tests**
-  - Navigation between Home, Files, Gallery, and Brain.
-  - Back handling for nested viewers/editors/dialogs.
-  - Permission flows.
-  - File sharing.
-  - Gallery filtering/search/sorting.
-  - Knowledge graph interaction and file opening.
+`selectCategory` swaps the title immediately, does not clear `categoryFiles`, has no loading flag. Images → Videos shows Videos chrome over Images rows until the coroutine finishes.
 
-## P2 — Reliability and maintainability
+---
 
-- [ ] **Replace broad exception swallowing**
-  - Audit `catch (_: Exception) { }` and generic `e.printStackTrace()` usage.
-  - Introduce structured/domain-specific error reporting.
-  - Preserve user-friendly fallbacks while retaining diagnostics for debugging.
+## UI / UX
 
-- [ ] **Improve filesystem error semantics**
-  - Replace ambiguous boolean-only failures where practical with typed/domain errors.
-  - Distinguish permission denied, missing source, destination conflict, I/O failure, and insufficient storage.
-  - Surface actionable messages to the UI.
+**What’s working:** four-tab Material shell (Home / Files / Gallery / Brain), sequenced All Files vs runtime permission dialogs, Brain-first settings copy, model-readiness empty states, dirty text-editor Back prompt, operation banner with pause/cancel/conflict.
 
-- [ ] **Review file/path handling**
-  - Normalize and validate paths at operation boundaries.
-  - Confirm behavior for symlinks, unusual filenames, renamed directories, and stale index entries.
-  - Ensure all external file references are revalidated before opening.
+**What’s not:**
 
-- [ ] **Review ZIP and archive limits**
-  - Keep path traversal protection.
-  - Add tests for malicious archive entries.
-  - Consider protection against oversized/compressed-bomb archives.
-  - Consider output-size and entry-count limits.
+| Issue | Why it matters |
+|---|---|
+| Recycle Bin from Files teleports to Home | `openRecycleBin()` forces `currentTab = HOME`. Unused `RecycleBinDialog.kt` exists. Back returns to Home, not Files. |
+| Nested Home searches ignore Back | Recycle Bin / category search are local `remember` state; Back closes the page. |
+| Albums never refresh | Screen fetches `MediaAlbumRepository` once when the list is empty. `UiState.mediaAlbums` is never written. Permission grant while on Albums does nothing. |
+| “Pull to refresh” is a lie | Error empty-state says it. There is no pull-to-refresh or retry. |
+| Duplicate Brain download cards | Two full download/progress/delete blocks in AI Settings, same test tags. |
+| AI Settings Back drops drafts | Pickers and unsaved API keys close with the screen. |
+| Four different search products | Home live / Explorer scoped / Gallery “submit” that actually live-filters / Brain graph filter. Different Back contracts. |
+| Persistent tabs keep 4 heavy screens composed | `alpha = 0` — paging, Brain graph, Home 4k-line tree still run. TalkBack can land on invisible controls. |
+| Home is a 4056-line god composable | ~20 ephemeral `remember` filters reset on rotation. Dead leftover tile-dashboard state. |
+| Almost no strings | `strings.xml` has 9 nav labels. Rest is hardcoded English. |
+| Dynamic color on API 31+ | Brand palette never applies on modern devices. `Fossify*` color aliases still shipped. |
+| Gallery delete has no confirm | Explorer just added “Move to Trash?”; Gallery selection delete is immediate. |
+| Explorer header overcrowded | Tabs + search + 5 icons on a 360dp phone. Paste bar overlaps FAB. |
+| Brain leftover naming | Snackbar: “Knowledge Graph cleared”. Properties: “AI Knowledge Graph”. File still `KnowledgeGraphScreen.kt`. |
 
-## P2 — Security and privacy
+Ask-AI from a file properties sheet sends the **literal** string `Tell me about this file: ${file.name}` — `$` is escaped in Kotlin. Attachment still works; the question text is garbage.
 
-- [ ] **Document AI data-privacy boundaries**
-  - Clearly identify when file contents, metadata, images, or chat history are sent to external AI providers.
-  - Define what content is allowed to leave the device.
-  - Make provider selection and AI enablement explicit in the UX.
+---
 
-- [ ] **Audit custom AI headers**
-  - Validate header names/values where appropriate.
-  - Ensure sensitive custom headers are never logged.
-  - Confirm custom headers cannot weaken transport security.
+## App logic
 
-- [ ] **Review storage permissions for distribution**
-  - Confirm the use of `MANAGE_EXTERNAL_STORAGE` is necessary for the product's core functionality.
-  - Document the justification for distribution/review.
-  - Minimize permissions where scoped storage/MediaStore is sufficient.
+**Brain v2 is the real achievement.** Bounded extraction, SHA-256 model install, atomic per-file commit with last-known-good, live FS validation at retrieval, GPS redaction for cloud, Ollama-only exact location nodes, targeted Gallery processing on one worker.
 
-- [ ] **Validate secret-handling lifecycle**
-  - Keep API keys encrypted at rest with Android Keystore.
-  - Never commit real keys or signing material.
-  - Ensure decrypted keys exist only for the duration needed by requests/workers.
-  - Avoid accidental inclusion of secrets in diagnostics, crash reports, or request logging.
+**Claims vs code:**
 
-## P2 — Build and release hygiene
+| `task.md` claim | Reality |
+|---|---|
+| Keyset paging for Brain | File-index candidates: yes. Chunk retrieval: still `LIMIT/OFFSET`, hard cap **20,000** chunks. |
+| Avoid whole-library materialization | `syncAll` loads every Brain path + every candidate into HashSets. |
+| DB v14 complete | Code is **v15**. No 13→14 data test. `exportSchema = false`. |
+| Trash-delete failures reported | Repository path exists. Explorer never calls it. |
+| Rename/restore/editor feed Brain | Hooks exist. Clipboard copy/move/delete bypass them. |
+| SUBFOLDERS search scoped | Still a live recursive walk. Room `searchFilesUnderPath` is unused. UI still shows “Indexed”. |
 
-- [ ] **Normalize application identity**
-  - Review `namespace = "com.example"`.
-  - Review `applicationId = "com.aistudio.emrexplore.nxkqza"`.
-  - Move to a stable product-owned package/application ID before release, if compatible with the app's lifecycle.
+Other logic that will show up:
 
-- [ ] **Make release-signing failures explicit**
-  - Fail early with a clear message when release signing variables/keystore are missing.
-  - Keep release signing credentials outside the repository.
+- **Rename a favorited photo** → vanishes from Gallery Favorites (path not rewritten).
+- **SUBFOLDERS on a dead path** → silently searches all storage. No symlink visited-set → loop risk.
+- **Lexical Brain hits ungated** — “the photos” can match random files. Semantic failures swallow to empty, then lexical fills in.
+- **`AiProviderClient` catches `Exception`** including cancellation → cancelled index can still commit fallback analysis.
+- **Two ONNX engines** (ViewModel + Worker) — memory risk on-device.
+- **Editor `readText()` is unbounded** — large logs can OOM. Brain reads are capped; the editor is not.
+- **ZIP** has zip-slip checks, no bomb/size/entry caps.
+- **Package identity:** `namespace = "com.example"`, `applicationId = "com.aistudio.emrexplore.nxkqza"`, `versionName = "1.0"`.
 
-- [ ] **Verify dependency compatibility**
-  - Validate the current AGP, Gradle, Kotlin, Compose BOM, Room, Paging, Coil, WorkManager, and related versions together.
-  - Use CI to detect incompatible upgrades.
-  - Remove unused dependencies where possible.
+**Tests:** 5 files. Chunker, privacy regex, WordPiece, sort, fresh-DB column names. No migration, no file-ops, no retrieval, no UI, no WorkManager. `androidTest` is still `ExampleInstrumentedTest`.
 
-- [ ] **Improve release verification**
-  - Build debug and signed release variants in CI when signing secrets are available.
-  - Verify generated APK metadata and installability.
-  - Record artifact version/build information.
+---
 
-## Definition of done
+## Architecture smell
 
-- [ ] CI runs automatically for every change to the `gemini` default branch.
-- [ ] Unit tests, lint, and APK build are green on a clean CI environment.
-- [ ] File operations have automated regression coverage.
-- [ ] Room migrations have automated upgrade coverage.
-- [ ] AI provider/embedding parsing has automated coverage.
-- [ ] Brain and Gallery AI processing remain bounded in memory on large libraries.
-- [ ] Critical security/privacy paths have explicit tests and documentation.
-- [ ] Release signing and package identity are production-ready.
+One `UiState` owns explorer paging, gallery, audio player, trash, Brain graph, RAG chat, zip, editor, AI settings. Four screens are 1.6k–4k lines. That is why the last day of commits is one-line compile patches: there is no feature boundary to change safely.
+
+Do **not** split the ViewModel first. Mutation/trash/permission is broken; moving it just relocates the bugs.
+
+---
+
+## Ship order (if this is meant to merge)
+
+1. Explorer delete → real trash (`FileRepository.deleteFile`), or teach `FileOperationManager` to honor `toTrash`.
+2. One `reconcileMutation(old, new)` for file index **and** favorites / recents / bookmarks / media / Brain. Call it from `onFilesMutated`.
+3. Do not index until permission is granted; reset the latch on revoke; `refreshGallery()` on grant.
+4. Play videos. Fix Gallery Back (search → selection → album → Home).
+5. SUBFOLDERS → `searchFilesUnderPath`; visited-set on recursive walks.
+6. Fix `askAiAboutFile` interpolation; drop remaining “Knowledge Graph” user copy.
+7. Keyset-page `brain_chunks`; gate lexical scores; add a 13→14→15 migration test with dual-embedding rows.
+8. Then split `UnifiedViewModel`.
+
+**Do not merge** until 1–4 are done and CI is a required check on `gemini`. Brain v2 itself is in good shape relative to the rest of the app. The product around it is not.
