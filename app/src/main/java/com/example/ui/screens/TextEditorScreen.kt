@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,9 +50,16 @@ fun TextEditorScreen(
     onContentChange: (String) -> Unit,
     onToggleEdit: (Boolean) -> Unit,
     onSave: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onDiscard: () -> Unit = onClose,
+    onSaveAndClose: () -> Unit = onSave,
+    isDirty: Boolean = false
 ) {
-    BackHandler(enabled = true, onBack = onClose)
+    var showUnsavedDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    fun requestClose() {
+        if (isDirty) showUnsavedDialog = true else onClose()
+    }
+    BackHandler(enabled = true) { requestClose() }
 
     val lines = content.lines()
     val linesCount = lines.size
@@ -170,4 +179,28 @@ fun TextEditorScreen(
             }
         }
     }
+
+    if (showUnsavedDialog) {
+        AlertDialog(
+            onDismissRequest = { showUnsavedDialog = false },
+            title = { Text("Unsaved changes") },
+            text = { Text("Save your changes before closing this file?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showUnsavedDialog = false
+                    onSaveAndClose()
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        showUnsavedDialog = false
+                        onDiscard()
+                    }) { Text("Discard") }
+                    TextButton(onClick = { showUnsavedDialog = false }) { Text("Keep editing") }
+                }
+            }
+        )
+    }
 }
+
