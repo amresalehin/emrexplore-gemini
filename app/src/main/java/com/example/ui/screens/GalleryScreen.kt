@@ -224,7 +224,9 @@ fun GalleryScreen(
 
     val albumPagedMedia = if (selectedAlbumId != null) {
         viewModel.albumPagingFlow(selectedAlbumId)
-            .map { pagingData -> pagingData.map { media -> GalleryGridItem.Media(media) } }
+            .map { pagingData ->
+                pagingData.map { media -> GalleryGridItem.Media(media) as GalleryGridItem }
+            }
             .collectAsLazyPagingItems()
     } else null
 
