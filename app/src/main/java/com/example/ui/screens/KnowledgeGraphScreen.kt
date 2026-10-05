@@ -130,6 +130,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.brain.AskAiChatMessage
+import com.example.data.brain.OnDeviceBrainModelStatus
+import com.example.data.brain.OnDeviceBrainModelUiState
 import com.example.data.brain.AttachedAiFile
 import com.example.data.brain.BrainTopicFile
 import com.example.data.brain.RagAnswer
@@ -166,6 +168,7 @@ fun KnowledgeGraphScreen(
     indexingStatus: String,
     ragAnswer: RagAnswer?,
     isRagQuerying: Boolean,
+    onDeviceBrainModel: OnDeviceBrainModelUiState = OnDeviceBrainModelUiState(),
     smartSuggestions: List<String> = emptyList(),
     askAiMessages: List<AskAiChatMessage> = emptyList(),
     attachedAiFile: AttachedAiFile? = null,
@@ -272,7 +275,7 @@ fun KnowledgeGraphScreen(
                     ) {
                         IconButton(
                             onClick = onIndexAllFiles,
-                            enabled = !isIndexing,
+                            enabled = !isIndexing && onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
                             modifier = Modifier
                                 .size(38.dp)
                                 .testTag("kg_sync_button")
@@ -296,6 +299,48 @@ fun KnowledgeGraphScreen(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(20.dp)
                             )
+                        }
+                    }
+                }
+
+                // The Brain engine is local-first: make model readiness visible at the point
+                // where indexing depends on it instead of failing only after the user taps Sync.
+                AnimatedVisibility(visible = onDeviceBrainModel.status != OnDeviceBrainModelStatus.READY) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(Icons.Default.PhoneAndroid, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = when (onDeviceBrainModel.status) {
+                                        OnDeviceBrainModelStatus.DOWNLOADING -> "Brain model downloading…"
+                                        OnDeviceBrainModelStatus.ERROR -> "Brain model needs attention"
+                                        else -> "Download the on-device Brain model to index files"
+                                    },
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = onDeviceBrainModel.error
+                                        ?: "Runs locally and powers semantic indexing and Gallery AI.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            TextButton(onClick = onOpenAiSettings) {
+                                Text(if (onDeviceBrainModel.status == OnDeviceBrainModelStatus.DOWNLOADING) "View" else "Set up")
+                            }
                         }
                     }
                 }
