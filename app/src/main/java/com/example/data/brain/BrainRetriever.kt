@@ -2,6 +2,7 @@ package com.example.data.brain
 
 import com.example.data.ai.ProviderType
 import com.example.data.local.AiProviderConfigEntity
+import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.util.PriorityQueue
 import java.util.Locale
@@ -39,7 +40,12 @@ class BrainRetriever(
 
         val localModel = onDeviceEmbedding.modelIdIfReady()
         val semanticHits = if (localModel != null) {
-            val queryVector = runCatching { onDeviceEmbedding.embedText(clean) }.getOrNull()
+            val queryVector = try {
+                onDeviceEmbedding.embedText(clean)
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                null
+            }
             if (queryVector != null) {
                 collectLocalHits(localModel, queryVector, limit * 3)
             } else {
