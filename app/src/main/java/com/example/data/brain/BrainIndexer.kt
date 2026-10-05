@@ -354,7 +354,7 @@ class BrainIndexer(
         }
 
         val vectors = try {
-            onDeviceEmbedding.embedTextPassages(texts)
+            onDeviceEmbedding.embedTextPassages(texts) ?: emptyList()
         } catch (error: Exception) {
             if (error is kotlinx.coroutines.CancellationException) throw error
             throw IllegalStateException(
