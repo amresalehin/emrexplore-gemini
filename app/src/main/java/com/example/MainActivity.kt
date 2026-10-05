@@ -465,20 +465,20 @@ private fun PersistentTabHost(
         }
         TabHostPage(uiState.currentTab == MainTab.BRAIN) {
             BrainScreen(
-                nodes = uiState.kgNodes,
-                edges = uiState.kgEdges,
-                nodeCount = uiState.kgNodeCount,
-                edgeCount = uiState.kgEdgeCount,
+                nodes = uiState.brainNodes,
+                edges = uiState.brainEdges,
+                nodeCount = uiState.brainNodeCount,
+                edgeCount = uiState.brainEdgeCount,
                 aiConfig = uiState.aiConfig,
                 apiConfigured = uiState.aiConfigLoaded && uiState.aiConfig.isEnabled &&
                     (isKeylessAiConfig(uiState.aiConfig) || uiState.aiConfig.apiKey.isNotBlank()),
-                isIndexing = uiState.isKgIndexing,
-                indexingProgress = uiState.kgIndexingProgress,
-                indexingStatus = uiState.kgIndexingStatus,
+                isIndexing = uiState.isBrainIndexing,
+                indexingProgress = uiState.brainIndexingProgress,
+                indexingStatus = uiState.brainIndexingStatus,
                 ragAnswer = uiState.ragAnswer,
                 isRagQuerying = uiState.isRagQuerying,
                 onDeviceBrainModel = uiState.onDeviceBrainModel,
-                smartSuggestions = uiState.kgSmartSuggestions,
+                smartSuggestions = uiState.brainSmartSuggestions,
                 askAiMessages = uiState.askAiMessages,
                 attachedAiFile = uiState.attachedAiFile,
                 onAttachFile = viewModel::attachAiFile,
