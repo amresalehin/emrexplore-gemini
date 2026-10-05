@@ -15,6 +15,9 @@ android {
     versionCode = 1
     versionName = "1.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86") }
+    buildConfigField("int", "PERL5_ASSET_VERSION", "1")
   }
 
   signingConfigs {
@@ -64,6 +67,7 @@ android {
   // Android's linker installs jniLibs under applicationInfo.nativeLibraryDir,
   // giving us an executable file without chmod/W^X workarounds.
   sourceSets["main"].jniLibs.srcDir("src/main/jniLibs")
+  packaging { jniLibs { useLegacyPackaging = true } }
 }
 
 dependencies {
