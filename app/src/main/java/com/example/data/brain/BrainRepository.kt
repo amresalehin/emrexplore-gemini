@@ -187,6 +187,42 @@ class BrainRepository(context: Context) {
         indexer.index(file, normalizeAiConfig(config), force).success
     }
 
+    suspend fun reconcileMutation(
+        relocatedPaths: List<Pair<String, String>>,
+        removedPaths: List<String>
+    ) = withContext(Dispatchers.IO) {
+        for (oldPath in removedPaths.distinct()) {
+            removeIndexedSource(oldPath)
+        }
+
+        for ((oldPath, newPath) in relocatedPaths) {
+            if (!File(oldPath).exists()) {
+                removeIndexedSource(oldPath)
+            }
+            if (!isOnDeviceBrainModelReady()) continue
+
+            val file = File(newPath)
+            if (!file.exists() || !file.canRead()) continue
+            val config = getAiConfig()
+            if (file.isDirectory) {
+                val descendants = fileIndexDao.getFilesUnderPath(newPath, newPath)
+                for (child in descendants) {
+                    currentCoroutineContext().ensureActive()
+                    if (!child.isDirectory &&
+                        child.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS
+                    ) {
+                        val childFile = File(child.path)
+                        if (childFile.isFile && childFile.canRead()) {
+                            indexFile(childFile, config, force = true)
+                        }
+                    }
+                }
+            } else if (file.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS) {
+                indexFile(file, config, force = true)
+            }
+        }
+    }
+
     suspend fun onFileRenamed(oldPath: String, newPath: String) = withContext(Dispatchers.IO) {
         removeIndexedSource(oldPath)
         val indexed = fileIndexDao.getByPath(newPath) ?: return@withContext
