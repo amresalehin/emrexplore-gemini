@@ -70,15 +70,3 @@ fun EmrExploreTheme(
     )
 }
 
-@Composable
-fun FossifyTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit
-) {
-    EmrExploreTheme(
-        darkTheme = darkTheme,
-        dynamicColor = dynamicColor,
-        content = content
-    )
-}
