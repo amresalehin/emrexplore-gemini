@@ -57,7 +57,8 @@ class BrainRepository(private val context: Context) {
         nodeDao = brainNodeDao,
         edgeDao = brainEdgeDao,
         runDao = brainRunDao,
-        client = brainAi
+        client = brainAi,
+        db = db
     )
     private val retriever = BrainRetriever(
         context = appContext,
