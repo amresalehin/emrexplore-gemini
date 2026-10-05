@@ -71,7 +71,6 @@ import com.example.ui.screens.TextEditorScreen
 import com.example.ui.screens.ZipViewerDialog
 import com.example.ui.theme.EmrExploreTheme
 import com.example.ui.viewmodel.MainTab
-import com.example.data.ai.ProviderType
 import com.example.data.ai.isKeylessAiConfig
 import com.example.ui.viewmodel.UnifiedViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
