@@ -45,6 +45,9 @@ import com.example.data.local.MediaMetadataEntity
 import com.example.data.metadata.MetadataExtractor
 import com.example.data.metadata.MetadataReport
 import com.example.data.brain.BrainTopicFile
+import com.example.data.brain.BrainModelDownloadWorker
+import com.example.data.brain.OnDeviceBrainModelStatus
+import com.example.data.brain.OnDeviceBrainModelUiState
 import com.example.data.model.ConflictResolution
 import com.example.data.model.FileOperationProgress
 import com.example.data.model.OperationStatus
@@ -70,6 +73,8 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import androidx.work.Constraints
+import androidx.work.NetworkType
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -270,6 +275,7 @@ data class UiState(
     val aiMultimodalEmbeddingModels: List<AvailableAiModel> = emptyList(),
     val isFetchingAiModels: Boolean = false,
     val aiModelFetchError: String? = null,
+    val onDeviceBrainModel: OnDeviceBrainModelUiState = OnDeviceBrainModelUiState(),
 
     // User Feedback
     val userMessage: String? = null
@@ -567,6 +573,63 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
         }
+        // On-device semantic model download is durable and independent of Brain indexing.
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState()) }
+        }
+        viewModelScope.launch {
+            WorkManager.getInstance(getApplication<Application>())
+                .getWorkInfosForUniqueWorkFlow(BrainModelDownloadWorker.UNIQUE_NAME)
+                .collectLatest { works ->
+                    val work = works.firstOrNull() ?: return@collectLatest
+                    val progress = work.progress
+                    when (work.state) {
+                        androidx.work.WorkInfo.State.ENQUEUED,
+                        androidx.work.WorkInfo.State.RUNNING -> {
+                            val p = progress.getFloat("progress", 0f).coerceIn(0f, 1f)
+                            val downloaded = progress.getLong("downloadedBytes", 0L)
+                            val total = progress.getLong("totalBytes", 0L)
+                            val spec = brainRepository.getOnDeviceBrainModelSpec()
+                            _uiState.update {
+                                it.copy(
+                                    onDeviceBrainModel = OnDeviceBrainModelUiState(
+                                        status = OnDeviceBrainModelStatus.DOWNLOADING,
+                                        modelId = spec.id,
+                                        displayName = spec.displayName,
+                                        sizeLabel = spec.sizeLabel,
+                                        progress = p,
+                                        downloadedBytes = downloaded,
+                                        totalBytes = total
+                                    )
+                                )
+                            }
+                        }
+                        androidx.work.WorkInfo.State.SUCCEEDED -> {
+                            val ready = brainRepository.getOnDeviceBrainModelState()
+                            _uiState.update { it.copy(onDeviceBrainModel = ready) }
+                            // The index is invalidated by the model identity in Brain's
+                            // model signature, and a forced rebuild ensures every chunk
+                            // immediately uses the new neural embedding space.
+                            if (!_uiState.value.isKgIndexing) {
+                                indexAllFilesForKnowledgeGraph()
+                            }
+                        }
+                        androidx.work.WorkInfo.State.FAILED -> {
+                            val error = work.outputData.getString("error") ?: "Model download failed"
+                            _uiState.update {
+                                it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(error))
+                            }
+                        }
+                        androidx.work.WorkInfo.State.CANCELLED -> {
+                            _uiState.update {
+                                it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState("Download cancelled"))
+                            }
+                        }
+                        else -> Unit
+                    }
+                }
+        }
+
         viewModelScope.launch {
             repository.favoritesFlow.collectLatest { favs ->
                 _uiState.update { it.copy(favoritesList = favs) }
@@ -2506,6 +2569,45 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val dots = brainRepository.getConnectedDotsForFile(filePath)
             _uiState.update { it.copy(activeFileConnectedDots = dots) }
+        }
+    }
+
+    fun downloadOnDeviceBrainModel() {
+        val state = _uiState.value.onDeviceBrainModel
+        if (state.status == OnDeviceBrainModelStatus.DOWNLOADING) return
+
+        val request = OneTimeWorkRequestBuilder<BrainModelDownloadWorker>()
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+
+        _uiState.update {
+            it.copy(
+                onDeviceBrainModel = it.onDeviceBrainModel.copy(
+                    status = OnDeviceBrainModelStatus.DOWNLOADING,
+                    progress = 0f,
+                    error = null
+                )
+            )
+        }
+
+        WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
+            BrainModelDownloadWorker.UNIQUE_NAME,
+            ExistingWorkPolicy.KEEP,
+            request
+        )
+    }
+
+    fun deleteOnDeviceBrainModel() {
+        viewModelScope.launch(Dispatchers.IO) {
+            brainRepository.deleteOnDeviceBrainModel()
+            _uiState.update {
+                it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState())
+            }
+            showMessage("On-device Brain model removed")
         }
     }
 
