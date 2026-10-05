@@ -294,7 +294,7 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                         selected = uiState.currentTab == MainTab.BRAIN,
                         onClick = { viewModel.setTab(MainTab.BRAIN) },
                         icon = { Icon(Icons.Default.Psychology, contentDescription = stringResource(com.example.R.string.nav_brain_cd)) },
-                        label = { Text("Brain") },
+                        label = { Text(stringResource(com.example.R.string.nav_brain)) },
                         modifier = Modifier.testTag("nav_item_brain")
                     )
                 }
