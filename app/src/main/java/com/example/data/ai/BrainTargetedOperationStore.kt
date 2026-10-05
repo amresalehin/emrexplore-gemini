@@ -37,7 +37,7 @@ class BrainTargetedOperationStore(context: Context) {
         val forcePaths = prefs.getStringSet(KEY_FORCE_PATHS, emptySet()).orEmpty().toMutableSet()
         if (force) forcePaths.addAll(clean)
 
-        val newOperation = !hadPendingWork && totalCount() == 0
+        val newOperation = !hadPendingWork && (totalCount() == 0 || completedCount() >= totalCount())
         val nextTotal = if (newOperation) newPaths.size else totalCount() + newPaths.size
         val nextCompleted = if (newOperation) 0 else completedCount()
 
