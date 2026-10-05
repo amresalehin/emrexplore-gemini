@@ -131,6 +131,9 @@ interface FileIndexDao {
     @Query("SELECT * FROM indexed_files WHERE parentPath = :parentPath ORDER BY isDirectory DESC, name ASC")
     suspend fun getFilesByParent(parentPath: String): List<IndexedFileEntity>
 
+    @Query("SELECT * FROM indexed_files WHERE parentPath = :parentPath")
+    suspend fun getIndexedChildren(parentPath: String): List<IndexedFileEntity>
+
     @Query("SELECT * FROM indexed_files WHERE parentPath = :parentPath ORDER BY isDirectory DESC, name ASC LIMIT :limit OFFSET :offset")
     suspend fun getFilesByParentPaged(parentPath: String, limit: Int, offset: Int): List<IndexedFileEntity>
 
