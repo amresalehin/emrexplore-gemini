@@ -431,7 +431,6 @@ class BrainIndexer(
             config.isEnabled.toString(),
             config.chatModel.trim(),
             config.visionModel.trim(),
-            config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() },
             onDeviceEmbedding.modelSignature()
         ).joinToString("|")
 
