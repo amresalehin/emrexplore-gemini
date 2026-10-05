@@ -226,7 +226,7 @@ class BrainRepository(context: Context) {
                 if (child.isDirectory) {
                     stack.add(child)
                 } else if (child.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS) {
-                    indexFile(child, null, config, force = true)
+                    indexFile(child, config, force = true)
                 }
             }
         }
@@ -392,6 +392,7 @@ class BrainRepository(context: Context) {
         val input = try {
             contentReader.read(file, config)
         } catch (error: Exception) {
+            if (error is CancellationException) throw error
             return@withContext RagAnswer(
                 answer = "Could not read the attached file \"" + file.name + "\": " + (error.message ?: "I/O error"),
                 isSuccessful = false,
@@ -429,6 +430,7 @@ class BrainRepository(context: Context) {
                 latencyMs = System.currentTimeMillis() - started
             )
         } catch (error: Exception) {
+            if (error is CancellationException) throw error
             RagAnswer(
                 answer = localFileAnswer(file, input) + "\n\nAI service error: " + (error.message ?: "unknown error"),
                 connectedNodes = brainNodeDao.getByFilePath(file.absolutePath)?.let { listOf(it) }.orEmpty(),
@@ -481,7 +483,8 @@ class BrainRepository(context: Context) {
                     config = config
                 )
                 successful = true
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 answer = localRagAnswer(retrieval)
                 successful = false
             }
