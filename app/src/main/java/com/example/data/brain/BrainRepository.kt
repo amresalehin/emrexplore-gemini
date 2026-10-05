@@ -189,12 +189,28 @@ class BrainRepository(context: Context) {
     suspend fun onFileRenamed(oldPath: String, newPath: String) = withContext(Dispatchers.IO) {
         removeIndexedSource(oldPath)
         val indexed = fileIndexDao.getByPath(newPath) ?: return@withContext
-        if (!indexed.isDirectory &&
-            indexed.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS
-        ) {
-            indexFile(File(indexed.path), getAiConfig(), force = true)
-            brainNodeDao.recomputeDegrees()
+        val config = getAiConfig()
+        if (!indexed.isDirectory) {
+            if (indexed.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS) {
+                indexFile(File(indexed.path), config, force = true)
+            }
+        } else {
+            // Directory rename: the FileRepository has already rebuilt the canonical
+            // subtree. Brain must consume that index and rehydrate every supported child.
+            val descendants = fileIndexDao.getFilesUnderPath(newPath, newPath)
+            for (child in descendants) {
+                currentCoroutineContext().ensureActive()
+                if (!child.isDirectory &&
+                    child.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS
+                ) {
+                    val file = File(child.path)
+                    if (file.isFile && file.canRead()) {
+                        indexFile(file, config, force = true)
+                    }
+                }
+            }
         }
+        brainNodeDao.recomputeDegrees()
     }
 
     suspend fun removeIndexedSource(filePath: String) = withContext(Dispatchers.IO) {
