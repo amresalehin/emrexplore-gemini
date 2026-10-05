@@ -232,7 +232,7 @@ class BrainRepository(private val context: Context) {
     }
 
     suspend fun removeIndexedSource(filePath: String) = withContext(Dispatchers.IO) {
-        val paths = brainDocumentDao.getPathsUnder(filePath, filePath).ifEmpty { listOf(filePath) }
+        val paths = brainDocumentDao.getPathsUnder(filePath, filePath + File.separator).ifEmpty { listOf(filePath) }
         db.withTransaction {
             for (path in paths) {
                 val fileNodeId = fileNodeId(path)
