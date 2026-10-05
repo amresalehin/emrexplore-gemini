@@ -1,235 +1,222 @@
-# emrexplore — Engineering Task List
+# emrexplore — Engineering Plan
 
-Target branch: `gemini` (repository default branch)
+**Target branch:** `gemini`  
+**Current work:** Brain v2 rebuild, integration hardening, and release validation  
+**Working branch:** `agent/brain-rebuild`
 
-## P0 — Fix immediately
+This file is the engineering source of truth. Completed work is recorded once. Open work is limited to unresolved correctness, testing, security, performance, and release concerns.
 
-- [x] **Align GitHub Actions with the default branch**
-  - Updated `.github/workflows/build-apk.yml` push and pull-request branch filters to `gemini`.
-  - Kept `workflow_dispatch`.
-  - CI trigger execution still needs verification on GitHub Actions.
+---
 
+## 1. Brain v2 — complete
 
-- [ ] **Establish a reliable default-branch build gate**
-  - Require the CI workflow to pass before merging changes into `gemini`.
-  - Ensure failures in tests or lint fail the workflow.
-  - Document the required checks in the repository.
+- [x] Remove `BrainEngine` and `KnowledgeGraphRepository`.
+- [x] Replace legacy KG/RAG tables with dedicated Brain v2 persistence.
+- [x] Move Brain entities, DAOs, repository, indexer, retriever, and models into `data.brain`.
+- [x] Keep Gallery AI enrichment outside the Brain subsystem.
+- [x] Add the provider-independent `BrainAiGateway` boundary.
+- [x] Add bounded text, PDF, and image content extraction.
+- [x] Make deterministic offline embeddings mandatory.
+- [x] Treat provider embeddings as an optional second retrieval signal.
+- [x] Fuse heterogeneous vector rankings with RRF.
+- [x] Keep lexical fallback separate from vector/RRF score spaces.
+- [x] Reject low-relevance vector matches.
+- [x] Validate retrieved sources against the live filesystem.
+- [x] Exclude hidden files and `.trash` at Brain indexing and retrieval boundaries.
+- [x] Bound graph expansion, source counts, and context size.
+- [x] Redact precise location from cloud Brain context.
+- [x] Restrict exact-location graph nodes to Ollama indexing.
+- [x] Namespace exact-location identities independently from shared city nodes.
+- [x] Make per-file indexing atomic with last-known-good preservation.
+- [x] Detect file mutation before committing a staged index.
+- [x] Bind indexer transactions to the database instance that owns its DAOs.
+- [x] Make Brain sync filesystem-authoritative and remove stale Brain sources.
+- [x] Replace `OFFSET` Brain candidate paging with keyset pagination.
+- [x] Make Brain subtree matching safe for literal filesystem paths.
+- [x] Preserve graph-edge provenance per supporting source file.
+- [x] Add Brain schema migration through database version 13.
+- [x] Route rename, restore, and text-editor save hooks through Brain.
+- [x] Add Brain core unit tests and database-surface assertions.
 
-## P1 — Architecture and scalability
+## 2. Logic-hardening fixes — complete
 
-- [ ] **Split `UnifiedViewModel` by feature**
-  - Extract file explorer state/actions.
-  - Extract gallery/media state/actions.
-  - Extract file-operation state/actions.
-  - Extract AI/RAG state/actions.
-  - Extract knowledge-graph/Brain state/actions.
-  - Keep cross-feature coordination in small use-case/service classes.
-  - Preserve existing UI behavior while reducing ViewModel responsibilities.
+- [x] Fix Favorites-only gallery search SQL bind ordering.
+- [x] Preserve gallery sort through search, album paging, and fullscreen navigation.
+- [x] Make favorites gallery media-only and globally sorted.
+- [x] Reject stale/nonexistent indexed paths when building live search results.
+- [x] Reject copy/move into the source directory or any descendant.
+- [x] Reject same-source/same-destination streaming copies.
+- [x] Validate create/rename child names against traversal and separator abuse.
+- [x] Report physical trash-delete failures correctly.
+- [x] Reject ZIP output that targets a source file or source subtree.
+- [x] Bound direct file/chat reads.
+- [x] Preserve RAG history and scope file-chat history to the current attachment.
+- [x] Distinguish provider success from local fallback in Brain answers.
+- [x] Redact precise location from cloud direct-file and RAG prompts.
+- [x] Preserve exact provider identity during normalization.
+- [x] Validate persisted embedding model identity.
+- [x] Prevent failed remote embeddings from causing destructive partial Brain replacement.
 
-- [ ] **Decompose `AiProviderClient`**
-  - Separate Gemini transport from OpenAI-compatible transport.
-  - Separate model discovery from inference.
-  - Separate embedding APIs from chat/vision APIs.
-  - Extract response/JSON parsing into testable components.
-  - Keep endpoint validation and credential handling centralized.
+---
 
-- [ ] **Make Brain indexing incremental**
-  - Replace full materialization from `getAllIndexedFilesForBrain()` with paged/batched reads.
-  - Process bounded batches through the indexing pipeline.
-  - Avoid holding all indexed files, chunks, embeddings, and graph candidates in memory simultaneously.
-  - Add progress reporting at batch boundaries.
+## 3. P0 — release blockers
 
-- [ ] **Audit recursive filesystem work**
-  - Identify all full-tree scans and repeated directory walks.
-  - Avoid duplicate traversal for the same operation.
-  - Prefer indexed/Room-backed queries for search and category views where possible.
-  - Add safeguards for very large directory trees.
+### CI gate
+- [ ] Make Android CI a required branch-protection check for `gemini`.
+- [ ] Verify unit tests, lint, and debug APK build on a clean runner.
+- [ ] Verify signed release builds whenever release signing secrets are present.
+- [ ] Document the required check names and merge policy.
 
-## P1 — Testing and data integrity
+### Filesystem and derived-state consistency
+- [ ] Reconcile stale Room indexed-file rows after external delete, move, or rename.
+- [ ] Create one authoritative post-mutation synchronization path for filesystem index, media metadata, favorites, bookmarks, recents, trash, and Brain.
+- [ ] Cover directory rename/move with nested descendants.
+- [ ] Ensure restore operations converge every affected derived store.
 
-- [ ] **Add file-operation tests**
-  - Copy: success, overwrite, skip, keep-both.
-  - Move: same-filesystem rename and cross-filesystem fallback.
-  - Delete: trash and permanent delete.
-  - Cancellation during large copies.
-  - Pause/resume during large copies.
-  - Partial-copy cleanup after failure.
-  - Disk-space failure.
-  - Nested-directory operations.
+### Permission and startup sequencing
+- [ ] Prevent automatic indexing from starting before the required storage/media access is available.
+- [ ] Make permission callbacks idempotent so multiple callbacks cannot trigger duplicate scans.
+- [ ] Make activity resume and first-run initialization converge to one deterministic state.
 
-- [ ] **Add Room migration tests**
-  - Test each supported migration path into database version 11.
-  - Insert representative data before migration.
-  - Assert data preservation after migration.
-  - Validate recreated tables, indices, null/default behavior, and constraints.
-  - Consider exporting Room schemas for migration review.
+---
 
-- [ ] **Add AI client tests**
-  - Endpoint validation.
-  - HTTPS enforcement and permitted local endpoints.
-  - Authentication failures.
-  - Model-not-found handling.
-  - Gemini response parsing.
-  - OpenAI-compatible response parsing.
-  - Embedding response parsing.
-  - Malformed JSON fallback behavior.
-  - Multimodal request construction.
+## 4. P1 — Explorer and filesystem correctness
 
-- [ ] **Add WorkManager tests**
-  - Gallery AI checkpoint/resume.
-  - Pause behavior.
-  - Retry behavior.
-  - Missing/invalid configuration.
-  - Missing/unreadable files.
-  - Cancellation propagation.
-  - Completion and failure bookkeeping.
+- [ ] Fix `SUBFOLDERS` search scoping so descendant results remain inside the current explorer root.
+- [ ] Make empty-query descendant search cover the intended subtree rather than only direct children.
+- [ ] Audit all recursive filesystem traversals for symlink loops and canonical-path duplication.
+- [ ] Reuse indexed queries where they are cheaper and semantically correct.
+- [ ] Revalidate all externally referenced files before opening or sharing.
+- [ ] Distinguish permission, missing-source, conflict, I/O, and storage-capacity failures with typed/domain errors where practical.
+- [ ] Add regression tests for unusual names, stale paths, inaccessible folders, renamed directories, and symlinked trees.
 
-- [ ] **Expand Android/UI tests**
-  - Navigation between Home, Files, Gallery, and Brain.
-  - Back handling for nested viewers/editors/dialogs.
-  - Permission flows.
-  - File sharing.
-  - Gallery filtering/search/sorting.
-  - Knowledge graph interaction and file opening.
+---
 
-## P2 — Reliability and maintainability
+## 5. P1 — AI and Brain quality
 
-- [ ] **Replace broad exception swallowing**
-  - Audit `catch (_: Exception) { }` and generic `e.printStackTrace()` usage.
-  - Introduce structured/domain-specific error reporting.
-  - Preserve user-friendly fallbacks while retaining diagnostics for debugging.
+### AI client decomposition
+- [ ] Separate Gemini transport from OpenAI-compatible transport.
+- [ ] Separate model discovery from inference.
+- [ ] Separate embedding APIs from chat/vision APIs.
+- [ ] Extract response/JSON parsing into small testable components.
+- [ ] Centralize endpoint validation, local endpoint exceptions, headers, and credential handling.
 
-- [ ] **Improve filesystem error semantics**
-  - Replace ambiguous boolean-only failures where practical with typed/domain errors.
-  - Distinguish permission denied, missing source, destination conflict, I/O failure, and insufficient storage.
-  - Surface actionable messages to the UI.
+### Brain retrieval validation
+- [ ] Add explicit no-match regression tests.
+- [ ] Add tests proving offline and online embeddings are combined by rank, not raw score.
+- [ ] Add tests for lexical fallback, disappearing files, hidden sources, and `.trash`.
+- [ ] Benchmark retrieval and scan volume at 1k, 10k, and 100k chunks.
+- [ ] Measure indexing latency, chunk counts, vector failures, and retrieval latency.
 
-- [ ] **Review file/path handling**
-  - Normalize and validate paths at operation boundaries.
-  - Confirm behavior for symlinks, unusual filenames, renamed directories, and stale index entries.
-  - Ensure all external file references are revalidated before opening.
+### Gallery AI cache
+- [ ] Version enrichment checkpoints by provider identity, model, prompt/schema version, and privacy policy version.
+- [ ] Ensure provider/model changes trigger intentional recomputation.
+- [ ] Preserve pause, resume, cancellation, and worker-restart semantics.
 
-- [ ] **Review ZIP and archive limits**
-  - Keep path traversal protection.
-  - Add tests for malicious archive entries.
-  - Consider protection against oversized/compressed-bomb archives.
-  - Consider output-size and entry-count limits.
+---
 
-## P2 — Security and privacy
+## 6. P1 — automated test coverage
 
-- [ ] **Document AI data-privacy boundaries**
-  - Clearly identify when file contents, metadata, images, or chat history are sent to external AI providers.
-  - Define what content is allowed to leave the device.
-  - Make provider selection and AI enablement explicit in the UX.
+### File operations
+- [ ] Copy: success, overwrite, skip, keep-both.
+- [ ] Move: same-filesystem rename and cross-filesystem fallback.
+- [ ] Trash, restore, permanent delete.
+- [ ] Cancellation, pause/resume, partial-copy cleanup, insufficient storage, nested directories.
 
-- [ ] **Audit custom AI headers**
-  - Validate header names/values where appropriate.
-  - Ensure sensitive custom headers are never logged.
-  - Confirm custom headers cannot weaken transport security.
+### Room migrations
+- [ ] Test supported upgrade paths through database version 13.
+- [ ] Insert representative legacy KG/RAG data before migration.
+- [ ] Verify intentional legacy Brain reset and new Brain tables.
+- [ ] Verify primary keys, indices, nullability, and `brain_edge_evidence` provenance.
 
-- [ ] **Review storage permissions for distribution**
-  - Confirm the use of `MANAGE_EXTERNAL_STORAGE` is necessary for the product's core functionality.
-  - Document the justification for distribution/review.
-  - Minimize permissions where scoped storage/MediaStore is sufficient.
+### AI client
+- [ ] Endpoint validation and local-endpoint allowances.
+- [ ] Authentication and model-not-found behavior.
+- [ ] Gemini parsing and OpenAI-compatible parsing.
+- [ ] Embedding response ordering/count validation.
+- [ ] Malformed JSON fallbacks.
+- [ ] Multimodal request construction.
+- [ ] Header validation and secret non-logging.
 
-- [ ] **Validate secret-handling lifecycle**
-  - Keep API keys encrypted at rest with Android Keystore.
-  - Never commit real keys or signing material.
-  - Ensure decrypted keys exist only for the duration needed by requests/workers.
-  - Avoid accidental inclusion of secrets in diagnostics, crash reports, or request logging.
+### WorkManager
+- [ ] Brain indexing retry/failure/cancellation behavior.
+- [ ] Gallery AI checkpoint/resume.
+- [ ] Pause/resume and duplicate-work behavior.
+- [ ] Missing/unreadable files and missing configuration.
 
-## P2 — Build and release hygiene
+### Android/UI
+- [ ] Home, Files, Gallery, and Brain navigation.
+- [ ] Back handling for viewers, editors, and dialogs.
+- [ ] Permission flows.
+- [ ] Gallery filtering, search, and sorting.
+- [ ] File sharing.
+- [ ] Brain graph interaction and file opening.
+- [ ] Text-editor save to metadata/Brain synchronization.
 
-- [ ] **Normalize application identity**
-  - Review `namespace = "com.example"`.
-  - Review `applicationId = "com.aistudio.emrexplore.nxkqza"`.
-  - Move to a stable product-owned package/application ID before release, if compatible with the app's lifecycle.
+---
 
-- [ ] **Make release-signing failures explicit**
-  - Fail early with a clear message when release signing variables/keystore are missing.
-  - Keep release signing credentials outside the repository.
+## 7. P2 — security and privacy
 
-- [ ] **Verify dependency compatibility**
-  - Validate the current AGP, Gradle, Kotlin, Compose BOM, Room, Paging, Coil, WorkManager, and related versions together.
-  - Use CI to detect incompatible upgrades.
-  - Remove unused dependencies where possible.
+- [ ] Document exactly what data may leave the device for every AI provider.
+- [ ] Make cloud/local privacy implications explicit in AI settings.
+- [ ] Audit custom header names and values for security-policy bypasses.
+- [ ] Verify secrets never reach logs, crash diagnostics, or committed files.
+- [ ] Minimize storage permissions where scoped-storage/MediaStore can cover the use case.
+- [ ] Audit every AI prompt for unrelated file context and precise location leakage.
 
-- [ ] **Improve release verification**
-  - Build debug and signed release variants in CI when signing secrets are available.
-  - Verify generated APK metadata and installability.
-  - Record artifact version/build information.
+---
+
+## 8. P2 — ZIP and archive safety
+
+- [ ] Add malicious archive-entry tests.
+- [ ] Add decompressed-size and entry-count limits.
+- [ ] Add compressed-bomb protections.
+- [ ] Revalidate extraction targets before writing.
+- [ ] Preserve ZIP self-target and source-subtree guards.
+
+---
+
+## 9. P2 — architecture and maintainability
+
+- [ ] Split `UnifiedViewModel` by feature or move orchestration into focused use cases.
+- [ ] Rename remaining historical `kg*` UI/state identifiers to Brain terminology.
+- [ ] Rename `KnowledgeGraphScreen` to a Brain-oriented screen name.
+- [ ] Review package identity before release:
+  - `namespace = "com.example"`
+  - `applicationId = "com.aistudio.emrexplore.nxkqza"`
+- [ ] Verify dependency compatibility across AGP, Gradle, Kotlin, Compose, Room, Paging, Coil, WorkManager, PDFBox, Retrofit, and OkHttp.
+- [ ] Remove unused imports/dependencies exposed by the Brain rebuild.
+- [ ] Add release artifact/version metadata verification.
+
+---
+
+## 10. Performance and observability
+
+- [ ] Keep Brain indexing memory bounded for very large libraries.
+- [ ] Keep image preview and metadata work bounded by dimensions/file size.
+- [ ] Avoid whole-library materialization during Brain synchronization.
+- [ ] Avoid unbounded text reads and whole-file strings.
+- [ ] Add instrumentation for index duration, chunks created, embedding failures, graph nodes/edges, and retrieval latency.
+- [ ] Add migration and database-growth benchmarks.
+
+---
 
 ## Definition of done
 
-- [ ] CI runs automatically for every change to the `gemini` default branch.
-- [ ] Unit tests, lint, and APK build are green on a clean CI environment.
-- [ ] File operations have automated regression coverage.
-- [ ] Room migrations have automated upgrade coverage.
-- [ ] AI provider/embedding parsing has automated coverage.
-- [ ] Brain and Gallery AI processing remain bounded in memory on large libraries.
-- [ ] Critical security/privacy paths have explicit tests and documentation.
-- [ ] Release signing and package identity are production-ready.
+The Brain v2 rebuild and hardening phase is complete when:
 
+- [ ] CI is a required green gate for `gemini`.
+- [ ] Unit tests, lint, and debug APK builds are green on a clean runner.
+- [ ] Migration coverage exists through DB v13.
+- [ ] File-operation regressions are automated.
+- [ ] AI provider and embedding parsing are automated.
+- [ ] Brain no-match, privacy, provenance, and filesystem-validation behavior have explicit tests.
+- [ ] Brain and Gallery AI remain bounded in memory on large libraries.
+- [ ] Filesystem mutations converge all derived state.
+- [ ] Startup permission/indexing sequencing is deterministic.
+- [ ] Package identity and release signing are production-ready.
+- [ ] Historical KG naming is removed from the user-facing Brain implementation.
 
-## Logic Audit — Agent Hardening (2026-10-04)
+## Current verification state
 
-### Completed in `agent/logic-hardening`
-
-- [x] Fix Favorites-only gallery search SQL argument ordering.
-- [x] Preserve the selected Gallery sort in search results.
-- [x] Preserve the selected Gallery sort in album paging and fullscreen navigation.
-- [x] Make Favorites a media-only, globally sorted gallery and ignore stale/non-media favorite rows.
-- [x] Reject stale indexed paths when converting fast-search results into live FileItems.
-- [x] Exclude `.trash` path segments from Brain worker candidates.
-- [x] Validate Brain embedding readiness against the embedding model actually persisted by the indexing stage.
-- [x] Reject copy/move destinations that are the source or descendants of a source directory.
-- [x] Reject same-file streaming copies before opening the destination.
-- [x] Validate create/rename child names against absolute paths and path separators.
-- [x] Stop reporting physical trash deletion as successful when recursive deletion fails.
-- [x] Reject ZIP output paths that target a source file or source subtree.
-- [x] Bound direct text-file chat and document indexing reads without materializing the whole file.
-- [x] Carry RAG conversation history into retrieval-backed generation.
-- [x] Scope file-chat history to the currently attached file.
-- [x] Mark RAG/file-chat service fallbacks as unsuccessful so the UI can distinguish fallback from provider success.
-- [x] Redact GPS/location metadata from cloud direct-file prompts.
-- [x] Prevent new exact-GPS graph evidence from being created for cloud providers.
-- [x] Add query-time redaction for legacy exact-location data before cloud RAG prompts.
-
-### Still open from the audit
-
-- [ ] Reconcile stale Room indexed-file rows after external delete/move/rename.
-- [ ] Synchronize KG/RAG/favorites/bookmarks/recents after filesystem mutations and restore.
-- [ ] Reindex Brain/KG/RAG after text-editor saves.
-- [ ] Exclude `.trash` content from all Brain indexing paths.
-- [ ] Fix startup indexing/permission sequencing.
-- [ ] Fix explorer SUBFOLDERS scope and empty-query descendant handling.
-- [ ] Filter stale/nonexistent Room results before presenting fast search results.
-- [ ] Fix Brain file-type filtering before top-k truncation.
-- [ ] Resolve provider normalization/embedding-default mismatch.
-- [ ] Fix transactional validation so failed remote embeddings cannot leave destructive partial Brain replacements.
-- [ ] Version AI enrichment cache by provider/prompt/schema/privacy policy.
-- [ ] Add symlink/visited-set protections to all recursive filesystem paths.
-- [ ] Expand automated regression coverage for the above invariants.
-
-## Brain v2 — Full Rebuild (2026-10-05)
-
-- [x] Remove the legacy `KnowledgeGraphRepository` and `BrainEngine` implementations.
-- [x] Replace legacy KG/RAG tables with a fresh Brain schema and migration.
-- [x] Introduce a canonical bounded content reader for text, PDF, and image inputs.
-- [x] Introduce atomic per-file Brain indexing with last-known-good preservation on failures.
-- [x] Make local deterministic embeddings mandatory; treat provider embeddings as an optional second retrieval signal.
-- [x] Fuse heterogeneous embedding rankings with Reciprocal Rank Fusion instead of comparing incompatible cosine spaces.
-- [x] Add bounded lexical fallback and live-filesystem validation for retrieval.
-- [x] Add bounded graph expansion with provider-aware location privacy.
-- [x] Make Brain sync filesystem-authoritative and remove stale Brain sources.
-- [x] Route file rename, restore, and text-editor saves through Brain reindex hooks.
-- [x] Remove provider-gating from offline Brain indexing.
-- [x] Add pure Brain-core unit tests and database-surface assertions.
-- [ ] Finish UI naming cleanup from remaining historical `kg` identifiers.
-  - Backend/data ownership is now `com.example.data.brain`; remaining naming is UI/file-history cleanup only.
-- [x] Add paged candidate enumeration for very large libraries.
-- [x] Preserve graph-edge provenance independently for each supporting source file.
-- [x] Reject low-relevance vector hits before RRF so unrelated queries can return no grounded source.
-- [x] Make Brain subtree deletion path-prefix matching wildcard-safe.
-- [x] Use keyset pagination for Brain candidate scans to avoid OFFSET skip/duplication under index churn.
-- [ ] Add migration-specific instrumentation and performance benchmarks.
+PR #3 remains intentionally **draft** until the Android CI workflow finishes successfully and the remaining release-blocking integration coverage is complete.
