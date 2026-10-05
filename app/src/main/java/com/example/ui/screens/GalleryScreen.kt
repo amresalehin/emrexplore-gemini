@@ -20,6 +20,7 @@ import androidx.compose.animation.AnimatedVisibility
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import androidx.activity.compose.BackHandler
+import com.example.ui.viewmodel.LocalMainTabVisible
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -232,7 +233,7 @@ fun GalleryScreen(
     } else null
 
     // If inside an album, handle back button
-    BackHandler(enabled = uiState.selectedAlbum != null) {
+    BackHandler(enabled = LocalMainTabVisible.current && uiState.selectedAlbum != null) {
         viewModel.selectAlbum(null)
     }
 
