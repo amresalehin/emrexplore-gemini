@@ -75,19 +75,39 @@ object OnDeviceBrainModelCatalog {
         sizeLabel = "~90 MB"
     )
 
+    val all: List<OnDeviceBrainModelSpec> = listOf(arm64, generic)
+
     val default: OnDeviceBrainModelSpec
         get() = if (Build.SUPPORTED_ABIS.any { it == "arm64-v8a" }) arm64 else generic
+
+    fun find(id: String): OnDeviceBrainModelSpec? = all.firstOrNull { it.id == id }
 }
 
 class OnDeviceEmbeddingModelManager(context: Context) {
     private val root = context.applicationContext.filesDir.resolve("brain-models")
     private val httpClient = OkHttpClient()
+    private val selectionFile = root.resolve("selected-model.txt")
 
     init {
         root.mkdirs()
     }
 
-    fun defaultSpec(): OnDeviceBrainModelSpec = OnDeviceBrainModelCatalog.default
+    fun availableSpecs(): List<OnDeviceBrainModelSpec> = OnDeviceBrainModelCatalog.all
+
+    fun defaultSpec(): OnDeviceBrainModelSpec =
+        selectedSpec() ?: OnDeviceBrainModelCatalog.default
+
+    fun selectedSpec(): OnDeviceBrainModelSpec? =
+        runCatching {
+            OnDeviceBrainModelCatalog.find(selectionFile.readText(Charsets.UTF_8).trim())
+        }.getOrNull()
+
+    fun selectModel(modelId: String): OnDeviceBrainModelSpec {
+        val spec = OnDeviceBrainModelCatalog.find(modelId)
+            ?: throw IllegalArgumentException("Unknown on-device Brain model: $modelId")
+        selectionFile.writeText(spec.id, Charsets.UTF_8)
+        return spec
+    }
 
     fun modelDirectory(spec: OnDeviceBrainModelSpec = defaultSpec()): File =
         root.resolve(spec.id)
@@ -131,7 +151,7 @@ class OnDeviceEmbeddingModelManager(context: Context) {
         )
     }
 
-    suspend fun downloadDefaultModel(
+    suspend fun downloadSelectedModel(
         onProgress: suspend (Float, Long, Long) -> Unit = { _, _, _ -> }
     ) = withContext(Dispatchers.IO) {
         val spec = defaultSpec()
@@ -184,8 +204,12 @@ class OnDeviceEmbeddingModelManager(context: Context) {
         }
     }
 
-    fun deleteDefaultModel() {
+    fun deleteSelectedModel() {
         modelDirectory(defaultSpec()).deleteRecursively()
+    }
+
+    fun deleteDefaultModel() {
+        deleteSelectedModel()
     }
 
     private fun manifestLine(spec: OnDeviceBrainModelSpec): String =
