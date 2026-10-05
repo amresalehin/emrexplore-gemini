@@ -2,7 +2,6 @@ package com.example.data.brain
 
 import com.example.data.ai.AiProviderClient
 import com.example.data.ai.AnalysisResult
-import com.example.data.ai.ExtractedRelation
 import com.example.data.local.AiProviderConfigEntity
 
 interface BrainAiGateway {
