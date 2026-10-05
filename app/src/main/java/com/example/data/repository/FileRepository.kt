@@ -1568,13 +1568,6 @@ class FileRepository(private val context: Context) {
             invalidateFolderCache(parent)
             removeIndexedPath(oldPath, isDir)
             indexFileOrDir(newFile)
-            if (isDir) {
-                val batch = mutableListOf<IndexedFileEntity>()
-                scanDirForIndexing(newFile, batch, Int.MAX_VALUE, 0, onBatchFlushed = {})
-                if (batch.isNotEmpty()) {
-                    fileIndexDao.insertAll(batch)
-                }
-            }
         }
         renamed
     }
@@ -1710,11 +1703,6 @@ class FileRepository(private val context: Context) {
             }
             invalidateFolderCache(targetDir)
             indexFileOrDir(dest)
-            if (dest.isDirectory) {
-                val batch = mutableListOf<IndexedFileEntity>()
-                scanDirForIndexing(dest, batch, Int.MAX_VALUE, 0, onBatchFlushed = {})
-                if (batch.isNotEmpty()) fileIndexDao.insertAll(batch)
-            }
             true
         } catch (e: Exception) {
             e.printStackTrace()
