@@ -78,25 +78,18 @@ import com.example.data.local.AiProviderConfigEntity
 @Composable
 fun AiSettingsScreen(
     currentConfig: AiProviderConfigEntity,
-    nodeCount: Int,
-    edgeCount: Int,
-    chunkCount: Int,
     isTestingConnection: Boolean,
     testResult: ConnectionTestResult?,
     onSaveConfig: (AiProviderConfigEntity) -> Unit,
     onTestConnection: (AiProviderConfigEntity) -> Unit,
     availableModels: List<AvailableAiModel> = emptyList(),
     availableVisionModels: List<AvailableAiModel> = emptyList(),
-    availableEmbeddingModels: List<AvailableAiModel> = emptyList(),
-    availableMultimodalEmbeddingModels: List<AvailableAiModel> = emptyList(),
     isFetchingModels: Boolean = false,
     modelFetchError: String? = null,
     onFetchModels: (AiProviderConfigEntity) -> Unit = {},
     onDeviceBrainModel: OnDeviceBrainModelUiState = OnDeviceBrainModelUiState(),
     onDownloadOnDeviceBrainModel: () -> Unit = {},
     onDeleteOnDeviceBrainModel: () -> Unit = {},
-    onReindexAll: () -> Unit,
-    onClearGraph: () -> Unit,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -109,8 +102,6 @@ fun AiSettingsScreen(
     var baseUrl by remember { mutableStateOf(currentConfig.baseUrl) }
     var chatModel by remember { mutableStateOf(currentConfig.chatModel) }
     var visionModel by remember { mutableStateOf(currentConfig.visionModel) }
-    var embeddingModel by remember { mutableStateOf(currentConfig.textEmbeddingModel.ifBlank { currentConfig.embeddingModel }) }
-    var multimodalEmbeddingModel by remember { mutableStateOf(currentConfig.multimodalEmbeddingModel) }
     var isEnabled by remember { mutableStateOf(currentConfig.isEnabled) }
     var autoSync by remember { mutableStateOf(currentConfig.autoSync) }
     var freeOnly by remember { mutableStateOf(false) }
@@ -118,8 +109,6 @@ fun AiSettingsScreen(
     var showProviderPicker by remember { mutableStateOf(false) }
     var showChatPicker by remember { mutableStateOf(false) }
     var showVisionPicker by remember { mutableStateOf(false) }
-    var showEmbeddingPicker by remember { mutableStateOf(false) }
-    var showMultimodalEmbeddingPicker by remember { mutableStateOf(false) }
     var showAdvanced by remember { mutableStateOf(false) }
 
     fun draftConfig(): AiProviderConfigEntity = currentConfig.copy(
@@ -128,9 +117,6 @@ fun AiSettingsScreen(
         baseUrl = baseUrl.trim(),
         chatModel = chatModel.trim(),
         visionModel = visionModel.trim(),
-        embeddingModel = embeddingModel.trim(),
-        textEmbeddingModel = embeddingModel.trim(),
-        multimodalEmbeddingModel = multimodalEmbeddingModel.trim(),
         isEnabled = isEnabled,
         autoSync = autoSync
     )
@@ -141,15 +127,11 @@ fun AiSettingsScreen(
             baseUrl = currentConfig.baseUrl
             chatModel = currentConfig.chatModel
             visionModel = currentConfig.visionModel
-            embeddingModel = currentConfig.textEmbeddingModel.ifBlank { currentConfig.embeddingModel }
-            multimodalEmbeddingModel = currentConfig.multimodalEmbeddingModel
             apiKey = currentConfig.apiKey
         } else {
             baseUrl = provider.defaultBaseUrl
             chatModel = ""
             visionModel = ""
-            embeddingModel = provider.defaultTextEmbeddingModel
-            multimodalEmbeddingModel = provider.defaultMultimodalEmbeddingModel
             apiKey = ""
         }
         showProviderPicker = false
@@ -165,14 +147,9 @@ fun AiSettingsScreen(
 
     val chats = usableModels(availableModels)
     val visions = usableModels(availableVisionModels)
-    val embeddings = usableModels(availableEmbeddingModels)
-    val multimodalEmbeddings = usableModels(availableMultimodalEmbeddingModels)
-
-    LaunchedEffect(chats, visions, embeddings, multimodalEmbeddings) {
+    LaunchedEffect(chats, visions) {
         if (chats.isNotEmpty()) chatModel = firstUsable(chats, chatModel)
         if (visions.isNotEmpty()) visionModel = firstUsable(visions, visionModel)
-        if (embeddings.isNotEmpty()) embeddingModel = firstUsable(embeddings, embeddingModel)
-        if (multimodalEmbeddings.isNotEmpty()) multimodalEmbeddingModel = firstUsable(multimodalEmbeddings, multimodalEmbeddingModel)
     }
 
     Scaffold(
@@ -481,8 +458,6 @@ fun AiSettingsScreen(
     if (showProviderPicker) ProviderPickerDialog(selectedProvider, ::selectProvider) { showProviderPicker = false }
     if (showChatPicker) ModelPickerDialog("Choose chat model", chats, chatModel, { chatModel = it; showChatPicker = false }) { showChatPicker = false }
     if (showVisionPicker) ModelPickerDialog("Choose vision model", visions, visionModel, { visionModel = it; showVisionPicker = false }) { showVisionPicker = false }
-    if (showEmbeddingPicker) ModelPickerDialog("Choose text embedding model", embeddings, embeddingModel, { embeddingModel = it; showEmbeddingPicker = false }) { showEmbeddingPicker = false }
-    if (showMultimodalEmbeddingPicker) ModelPickerDialog("Choose image + text embedding model", multimodalEmbeddings, multimodalEmbeddingModel, { multimodalEmbeddingModel = it; showMultimodalEmbeddingPicker = false }) { showMultimodalEmbeddingPicker = false }
 }
 
 private fun normalizeProvider(value: String): ProviderType = when (ProviderType.fromString(value)) {
