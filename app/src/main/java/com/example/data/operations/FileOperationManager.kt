@@ -295,7 +295,7 @@ class FileOperationManager(
                             if (!deleteFile(src.absolutePath, toTrash)) {
                                 throw IOException("Could not delete " + src.name)
                             }
-                            processedFilesCount += if (src.isDirectory) countFilesAndDirectories(src) else 1
+                            processedFilesCount++
                             _progress.update { current ->
                                 current.copy(filesProcessed = processedFilesCount)
                             }
@@ -336,15 +336,6 @@ class FileOperationManager(
                 }
                 onFilesMutated(affectedDirectories.toList())
             }
-        }
-    }
-
-    private fun countFilesAndDirectories(file: File): Int {
-        if (!file.exists()) return 1
-        return if (file.isDirectory) {
-            1 + (file.listFiles()?.sumOf { countFilesAndDirectories(it) } ?: 0)
-        } else {
-            1
         }
     }
 
