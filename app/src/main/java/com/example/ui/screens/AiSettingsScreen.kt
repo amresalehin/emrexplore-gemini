@@ -71,6 +71,7 @@ import com.example.data.ai.AvailableAiModel
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.ai.ProviderType
 import com.example.data.ai.isKeylessAiConfig
+import com.example.data.brain.OnDeviceBrainModelSpec
 import com.example.data.brain.OnDeviceBrainModelStatus
 import com.example.data.brain.OnDeviceBrainModelUiState
 import com.example.data.local.AiProviderConfigEntity
@@ -85,6 +86,11 @@ fun AiSettingsScreen(
     onTestConnection: (AiProviderConfigEntity) -> Unit,
     availableModels: List<AvailableAiModel> = emptyList(),
     availableVisionModels: List<AvailableAiModel> = emptyList(),
+    availableEmbeddingModels: List<AvailableAiModel> = emptyList(),
+    availableMultimodalEmbeddingModels: List<AvailableAiModel> = emptyList(),
+    offlineBrainModels: List<OnDeviceBrainModelSpec> = emptyList(),
+    selectedOfflineBrainModelId: String = "",
+    onSelectOfflineBrainModel: (String) -> Unit = {},
     isFetchingModels: Boolean = false,
     modelFetchError: String? = null,
     onFetchModels: (AiProviderConfigEntity) -> Unit = {},
@@ -103,6 +109,8 @@ fun AiSettingsScreen(
     var baseUrl by remember { mutableStateOf(currentConfig.baseUrl) }
     var chatModel by remember { mutableStateOf(currentConfig.chatModel) }
     var visionModel by remember { mutableStateOf(currentConfig.visionModel) }
+    var embeddingModel by remember { mutableStateOf(currentConfig.textEmbeddingModel.ifBlank { currentConfig.embeddingModel }) }
+    var multimodalEmbeddingModel by remember { mutableStateOf(currentConfig.multimodalEmbeddingModel) }
     var isEnabled by remember { mutableStateOf(currentConfig.isEnabled) }
     var autoSync by remember { mutableStateOf(currentConfig.autoSync) }
     var freeOnly by remember { mutableStateOf(false) }
@@ -110,6 +118,9 @@ fun AiSettingsScreen(
     var showProviderPicker by remember { mutableStateOf(false) }
     var showChatPicker by remember { mutableStateOf(false) }
     var showVisionPicker by remember { mutableStateOf(false) }
+    var showEmbeddingPicker by remember { mutableStateOf(false) }
+    var showMultimodalEmbeddingPicker by remember { mutableStateOf(false) }
+    var showOfflineBrainPicker by remember { mutableStateOf(false) }
     var showAdvanced by remember { mutableStateOf(false) }
 
     fun draftConfig(): AiProviderConfigEntity = currentConfig.copy(
@@ -118,6 +129,9 @@ fun AiSettingsScreen(
         baseUrl = baseUrl.trim(),
         chatModel = chatModel.trim(),
         visionModel = visionModel.trim(),
+        embeddingModel = embeddingModel.trim(),
+        textEmbeddingModel = embeddingModel.trim(),
+        multimodalEmbeddingModel = multimodalEmbeddingModel.trim(),
         isEnabled = isEnabled,
         autoSync = autoSync
     )
@@ -128,11 +142,15 @@ fun AiSettingsScreen(
             baseUrl = currentConfig.baseUrl
             chatModel = currentConfig.chatModel
             visionModel = currentConfig.visionModel
+            embeddingModel = currentConfig.textEmbeddingModel.ifBlank { currentConfig.embeddingModel }
+            multimodalEmbeddingModel = currentConfig.multimodalEmbeddingModel
             apiKey = currentConfig.apiKey
         } else {
             baseUrl = provider.defaultBaseUrl
             chatModel = ""
             visionModel = ""
+            embeddingModel = provider.defaultTextEmbeddingModel
+            multimodalEmbeddingModel = provider.defaultMultimodalEmbeddingModel
             apiKey = ""
         }
         showProviderPicker = false
@@ -148,9 +166,13 @@ fun AiSettingsScreen(
 
     val chats = usableModels(availableModels)
     val visions = usableModels(availableVisionModels)
-    LaunchedEffect(chats, visions) {
+    val embeddings = usableModels(availableEmbeddingModels)
+    val multimodalEmbeddings = usableModels(availableMultimodalEmbeddingModels)
+    LaunchedEffect(chats, visions, embeddings, multimodalEmbeddings) {
         if (chats.isNotEmpty()) chatModel = firstUsable(chats, chatModel)
         if (visions.isNotEmpty()) visionModel = firstUsable(visions, visionModel)
+        if (embeddings.isNotEmpty()) embeddingModel = firstUsable(embeddings, embeddingModel)
+        if (multimodalEmbeddings.isNotEmpty()) multimodalEmbeddingModel = firstUsable(multimodalEmbeddings, multimodalEmbeddingModel)
     }
 
     Scaffold(
@@ -460,6 +482,31 @@ fun AiSettingsScreen(
 
                 ModelPicker("General files / chat", firstUsable(chats, chatModel), { showChatPicker = true }, "ai_chat_model_field", chats)
                 ModelPicker("Vision / image understanding + caption", firstUsable(visions, visionModel), { showVisionPicker = true }, "ai_vision_model_field", visions)
+                ModelPicker("Text embedding / semantic search", firstUsable(embeddings, embeddingModel), { showEmbeddingPicker = true }, "ai_embedding_model_field", embeddings)
+                ModelPicker("Multimodal embedding / image retrieval", firstUsable(multimodalEmbeddings, multimodalEmbeddingModel), { showMultimodalEmbeddingPicker = true }, "ai_multimodal_embedding_model_field", multimodalEmbeddings)
+
+                SectionTitle("OFFLINE BRAIN MODEL")
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth().clickable { showOfflineBrainPicker = true },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("On-device embedding model", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            val selectedOffline = offlineBrainModels.firstOrNull { it.id == selectedOfflineBrainModelId }
+                            Text(
+                                selectedOffline?.displayName ?: onDeviceBrainModel.displayName,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            if (selectedOffline != null) {
+                                Text(selectedOffline.sizeLabel + " · " + selectedOffline.embeddingDimension + "-D", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        Text("Choose", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+
                 SectionTitle("CHECK")
                 Button(
                     onClick = { onTestConnection(draftConfig()) },
@@ -529,6 +576,17 @@ fun AiSettingsScreen(
     if (showProviderPicker) ProviderPickerDialog(selectedProvider, ::selectProvider) { showProviderPicker = false }
     if (showChatPicker) ModelPickerDialog("Choose chat model", chats, chatModel, { chatModel = it; showChatPicker = false }) { showChatPicker = false }
     if (showVisionPicker) ModelPickerDialog("Choose vision model", visions, visionModel, { visionModel = it; showVisionPicker = false }) { showVisionPicker = false }
+    if (showEmbeddingPicker) ModelPickerDialog("Choose text embedding model", embeddings, embeddingModel, { embeddingModel = it; showEmbeddingPicker = false }) { showEmbeddingPicker = false }
+    if (showMultimodalEmbeddingPicker) ModelPickerDialog("Choose multimodal embedding model", multimodalEmbeddings, multimodalEmbeddingModel, { multimodalEmbeddingModel = it; showMultimodalEmbeddingPicker = false }) { showMultimodalEmbeddingPicker = false }
+    if (showOfflineBrainPicker) OfflineBrainModelPickerDialog(
+        models = offlineBrainModels,
+        selectedId = selectedOfflineBrainModelId,
+        onSelect = {
+            onSelectOfflineBrainModel(it)
+            showOfflineBrainPicker = false
+        },
+        onDismiss = { showOfflineBrainPicker = false }
+    )
 }
 
 private fun normalizeProvider(value: String): ProviderType = when (ProviderType.fromString(value)) {
@@ -578,6 +636,36 @@ private fun ModelPicker(
             Text("Choose", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
         }
     }
+}
+
+@Composable
+private fun OfflineBrainModelPickerDialog(
+    models: List<OnDeviceBrainModelSpec>,
+    selectedId: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose offline embedding model") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                models.forEach { model ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelect(model.id) },
+                        color = if (model.id == selectedId) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(Modifier.padding(11.dp)) {
+                            Text(model.displayName, fontWeight = FontWeight.SemiBold)
+                            Text(model.sizeLabel + " · " + model.embeddingDimension + "-D · max " + model.maxTokens + " tokens", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
 }
 
 @Composable
