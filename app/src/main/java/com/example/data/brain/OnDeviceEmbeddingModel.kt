@@ -87,7 +87,6 @@ object OnDeviceBrainModelCatalog {
 class OnDeviceEmbeddingModelManager(context: Context) {
     private val root = context.applicationContext.filesDir.resolve("brain-models")
     private val httpClient = OkHttpClient()
-    @Volatile private var installedCache: Boolean? = null
 
     init {
         root.mkdirs()
@@ -108,21 +107,18 @@ class OnDeviceEmbeddingModelManager(context: Context) {
         modelDirectory(spec).resolve("manifest.txt")
 
     fun isInstalled(spec: OnDeviceBrainModelSpec = defaultSpec()): Boolean {
-        if (installedCache != null && spec.id == defaultSpec().id) return installedCache == true
-
         val model = modelFile(spec)
         val vocab = vocabFile(spec)
         val manifest = manifestFile(spec)
-        val result = if (!model.isFile || model.length() <= 0L || !vocab.isFile || vocab.length() < 1000L || !manifest.isFile) {
-            false
-        } else {
+
+        return model.isFile &&
+            model.length() > 1_000_000L &&
+            vocab.isFile &&
+            vocab.length() >= 1000L &&
+            manifest.isFile &&
             runCatching {
                 manifest.readText(Charsets.UTF_8).trim() == manifestLine(spec)
             }.getOrDefault(false)
-        }
-
-        if (spec.id == defaultSpec().id) installedCache = result
-        return result
     }
 
     fun uiState(error: String? = null): OnDeviceBrainModelUiState {
@@ -181,7 +177,6 @@ class OnDeviceEmbeddingModelManager(context: Context) {
             replaceAtomically(vocabPart, vocabFile(spec))
             manifestFile(spec).writeText(manifestLine(spec), Charsets.UTF_8)
 
-            installedCache = null
             if (!isInstalled(spec)) {
                 throw IOException("On-device Brain model failed final validation")
             }
@@ -195,7 +190,6 @@ class OnDeviceEmbeddingModelManager(context: Context) {
     }
 
     fun deleteDefaultModel() {
-        installedCache = false
         modelDirectory(defaultSpec()).deleteRecursively()
     }
 
