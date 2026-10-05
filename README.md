@@ -2,7 +2,7 @@
 
 **emrexplore** is an Android file manager and media gallery with an optional AI layer for file understanding, semantic search, connected-file discovery, and local/private knowledge retrieval.
 
-The app remains useful without an AI provider: file browsing, media browsing, search, file operations, metadata inspection, and Brain offline retrieval do not require a cloud API key.
+The app remains useful without an AI provider: file browsing, media browsing, search, file operations, metadata inspection, and Brain semantic retrieval does not require a cloud API key after the on-device model is downloaded.
 
 ## Features
 
@@ -48,26 +48,24 @@ The indexing pipeline is deliberately conservative:
 1. Read a bounded file snapshot.
 2. Analyze text or images when an AI provider is available.
 3. Build deterministic chunks.
-4. Encode chunks with the downloaded on-device neural embedding model when installed.
-5. Optionally use provider embeddings for compatibility or secondary retrieval.
+4. Require the downloaded on-device neural embedding model.
+5. Encode chunks with that local model.
 6. Build file/entity nodes and relationship evidence.
-6. Verify the file did not change during processing.
-7. Commit the staged Brain representation atomically.
+7. Verify the file did not change during processing.
+8. Commit the staged Brain representation atomically.
 
 A failed index preserves the previous known-good Brain representation.
 
 ### On-device semantic model
-Brain can download a real semantic embedding model to app-private storage and execute it locally with ONNX Runtime. The current catalog uses [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2): a 384-dimensional BERT-family encoder with a 256-token sentence-transformer sequence limit. The ARM64 INT8 ONNX export is about 23 MB; the generic FP32 ONNX export is about 90 MB.
+Brain downloads a real semantic embedding model only when the user requests it, stores it in app-private storage, and executes it locally with ONNX Runtime. The current catalog uses [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2): a 384-dimensional BERT-family encoder with a 256-token sentence-transformer sequence limit. The ARM64 INT8 ONNX export is about 23 MB; the generic FP32 ONNX export is about 90 MB.
 
 The model is downloaded only after the user requests it from AI settings. It is written through temporary files, the ONNX weights are SHA-256 verified before activation, and Brain automatically reindexes after a successful model install so document vectors and query vectors are produced by the same local model. ONNX Runtime provides an Android package for running ONNX models on-device and includes XNNPACK support for mobile inference.
 
 ### Retrieval
-When the local neural model is installed, it is the primary Brain retrieval space and semantic query encoder. Provider embeddings are a compatibility/secondary path for older indexes or devices without the local model.
-
-Legacy deterministic hash vectors remain only as an emergency compatibility fallback. They are not described or treated as the Brain's semantic model.
+When the local neural model is installed, it is the only Brain semantic retrieval space and the query encoder. Brain does not maintain a second synthetic/hash embedding space.
 
 Retrieval also provides:
-- lexical fallback without mixing lexical scores into RRF scores,
+- lexical fallback for exact terms and identifiers,
 - minimum relevance gating,
 - live filesystem validation,
 - bounded graph expansion and context construction,
@@ -103,7 +101,7 @@ AI generation is optional. With the downloaded on-device embedding model, Brain 
 
 Brain v2 intentionally replaces the old KG/RAG storage model.
 
-The database is currently **version 13**. The migration from the previous Brain/KG/RAG schema intentionally removes the legacy Brain tables and creates the new Brain v2 schema. After upgrading an existing installation, synchronize Brain again so the new representation is populated.
+The migration from the previous Brain/KG/RAG schema intentionally removes the legacy Brain tables and creates the new Brain v2 schema. After upgrading an existing installation, synchronize Brain again so the new representation is populated.
 
 Current Brain tables:
 - `brain_documents`
@@ -113,6 +111,8 @@ Current Brain tables:
 - `brain_edge_evidence`
 - `brain_topics`
 - `brain_runs`
+
+The database is currently **version 14**. Migration 13 -> 14 removes the duplicate legacy `offlineEmbeddingJson` column because each Brain chunk now stores one canonical local neural embedding.
 
 Edge provenance is stored separately for each supporting source file. Removing one source therefore does not erase a relationship supported by another source.
 
