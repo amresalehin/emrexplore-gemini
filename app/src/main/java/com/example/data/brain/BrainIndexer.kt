@@ -306,8 +306,8 @@ class BrainIndexer(
         }
         if (!config.isEnabled) return localAnalysis(input)
 
-        return runCatching {
-            if (input.isImage) {
+        try {
+            return if (input.isImage) {
                 client.analyzeImage(
                     base64Jpeg = input.imageBase64,
                     metadataSummary = input.metadataSummary,
@@ -321,10 +321,11 @@ class BrainIndexer(
                     config = config
                 )
             }
-        }.getOrElse {
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
             // Semantic indexing must not disappear just because optional provider
             // enrichment is unavailable. The local model can still index the file.
-            localAnalysis(input)
+            return localAnalysis(input)
         }
     }
 
@@ -353,9 +354,10 @@ class BrainIndexer(
             throw IllegalStateException("Download the on-device Brain model before indexing")
         }
 
-        val vectors = runCatching {
+        val vectors = try {
             onDeviceEmbedding.embedTextPassages(texts)
-        }.getOrElse { error ->
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
             throw IllegalStateException(
                 "On-device Brain embedding failed: " + (error.message ?: "inference error"),
                 error
