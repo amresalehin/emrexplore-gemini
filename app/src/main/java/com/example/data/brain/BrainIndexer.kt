@@ -219,7 +219,6 @@ class BrainIndexer(
                     content = text,
                     embeddingJson = BrainVectorCodec.toJson(embeddings[index]),
                     embeddingModel = embeddingModel,
-                    offlineEmbeddingJson = BrainVectorCodec.toJson(embeddingBundle.offline[index]),
                     locator = if (input.isImage) file.name else "chunk-" + index,
                     pageNumber = null,
                     indexedAt = now
