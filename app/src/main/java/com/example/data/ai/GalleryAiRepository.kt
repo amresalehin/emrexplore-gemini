@@ -45,15 +45,6 @@ class GalleryAiRepository(private val context: android.content.Context) {
 
         val normalized = normalizeAiConfig(config)
         val input = runCatching { contentReader.read(file, normalized) }.getOrNull() ?: return@withContext false
-        val metadata = mediaMetadataRepository.getFreshAiEnrichment(
-            file.absolutePath,
-            file.length(),
-            file.lastModified(),
-            normalized.visionModel
-        )
-
-        if (!force && metadata != null) return@withContext true
-
         val analysis = if (
             normalized.isEnabled &&
             (isKeylessAiConfig(normalized) || normalized.apiKey.isNotBlank())
@@ -99,14 +90,6 @@ class GalleryAiRepository(private val context: android.content.Context) {
 
         MetadataWriter.writeAiMetadata(appContext, file, analysis.summary.trim(), analysis.tags)
         mediaMetadataRepository.getOrRead(item, requireOriginalLocation = false)
-        mediaMetadataRepository.saveAiEnrichment(
-            item = item,
-            caption = analysis.summary.trim(),
-            tagsJson = tagsJson,
-            entitiesJson = entitiesJson,
-            relationsJson = relationsJson,
-            model = normalized.visionModel
-        )
         true
     }
 }
