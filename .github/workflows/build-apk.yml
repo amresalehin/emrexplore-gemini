@@ -158,6 +158,19 @@ jobs:
         run: |
           keytool -genkeypair -v             -keystore debug.keystore             -storepass android             -alias androiddebugkey             -keypass android             -keyalg RSA             -keysize 2048             -validity 10000             -dname "CN=Android Debug,O=Android,C=US"
 
+      - name: Clean architecture guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e app/src/main/java/com/example/data/ai/BrainEngine.kt
+          test ! -e app/src/main/java/com/example/data/ai/KnowledgeGraphRepository.kt
+          test ! -e app/src/main/java/com/example/data/ai/OfflineEmbeddingEngine.kt
+          test ! -e app/src/main/java/com/example/data/ai/GalleryAiWorker.kt
+          test ! -e app/src/main/java/com/example/data/ai/GalleryAiOperationStore.kt
+          grep -R --line-number --fixed-strings 'com.example.data.ai.KnowledgeGraphRepository' app/src/main || true
+          ! grep -R --line-number --fixed-strings 'com.example.data.ai.KnowledgeGraphRepository' app/src/main
+          ! grep -R --line-number --fixed-strings 'com.example.data.ai.OfflineEmbeddingEngine' app/src/main app/src/test
+
       - name: Unit tests
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
