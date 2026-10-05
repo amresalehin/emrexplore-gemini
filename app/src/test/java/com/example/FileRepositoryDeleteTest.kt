@@ -72,7 +72,7 @@ class FileRepositoryDeleteTest {
         val source = File(testRoot, "manager.txt").apply { writeText("keep me") }
         var requestedToTrash: Boolean? = null
         val manager = FileOperationManager(
-            onFilesMutated = {},
+            onFilesMutated = { _, _, _ -> },
             deleteFile = { path, toTrash ->
                 requestedToTrash = toTrash
                 assertTrue(File(path).exists())
