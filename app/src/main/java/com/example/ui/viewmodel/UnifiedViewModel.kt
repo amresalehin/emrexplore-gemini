@@ -383,6 +383,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     private var fullscreenLoadJob: Job? = null
     private var explorerSearchJob: Job? = null
     private var ragQueryJob: Job? = null
+    private var ragRequestId: Long = 0L
+    private var permissionRefreshJob: Job? = null
+    private var permissionsInitialized = false
     private var pendingDeletePaths: List<String> = emptyList()
 
     init {
@@ -976,18 +979,26 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onPermissionsGranted() {
-        val root = repository.rootPath
-        val current = _uiState.value.currentPath
-        val filesDir = getApplication<Application>().filesDir.absolutePath
-        val shouldNavigateToRoot = (current == filesDir || !File(current).exists() || !File(current).canRead()) && root != filesDir
-        if (shouldNavigateToRoot) {
-            navigateToDirectory(root)
-        } else {
-            loadFiles()
+        if (permissionsInitialized || permissionRefreshJob?.isActive == true) return
+        permissionsInitialized = true
+        permissionRefreshJob = viewModelScope.launch {
+            try {
+                val root = repository.rootPath
+                val current = _uiState.value.currentPath
+                val filesDir = getApplication<Application>().filesDir.absolutePath
+                val shouldNavigateToRoot = (current == filesDir || !File(current).exists() || !File(current).canRead()) && root != filesDir
+                if (shouldNavigateToRoot) {
+                    navigateToDirectory(root)
+                } else {
+                    loadFiles()
+                }
+                loadStorageStats()
+                calculateCategoryCounts()
+                // Storage permission alone must never start Brain/AI indexing.
+            } finally {
+                permissionRefreshJob = null
+            }
         }
-        loadStorageStats()
-        calculateCategoryCounts()
-        // Storage permission alone must never start Brain/AI indexing.
     }
 
     fun loadFiles(path: String = _uiState.value.currentPath) {
@@ -2500,27 +2511,30 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun attachAiFile(file: File) {
+    fun attachAiFile(file: File): AttachedAiFile {
         val ext = file.extension.lowercase()
         val isImg = ext in setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp")
-        val mime = if (isImg) "image/$ext" else if (ext == "pdf") "application/pdf" else "application/octet-stream"
-        _uiState.update {
-            it.copy(
-                attachedAiFile = AttachedAiFile(
-                    file = file,
-                    name = file.name,
-                    path = file.absolutePath,
-                    mimeType = mime,
-                    size = file.length(),
-                    isImage = isImg
-                )
-            )
-        }
+        val mime = if (isImg) "image/" + if (ext == "jpg") "jpeg" else ext else if (ext == "pdf") "application/pdf" else "application/octet-stream"
+        val attached = AttachedAiFile(
+            file = file,
+            name = file.name,
+            path = file.absolutePath,
+            mimeType = mime,
+            size = file.length(),
+            isImage = isImg
+        )
+        _uiState.update { it.copy(attachedAiFile = attached) }
+        return attached
     }
 
     fun askAiAboutFile(file: File) {
-        attachAiFile(file)
+        if (!file.exists() || !file.isFile || !file.canRead()) {
+            showMessage("This file is no longer readable.")
+            return
+        }
+        val attached = attachAiFile(file)
         setTab(MainTab.BRAIN)
+        queryRag("Tell me about this file: \${file.name}", attachedOverride = attached)
     }
 
     fun detachAiFile() {
@@ -2552,6 +2566,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
 
         ragQueryJob?.cancel()
+        val requestId = ++ragRequestId
         val attached = attachedOverride ?: _uiState.value.attachedAiFile
         val priorHistory = _uiState.value.askAiMessages
             .filter { !it.isError }
@@ -2601,7 +2616,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     askAiMessages = it.askAiMessages + aiMsg
                 )
             }
-            ragQueryJob = null
+            if (ragRequestId == requestId) {
+                ragQueryJob = null
+            }
         }
     }
 
