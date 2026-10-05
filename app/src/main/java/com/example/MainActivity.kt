@@ -503,7 +503,7 @@ private fun PersistentTabHost(
                 onSaveBrainTopic = viewModel::saveBrainTopic,
                 onDeleteBrainTopic = viewModel::deleteBrainTopic,
                 onOpenAiSettings = { viewModel.setShowAiSettings(true) },
-                onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(file.name, file.absolutePath, file.length(), file.lastModified(), false)) },
+                onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false)) },
                 onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(file.name, file.absolutePath, file.length(), file.lastModified(), false, mimeType = "image/jpeg")) }
             )
         }
