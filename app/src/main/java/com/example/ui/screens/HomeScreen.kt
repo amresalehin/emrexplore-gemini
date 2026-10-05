@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
+import com.example.ui.viewmodel.LocalMainTabVisible
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -164,17 +165,17 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     // Back handler: if Home search query is active, clear search first
-    BackHandler(enabled = uiState.homeSearchQuery.isNotEmpty()) {
+    BackHandler(enabled = LocalMainTabVisible.current && uiState.homeSearchQuery.isNotEmpty()) {
         viewModel.clearHomeSearch()
     }
 
     // Back handler when inspecting Recycle Bin
-    BackHandler(enabled = uiState.isRecycleBinOpen && uiState.homeSearchQuery.isEmpty()) {
+    BackHandler(enabled = LocalMainTabVisible.current && uiState.isRecycleBinOpen && uiState.homeSearchQuery.isEmpty()) {
         viewModel.closeRecycleBin()
     }
 
     // Back handler when inspecting a category
-    BackHandler(enabled = uiState.selectedCategory != null && uiState.homeSearchQuery.isEmpty() && !uiState.isRecycleBinOpen) {
+    BackHandler(enabled = LocalMainTabVisible.current && uiState.selectedCategory != null && uiState.homeSearchQuery.isEmpty() && !uiState.isRecycleBinOpen) {
         viewModel.selectCategory(null)
     }
 
