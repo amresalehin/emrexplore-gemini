@@ -204,12 +204,16 @@ class OnDeviceEmbeddingModelManager(context: Context) {
 
     private fun vocabLooksValid(file: File): Boolean {
         if (!file.isFile || file.length() < 1000L) return false
-        val text = runCatching { file.readText(Charsets.UTF_8) }.getOrNull() ?: return false
-        return text.contains("[PAD]\\n") &&
-            text.contains("[UNK]\\n") &&
-            text.contains("[CLS]\\n") &&
-            text.contains("[SEP]\\n") &&
-            text.lineSequence().count() >= 30000
+        val required = setOf("[PAD]", "[UNK]", "[CLS]", "[SEP]")
+        val found = HashSet<String>()
+        var count = 0
+        runCatching {
+            file.forEachLine(Charsets.UTF_8) { line ->
+                count++
+                if (line in required) found += line
+            }
+        }.getOrElse { return false }
+        return count >= 30_000 && found.containsAll(required)
     }
 
     private fun replaceAtomically(source: File, target: File) {
