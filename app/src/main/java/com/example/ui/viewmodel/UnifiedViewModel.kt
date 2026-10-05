@@ -29,7 +29,7 @@ import com.example.data.media.MediaRepository
 import com.example.data.media.FullscreenMediaSource
 import com.example.data.media.MediaViewerWindow
 import com.example.data.media.MediaMetadataRepository
-import com.example.data.ai.GalleryBrainOperationStore
+import com.example.data.ai.BrainTargetedOperationStore
 import com.example.data.brain.BrainRepository
 import com.example.data.ai.AvailableAiModel
 import com.example.data.brain.ConnectedDotsItem
@@ -288,7 +288,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     private val mediaRepository = MediaRepository(application)
     private val mediaMetadataRepository = MediaMetadataRepository(application.applicationContext)
     private val brainRepository = BrainRepository(application)
-    private val galleryAiStore = GalleryBrainOperationStore(application.applicationContext)
+    private val galleryAiStore = BrainTargetedOperationStore(application.applicationContext)
     private val galleryFilterFlow = MutableStateFlow<MediaFilter?>(MediaFilter.ALL)
     private val galleryDateFilterFlow = MutableStateFlow(GalleryDateFilter.ALL)
     private val galleryLocationFilterFlow = MutableStateFlow(GalleryLocationFilter.ALL)
