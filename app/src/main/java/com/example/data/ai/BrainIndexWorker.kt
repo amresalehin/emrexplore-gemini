@@ -75,5 +75,6 @@ class BrainIndexWorker(appContext: Context, params: WorkerParameters) : Coroutin
 
     companion object {
         const val UNIQUE_NAME = "emrexplore-brain-index"
+        const val TARGETED_UNIQUE_NAME = "emrexplore-brain-targeted-index"
     }
 }
