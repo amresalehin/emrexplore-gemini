@@ -58,11 +58,12 @@ jobs:
           ndk-version: ${{ steps.pins.outputs.ndk_version }}
 
       - name: Build Perl runtime
-        run: chmod +x native/build.sh
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
           SOURCE_DATE_EPOCH: '1735689600'
-        run: native/build.sh ${{ matrix.abi }}
+        run: |
+          chmod +x native/build.sh
+          bash native/build.sh ${{ matrix.abi }}
 
       - name: Upload ABI runtime
         uses: actions/upload-artifact@v4
