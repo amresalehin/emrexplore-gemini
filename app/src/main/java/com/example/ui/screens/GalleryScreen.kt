@@ -138,6 +138,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.data.brain.OnDeviceBrainModelStatus
 import com.example.data.model.MediaAlbum
 import com.example.data.model.MediaItem
 import com.example.data.media.MediaAlbumRepository
@@ -156,6 +157,7 @@ fun GalleryScreen(
     uiState: UiState,
     viewModel: UnifiedViewModel,
     onRequestMediaLocationPermission: () -> Unit = {},
+    onOpenBrainSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -635,6 +637,33 @@ fun GalleryScreen(
             }
         }
 
+        // Gallery AI is backed by the same Brain engine. Surface its dependency here so
+        // a disabled action never looks like a broken/no-op button.
+        if (uiState.gallerySelection.isNotEmpty() && uiState.onDeviceBrainModel.status != OnDeviceBrainModelStatus.READY) {
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text(
+                        text = "Gallery AI needs the on-device Brain model.",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = onOpenBrainSettings) { Text("Set up") }
+                }
+            }
+        }
+
         // Aves-style contextual selection bar. Selection is limited to explicitly selected items.
         if (uiState.gallerySelection.isNotEmpty()) {
             GallerySelectionBar(
@@ -642,6 +671,7 @@ fun GalleryScreen(
                 onClear = { viewModel.clearGallerySelection() },
                 onFavorite = { viewModel.favoriteGallerySelection() },
                 onAiProcess = { viewModel.processGalleryAiSelection() },
+                aiReady = uiState.onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
                 onShare = {
                     val uris = ArrayList(uiState.gallerySelection.map { it.uri })
                     try {
@@ -1414,6 +1444,7 @@ private fun MediaGridThumbnail(
 @Composable
 private fun GallerySelectionBar(
     count: Int,
+    aiReady: Boolean,
     onClear: () -> Unit,
     onFavorite: () -> Unit,
     onAiProcess: () -> Unit,
@@ -1428,7 +1459,9 @@ private fun GallerySelectionBar(
             IconButton(onClick = onClear) { Icon(Icons.Default.Close, contentDescription = "Clear selection") }
             Text("$count selected", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             IconButton(onClick = onFavorite) { Icon(Icons.Default.Star, contentDescription = "Favorite selected") }
-            IconButton(onClick = onAiProcess) { Icon(Icons.Default.AutoAwesome, contentDescription = "AI process selected") }
+            IconButton(onClick = onAiProcess, enabled = aiReady) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = if (aiReady) "AI process selected" else "Set up Brain to process selected")
+            }
             IconButton(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = "Share selected") }
             IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Delete selected") }
         }
