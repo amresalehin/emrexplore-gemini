@@ -12,7 +12,7 @@ import org.json.JSONArray
  */
 class BrainTargetedOperationStore(context: Context) {
     companion object {
-        private const val PREFS_NAME = "brain_targeted_operation"
+        private const val PREFS_NAME = "gallery_brain_operation"
         private const val KEY_PATHS = "pending_paths"
         private const val KEY_FORCE_PATHS = "force_paths"
         private const val KEY_TOTAL = "total_count"
