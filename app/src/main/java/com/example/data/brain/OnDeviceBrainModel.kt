@@ -1,8 +1,5 @@
 package com.example.data.brain
 
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.os.Build
 import kotlinx.coroutines.Dispatchers
@@ -12,9 +9,7 @@ import okhttp3.Request
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
-import java.text.Normalizer
 import java.util.Locale
-import kotlin.math.sqrt
 
 enum class OnDeviceBrainModelStatus {
     NOT_INSTALLED,
