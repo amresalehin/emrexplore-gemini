@@ -3,20 +3,11 @@ package com.example.data.brain
 import android.content.Context
 import androidx.room.withTransaction
 import com.example.data.ai.AiProviderClient
-import com.example.data.brain.AttachedAiFile
 import com.example.data.ai.AvailableAiModel
-import com.example.data.brain.ConnectedDotsItem
 import com.example.data.ai.ConnectionTestResult
-import com.example.data.ai.ExtractedEntity
 import com.example.data.ai.ProviderType
-import com.example.data.brain.RagAnswer
 import com.example.data.ai.isKeylessAiConfig
 import com.example.data.local.AiProviderConfigEntity
-import com.example.data.brain.BrainTopicEntity
-import com.example.data.brain.BrainEdgeEntity
-import com.example.data.brain.BrainNodeEntity
-import com.example.data.brain.BrainChunkEntity
-import com.example.data.local.IndexedFileEntity
 import com.example.data.local.AppDatabase
 import com.example.data.repository.FileRepository
 import kotlinx.coroutines.CancellationException
@@ -46,7 +37,6 @@ class BrainRepository(private val context: Context) {
     private val brainDocumentDao = db.brainDocumentDao()
     private val brainRunDao = db.brainRunDao()
     private val aiConfigDao = db.aiProviderConfigDao()
-    private val fileIndexDao = db.fileIndexDao()
 
     private val client = AiProviderClient()
     private val brainAi = DefaultBrainAiGateway(client)
@@ -65,11 +55,9 @@ class BrainRepository(private val context: Context) {
         onDeviceEmbedding = onDeviceEmbedding
     )
     private val retriever = BrainRetriever(
-        context = appContext,
         chunkDao = brainChunkDao,
         nodeDao = brainNodeDao,
         edgeDao = brainEdgeDao,
-        client = brainAi,
         onDeviceEmbedding = onDeviceEmbedding
     )
     private val fileRepository = FileRepository(appContext)
@@ -131,10 +119,6 @@ class BrainRepository(private val context: Context) {
             brainDocumentDao.clearAll()
             brainRunDao.clearAll()
         }
-    }
-
-    suspend fun getBrainCandidates(): List<IndexedFileEntity> = withContext(Dispatchers.IO) {
-        fileIndexDao.getAllIndexedFilesForBrain()
     }
 
     suspend fun syncAll(
@@ -214,7 +198,6 @@ class BrainRepository(private val context: Context) {
 
     suspend fun indexFile(
         file: File,
-        uri: android.net.Uri? = null,
         config: AiProviderConfigEntity,
         force: Boolean = false
     ): Boolean = withContext(Dispatchers.IO) {
@@ -224,7 +207,7 @@ class BrainRepository(private val context: Context) {
     suspend fun indexPath(path: File, config: AiProviderConfigEntity) = withContext(Dispatchers.IO) {
         if (!path.exists()) return@withContext
         if (path.isFile) {
-            indexFile(path, null, config, force = true)
+            indexFile(path, config, force = true)
             return@withContext
         }
 
