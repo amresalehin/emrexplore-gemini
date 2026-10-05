@@ -37,26 +37,34 @@ data/brain/
 ├── BrainDaos.kt            # Brain persistence/query surface
 ├── BrainAiGateway.kt       # provider-independent Brain AI boundary
 ├── BrainIndexer.kt         # atomic per-file indexing
-├── BrainRetriever.kt       # hybrid retrieval + bounded graph expansion
+├── BrainRetriever.kt       # semantic retrieval + bounded graph expansion
 ├── BrainRepository.kt      # single public Brain boundary
+├── BrainModelDownloadWorker.kt
+├── OnDeviceEmbeddingModel.kt # model catalog, downloader, tokenizer, ONNX inference
 └── BrainModels.kt          # Brain/UI data models
 ```
 
 The indexing pipeline is deliberately conservative:
 1. Read a bounded file snapshot.
 2. Analyze text or images when an AI provider is available.
-3. Build deterministic chunks and local embeddings.
-4. Optionally generate provider embeddings.
-5. Build file/entity nodes and relationship evidence.
+3. Build deterministic chunks.
+4. Encode chunks with the downloaded on-device neural embedding model when installed.
+5. Optionally use provider embeddings for compatibility or secondary retrieval.
+6. Build file/entity nodes and relationship evidence.
 6. Verify the file did not change during processing.
 7. Commit the staged Brain representation atomically.
 
 A failed index preserves the previous known-good Brain representation.
 
-### Retrieval
-Brain always keeps a deterministic on-device embedding representation.
+### On-device semantic model
+Brain can download a real semantic embedding model to app-private storage and execute it locally with ONNX Runtime. The current catalog uses [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2): a 384-dimensional BERT-family encoder with a 256-token sentence-transformer sequence limit. The ARM64 INT8 ONNX export is about 23 MB; the generic FP32 ONNX export is about 90 MB.
 
-When a provider supports embeddings, Brain stores that representation as a second retrieval signal. It ranks each embedding space independently and combines the rankings with Reciprocal Rank Fusion (RRF). Raw cosine scores from incompatible vector spaces are never compared directly.
+The model is downloaded only after the user requests it from AI settings. It is written through temporary files, the ONNX weights are SHA-256 verified before activation, and Brain automatically reindexes after a successful model install so document vectors and query vectors are produced by the same local model. ONNX Runtime provides an Android package for running ONNX models on-device and includes XNNPACK support for mobile inference.
+
+### Retrieval
+When the local neural model is installed, it is the primary Brain retrieval space and semantic query encoder. Provider embeddings are a compatibility/secondary path for older indexes or devices without the local model.
+
+Legacy deterministic hash vectors remain only as an emergency compatibility fallback. They are not described or treated as the Brain's semantic model.
 
 Retrieval also provides:
 - lexical fallback without mixing lexical scores into RRF scores,
@@ -80,7 +88,7 @@ Provider identity is preserved instead of collapsing all compatible services int
 
 Ollama is the private/local path. Exact GPS graph data is restricted to Ollama indexing. Cloud-oriented Brain context removes or redacts precise location information.
 
-AI is optional. Without a usable provider, Brain can still build its deterministic local index and perform local retrieval/fallback responses.
+AI generation is optional. With the downloaded on-device embedding model, Brain can build and search a real semantic index without a provider embedding API or API key. Cloud/local providers can still enrich documents, generate graph relations, and produce final grounded answers.
 
 ## Privacy and security
 
@@ -118,7 +126,7 @@ Edge provenance is stored separately for each supporting source file. Removing o
 
 Open the repository in Android Studio, let Gradle sync, and run the `app` configuration.
 
-No `.env` file and no API key are required to build the application.
+No `.env` file and no API key are required to build the application. The on-device Brain model is downloaded post-install rather than bundled into the APK, keeping the initial application package smaller.
 
 CI uses the following verification tasks:
 
@@ -167,4 +175,4 @@ The UI still contains some historical `kg*` state and screen naming. Runtime Bra
 
 Brain v2 is implemented on `agent/brain-rebuild` in draft PR #3 and is intended to merge into `gemini`.
 
-The current phase is validation and cross-feature hardening, not another Brain rewrite. See [task.md](task.md) for the active backlog and release definition of done.
+The current phase is validation of the real on-device semantic Brain path plus cross-feature hardening. See [task.md](task.md) for the active backlog and release definition of done.
