@@ -224,3 +224,13 @@ The Brain v2 rebuild and hardening phase is complete when:
 ## Current verification state
 
 PR #3 remains intentionally **draft** until the Android CI workflow finishes successfully and the remaining release-blocking integration coverage is complete.
+
+## 11. Metadata engine — ExifTool integration
+
+- [x] Add an app-private ExifTool process bridge using argv-only execution.
+- [x] Route metadata inspection through ExifTool JSON output.
+- [x] Remove whole-file JPEG segment scanning from the production inspection path.
+- [x] Route AI metadata writes through ExifTool instead of manual JPEG/EXIF byte surgery.
+- [x] Support SAF/content URIs through temporary app-private staging and copy-back.
+- [x] Package the runtime through ABI-specific `jniLibs` and document the native-artifact contract.
+- [ ] Provision and verify generated ExifTool native artifacts in CI before release builds.
