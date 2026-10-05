@@ -69,6 +69,7 @@ import com.example.ui.screens.TextEditorScreen
 import com.example.ui.screens.ZipViewerDialog
 import com.example.ui.theme.EmrExploreTheme
 import com.example.ui.viewmodel.MainTab
+import com.example.ui.viewmodel.LocalMainTabVisible
 import com.example.data.ai.isKeylessAiConfig
 import com.example.ui.viewmodel.UnifiedViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -509,6 +510,7 @@ private fun TabHostPage(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalMainTabVisible provides visible) {
     Box(
         modifier = modifier
             .alpha(if (visible) 1f else 0f)
@@ -520,4 +522,5 @@ private fun TabHostPage(
                 }
             }
     ) { content() }
+    }
 }
