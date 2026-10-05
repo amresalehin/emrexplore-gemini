@@ -2,6 +2,7 @@ package com.example.data.brain
 
 import androidx.room.withTransaction
 
+import com.example.data.local.AppDatabase
 import com.example.data.ai.AnalysisResult
 import com.example.data.ai.ExtractedEntity
 import com.example.data.ai.ExtractedRelation
@@ -25,7 +26,8 @@ class BrainIndexer(
     private val nodeDao: BrainNodeDao,
     private val edgeDao: BrainEdgeDao,
     private val runDao: BrainRunDao,
-    private val client: BrainAiGateway
+    private val client: BrainAiGateway,
+    private val db: AppDatabase
 ) {
     private val reader = BrainContentReader(context)
 
@@ -249,7 +251,6 @@ class BrainIndexer(
     }
 
     private suspend fun withTransaction(block: suspend () -> Unit) {
-        val db = com.example.data.local.AppDatabase.getDatabase(context.applicationContext)
         db.withTransaction { block() }
     }
 
