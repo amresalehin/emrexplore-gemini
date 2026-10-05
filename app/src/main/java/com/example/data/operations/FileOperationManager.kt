@@ -30,7 +30,10 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 class FileOperationManager(
-    private val onFilesMutated: suspend (affectedPaths: List<String>) -> Unit
+    private val onFilesMutated: suspend (affectedPaths: List<String>) -> Unit,
+    private val deleteFile: suspend (path: String, toTrash: Boolean) -> Boolean = { path, _ -> File(path).let { file ->
+        if (file.isDirectory) file.deleteRecursively() else file.delete()
+    } }
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var currentJob: Job? = null
@@ -288,23 +291,11 @@ class FileOperationManager(
 
                         OperationType.DELETE -> {
                             _progress.update { current -> current.copy(currentFileName = src.name) }
-                            if (src.isDirectory) {
-                                deleteRecursivelyWithProgress(src) { deletedFile ->
-                                    processedFilesCount++
-                                    _progress.update { current ->
-                                        current.copy(
-                                            currentFileName = deletedFile.name,
-                                            filesProcessed = processedFilesCount
-                                        )
-                                    }
-                                }
-                            } else {
-                                checkPausedOrCancelled()
-                                if (!src.delete()) {
-                                    throw IOException("Could not delete " + src.name)
-                                }
-                                processedFilesCount++
+                            checkPausedOrCancelled()
+                            if (!deleteFile(src.absolutePath, toTrash)) {
+                                throw IOException("Could not delete " + src.name)
                             }
+                            processedFilesCount += if (src.isDirectory) countFilesAndDirectories(src) else 1
                             _progress.update { current ->
                                 current.copy(filesProcessed = processedFilesCount)
                             }
@@ -345,6 +336,15 @@ class FileOperationManager(
                 }
                 onFilesMutated(affectedDirectories.toList())
             }
+        }
+    }
+
+    private fun countFilesAndDirectories(file: File): Int {
+        if (!file.exists()) return 1
+        return if (file.isDirectory) {
+            1 + (file.listFiles()?.sumOf { countFilesAndDirectories(it) } ?: 0)
+        } else {
+            1
         }
     }
 
