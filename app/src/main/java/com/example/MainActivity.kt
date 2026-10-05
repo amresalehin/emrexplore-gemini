@@ -496,25 +496,18 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
     if (uiState.isAiSettingsScreenOpen) {
         AiSettingsScreen(
             currentConfig = uiState.aiConfig,
-            nodeCount = uiState.kgNodeCount,
-            edgeCount = uiState.kgEdgeCount,
-            chunkCount = uiState.kgChunkCount,
             isTestingConnection = uiState.isTestingAiConnection,
             testResult = uiState.aiTestResult,
             onSaveConfig = { viewModel.saveAiConfig(it) },
             onTestConnection = { viewModel.testAiConnection(it) },
             availableModels = uiState.aiModels,
             availableVisionModels = uiState.aiVisionModels,
-            availableEmbeddingModels = uiState.aiEmbeddingModels,
-            availableMultimodalEmbeddingModels = uiState.aiMultimodalEmbeddingModels,
             isFetchingModels = uiState.isFetchingAiModels,
             modelFetchError = uiState.aiModelFetchError,
             onFetchModels = { viewModel.fetchAiModels(it) },
             onDeviceBrainModel = uiState.onDeviceBrainModel,
             onDownloadOnDeviceBrainModel = { viewModel.downloadOnDeviceBrainModel() },
             onDeleteOnDeviceBrainModel = { viewModel.deleteOnDeviceBrainModel() },
-            onReindexAll = { viewModel.indexAllFilesForKnowledgeGraph() },
-            onClearGraph = { viewModel.clearKnowledgeGraph() },
             onNavigateBack = { viewModel.setShowAiSettings(false) }
         )
     }
