@@ -63,7 +63,6 @@ import com.example.ui.screens.FilePropertiesDialog
 import com.example.ui.screens.FullscreenMediaViewer
 import com.example.ui.screens.GalleryScreen
 import com.example.ui.screens.HomeScreen
-import com.example.ui.screens.KnowledgeGraphScreen
 import com.example.ui.screens.MetadataInspectorSheet
 import com.example.ui.screens.TextEditorScreen
 import com.example.ui.screens.ZipViewerDialog
@@ -486,7 +485,7 @@ private fun PersistentTabHost(
                 onClearChat = viewModel::clearAskAiChat,
                 onQueryRag = viewModel::queryRag,
                 onCancelRag = viewModel::cancelRagQuery,
-                onIndexAllFiles = viewModel::indexAllFilesForKnowledgeGraph,
+                onIndexAllFiles = viewModel::indexAllFilesForBrain,
                 onAskAiForFile = { node ->
                     node.sourceFilePath?.let { path ->
                         val file = File(path)
@@ -504,7 +503,7 @@ private fun PersistentTabHost(
                 onDeleteBrainTopic = viewModel::deleteBrainTopic,
                 onOpenAiSettings = { viewModel.setShowAiSettings(true) },
                 onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false)) },
-                onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(file.name, file.absolutePath, file.length(), file.lastModified(), false, mimeType = "image/jpeg")) }
+                onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false, mimeType = "image/jpeg")) }
             )
         }
     }
