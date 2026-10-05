@@ -226,5 +226,10 @@ Target branch: `gemini` (repository default branch)
 - [x] Remove provider-gating from offline Brain indexing.
 - [x] Add pure Brain-core unit tests and database-surface assertions.
 - [ ] Finish UI naming cleanup from remaining historical `kg` identifiers.
+  - Backend/data ownership is now `com.example.data.brain`; remaining naming is UI/file-history cleanup only.
 - [x] Add paged candidate enumeration for very large libraries.
+- [x] Preserve graph-edge provenance independently for each supporting source file.
+- [x] Reject low-relevance vector hits before RRF so unrelated queries can return no grounded source.
+- [x] Make Brain subtree deletion path-prefix matching wildcard-safe.
+- [x] Use keyset pagination for Brain candidate scans to avoid OFFSET skip/duplication under index churn.
 - [ ] Add migration-specific instrumentation and performance benchmarks.
