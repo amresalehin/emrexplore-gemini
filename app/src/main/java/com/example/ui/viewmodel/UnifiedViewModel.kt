@@ -73,6 +73,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import androidx.paging.PagingData
+import androidx.paging.map
 import androidx.paging.cachedIn
 import androidx.work.Constraints
 import androidx.work.NetworkType
