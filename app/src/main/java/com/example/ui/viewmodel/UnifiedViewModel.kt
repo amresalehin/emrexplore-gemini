@@ -1762,8 +1762,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         showMessage("Re-analysis queued for ${item.name}")
     }
 
-    suspend fun getAiMetadata(item: MediaItem): MediaMetadataEntity? =
-        mediaMetadataRepository.getByPath(item.path)
+    suspend fun getBrainNode(item: MediaItem): BrainNodeEntity? =
+        brainRepository.getBrainNode(item.path)
 
     fun deleteGallerySelection(toTrash: Boolean = true) {
         val selected = _uiState.value.gallerySelection
