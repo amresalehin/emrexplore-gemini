@@ -32,6 +32,7 @@ class BrainModelDownloadWorker(
                 )
             }
 
+            currentCoroutineContext().ensureActive()
             val indexRequest = OneTimeWorkRequestBuilder<BrainIndexWorker>().build()
             WorkManager.getInstance(applicationContext).enqueueUniqueWork(
                 BrainIndexWorker.UNIQUE_NAME,
