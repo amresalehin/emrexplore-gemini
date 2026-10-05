@@ -37,6 +37,10 @@ class BrainIndexer(
         }
 
         val extension = file.extension.lowercase(Locale.US)
+        val pathSegments = path.split(File.separatorChar)
+        if (file.name.startsWith(".") || pathSegments.any { it == ".trash" }) {
+            return BrainIndexOutcome(true, skipped = true)
+        }
         if (extension !in BrainContentReader.SUPPORTED_EXTENSIONS) {
             return BrainIndexOutcome(true, skipped = true)
         }
