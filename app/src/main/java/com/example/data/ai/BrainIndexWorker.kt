@@ -13,6 +13,11 @@ class BrainIndexWorker(appContext: Context, params: WorkerParameters) : Coroutin
         currentCoroutineContext().ensureActive()
 
         val repository = BrainRepository(applicationContext)
+        if (!repository.isOnDeviceBrainModelReady()) {
+            return Result.failure(
+                workDataOf("error" to "Download the on-device Brain model before indexing")
+            )
+        }
         return try {
             val result = repository.syncAll(force = inputData.getBoolean("force", false)) { current, total, path, outcome ->
                 currentCoroutineContext().ensureActive()
