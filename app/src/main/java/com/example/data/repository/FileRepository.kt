@@ -1542,7 +1542,7 @@ class FileRepository(private val context: Context) {
             val canonicalSource = source.canonicalFile
             val canonicalDestination = destination.canonicalFile
             canonicalSource == canonicalDestination ||
-                (source.isDirectory && canonicalDestination.toPath().startsWith(canonicalSource.toPath()))
+                (source.isDirectory && canonicalDestination.absolutePath.startsWith(canonicalSource.absolutePath + File.separator))
         }.getOrDefault(true)
     }
 
@@ -1716,7 +1716,7 @@ class FileRepository(private val context: Context) {
             val source = File(sourcePath)
             val canonicalSource = runCatching { source.canonicalFile }.getOrNull() ?: return@any true
             canonicalSource == canonicalZip ||
-                (source.isDirectory && canonicalZip.toPath().startsWith(canonicalSource.toPath()))
+                (source.isDirectory && canonicalZip.absolutePath.startsWith(canonicalSource.absolutePath + File.separator))
         }
         if (selfTargeted) return@withContext false
         try {
