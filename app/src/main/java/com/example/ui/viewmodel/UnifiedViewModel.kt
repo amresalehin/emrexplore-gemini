@@ -2612,9 +2612,16 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         workManager.cancelUniqueWork(com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME)
 
         // Reflect the capability loss immediately; disk cleanup happens off the main thread.
+        val spec = brainRepository.getOnDeviceBrainModelSpec()
+        val unavailable = OnDeviceBrainModelUiState(
+            status = OnDeviceBrainModelStatus.NOT_INSTALLED,
+            modelId = spec.id,
+            displayName = spec.displayName,
+            sizeLabel = spec.sizeLabel
+        )
         _uiState.update {
             it.copy(
-                onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(),
+                onDeviceBrainModel = unavailable,
                 isKgIndexing = false,
                 kgIndexingProgress = 0f,
                 kgIndexingStatus = "Brain model unavailable"
