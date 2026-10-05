@@ -66,7 +66,7 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ViewColumn
 import androidx.compose.material.icons.filled.ViewList
-import androidx.compose.material.icons.filled.VideogameAsset
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -153,7 +153,7 @@ fun getCategoryIcon(type: CategoryType): ImageVector = when (type) {
     CategoryType.AUDIO -> Icons.Default.AudioFile
     CategoryType.DOCUMENTS -> Icons.Default.Description
     CategoryType.ARCHIVES -> Icons.Default.Archive
-    CategoryType.APKS -> Icons.Default.VideogameAsset
+    CategoryType.APKS -> Icons.Default.Android
     CategoryType.DOWNLOADS -> Icons.Default.Download
 }
 
