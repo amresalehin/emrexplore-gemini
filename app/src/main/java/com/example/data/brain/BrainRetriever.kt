@@ -28,7 +28,8 @@ class BrainRetriever(
     private val chunkDao: BrainChunkDao,
     private val nodeDao: BrainNodeDao,
     private val edgeDao: BrainEdgeDao,
-    private val client: BrainAiGateway
+    private val client: BrainAiGateway,
+    private val onDeviceEmbedding: OnDeviceEmbeddingEngine
 ) {
     suspend fun retrieve(
         question: String,
@@ -40,9 +41,26 @@ class BrainRetriever(
             return BrainRetrieval(emptyList(), emptyList(), emptyList())
         }
 
-        val offlineQuery = OfflineEmbeddingEngine.embedText(clean)
+        // Prefer the exact same neural model used to build the on-device Brain index.
+        // This keeps query/document vectors in one semantic space and works fully offline.
+        val localModel = onDeviceEmbedding.modelIdIfReady()
+        val localQuery = if (localModel != null) {
+            runCatching { onDeviceEmbedding.embedText(clean) }.getOrNull()
+        } else {
+            null
+        }
+
+        val localHits = if (localModel != null && localQuery != null) {
+            collectModelHits(localModel, localQuery, limit * 3)
+        } else {
+            emptyList()
+        }
+
+        // Provider embeddings remain a compatibility/secondary path for old indexes or
+        // devices that have not downloaded the local model yet.
         val onlineModel = config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() }
         val onlineQuery = if (
+            localHits.isEmpty() &&
             config.isEnabled &&
             onlineModel.isNotBlank() &&
             (isKeylessAiConfig(config) || config.apiKey.isNotBlank())
@@ -52,14 +70,24 @@ class BrainRetriever(
             null
         }
 
-        val offlineHits = collectOfflineHits(offlineQuery, limit * 3)
         val onlineHits = if (onlineQuery != null) {
             collectModelHits(onlineModel, onlineQuery, limit * 3)
         } else {
             emptyList()
         }
 
-        var bestHits = fuseRanks(offlineHits, onlineHits, limit)
+        val legacyOfflineHits = if (localHits.isEmpty() && onlineHits.isEmpty()) {
+            val offlineQuery = OfflineEmbeddingEngine.embedText(clean)
+            collectOfflineHits(offlineQuery, limit * 3)
+        } else {
+            emptyList()
+        }
+
+        var bestHits = when {
+            localHits.isNotEmpty() -> fuseRanks(localHits, onlineHits, limit)
+            onlineHits.isNotEmpty() -> onlineHits.take(limit)
+            else -> legacyOfflineHits.take(limit)
+        }
         if (bestHits.size < limit) {
             bestHits = mergeLexicalFallback(clean, bestHits, limit)
         }
@@ -163,9 +191,9 @@ class BrainRetriever(
             if (page.isEmpty()) break
 
             for (chunk in page) {
-                val vector = OfflineEmbeddingEngine.parseEmbedding(chunk.offlineEmbeddingJson)
+                val vector = BrainVectorCodec.fromJson(chunk.offlineEmbeddingJson)
                 if (vector.isEmpty() || vector.size != queryVector.size) continue
-                val score = OfflineEmbeddingEngine.cosine(queryVector, vector)
+                val score = BrainVectorCodec.cosine(queryVector, vector)
                 if (score >= MIN_VECTOR_SCORE) {
                     offer(queue, BrainSearchHit(chunk, score), limit)
                 }
@@ -194,7 +222,7 @@ class BrainRetriever(
             if (page.isEmpty()) break
 
             for (chunk in page) {
-                val vector = OfflineEmbeddingEngine.parseEmbedding(chunk.embeddingJson)
+                val vector = BrainVectorCodec.fromJson(chunk.embeddingJson)
                 if (vector.isEmpty() || vector.size != queryVector.size) continue
                 val score = OfflineEmbeddingEngine.cosine(queryVector, vector)
                 if (score >= MIN_VECTOR_SCORE) {
