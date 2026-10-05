@@ -114,8 +114,8 @@ class OnDeviceEmbeddingModelManager(context: Context) {
             return false
         }
         return runCatching {
-            manifest.readText(Charsets.UTF_8).trim() ==
-                manifestLine(spec) && vocabLooksValid(vocab)
+            manifest.readText(Charsets.UTF_8).trim() == manifestLine(spec) &&
+                vocab.length() >= 1000L
         }.getOrDefault(false)
     }
 
@@ -206,11 +206,29 @@ class OnDeviceEmbeddingModelManager(context: Context) {
 
     private fun replaceAtomically(source: File, target: File) {
         if (!source.isFile) throw IOException("Temporary model file is missing: ${source.name}")
-        if (target.exists() && !target.delete()) {
-            throw IOException("Could not replace existing ${target.name}")
+
+        val backup = File(target.parentFile, target.name + ".old")
+        if (backup.exists() && !backup.delete()) {
+            throw IOException("Could not remove stale ${backup.name}")
         }
-        if (!source.renameTo(target)) {
-            throw IOException("Could not finalize ${target.name}")
+
+        var backedUp = false
+        if (target.exists()) {
+            if (!target.renameTo(backup)) {
+                throw IOException("Could not stage replacement for ${target.name}")
+            }
+            backedUp = true
+        }
+
+        try {
+            if (!source.renameTo(target)) {
+                throw IOException("Could not finalize ${target.name}")
+            }
+            if (backedUp) backup.delete()
+        } catch (error: Exception) {
+            target.delete()
+            if (backedUp && backup.exists()) backup.renameTo(target)
+            throw error
         }
     }
 
