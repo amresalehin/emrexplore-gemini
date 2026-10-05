@@ -92,7 +92,11 @@ class OnDeviceEmbeddingModelManager(context: Context) {
         root.mkdirs()
     }
 
-    fun availableSpecs(): List<OnDeviceBrainModelSpec> = OnDeviceBrainModelCatalog.all
+    fun availableSpecs(): List<OnDeviceBrainModelSpec> =
+        OnDeviceBrainModelCatalog.all.filter { spec ->
+            spec.id != "all-MiniLM-L6-v2-int8-arm64" ||
+                Build.SUPPORTED_ABIS.any { it == "arm64-v8a" }
+        }
 
     fun defaultSpec(): OnDeviceBrainModelSpec =
         selectedSpec() ?: OnDeviceBrainModelCatalog.default
