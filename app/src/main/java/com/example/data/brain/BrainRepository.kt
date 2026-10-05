@@ -317,6 +317,7 @@ class BrainRepository(context: Context) {
             .sortedByDescending { it.value }
             .take(limit)
             .map { it.key to it.value }
+    }
 
     suspend fun getSmartSuggestions(): List<String> = withContext(Dispatchers.IO) {
         val suggestions = mutableListOf<String>()
