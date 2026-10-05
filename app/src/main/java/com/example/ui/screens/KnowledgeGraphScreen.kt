@@ -437,7 +437,7 @@ fun BrainScreen(
                         onOpenImage = onOpenImage
                     )
                 }
-                GraphScreenTab.CANVAS -> {
+                BrainScreenTab.CANVAS -> {
                     DeclutteredCanvasView(
                         nodes = nodes,
                         edges = edges,
