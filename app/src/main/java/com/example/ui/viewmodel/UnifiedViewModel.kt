@@ -1390,15 +1390,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 state.explorerDateFilter != ExplorerDateFilter.ALL ||
                 state.explorerSizeFilter != ExplorerSizeFilter.ALL
 
-        if (!queryOrFilterActive && state.totalFilesInFolder > state.files.size) {
+        if (!queryOrFilterActive) {
             viewModelScope.launch {
-                val all = repository.getFilesPaged(
-                    dirPath = state.currentPath,
-                    page = 0,
-                    pageSize = state.totalFilesInFolder.coerceAtLeast(1),
-                    sortOption = state.sortOption,
-                    showHidden = state.showHidden
-                ).items
+                val all = repository.getFiles(state.currentPath, state.showHidden)
                 _uiState.update { current ->
                     current.copy(
                         selectedPaths = all.map { it.path }.toSet(),
