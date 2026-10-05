@@ -116,11 +116,14 @@ interface FileIndexDao {
     @Query("SELECT * FROM indexed_files WHERE category = :category AND name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
     suspend fun searchFilesByCategory(query: String, category: String, limit: Int = 100): List<IndexedFileEntity>
 
-    @Query("SELECT * FROM indexed_files WHERE (path LIKE :parentPath || '/%' OR parentPath = :parentPath) AND name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
-    suspend fun searchFilesUnderPath(parentPath: String, query: String, limit: Int = 150): List<IndexedFileEntity>
+    @Query("SELECT * FROM indexed_files WHERE (path = :root OR path LIKE :escapedPrefix || '%' ESCAPE '\\') AND name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
+    suspend fun searchFilesUnderPath(root: String, escapedPrefix: String, query: String, limit: Int = 1000): List<IndexedFileEntity>
 
-    @Query("SELECT * FROM indexed_files WHERE (path LIKE :parentPath || '/%' OR parentPath = :parentPath) AND category = :category AND name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
-    suspend fun searchFilesUnderPathByCategory(parentPath: String, query: String, category: String, limit: Int = 150): List<IndexedFileEntity>
+    @Query("SELECT * FROM indexed_files WHERE (path = :root OR path LIKE :escapedPrefix || '%' ESCAPE '\\') AND category = :category AND name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
+    suspend fun searchFilesUnderPathByCategory(root: String, escapedPrefix: String, query: String, category: String, limit: Int = 1000): List<IndexedFileEntity>
+
+    @Query("SELECT * FROM indexed_files WHERE path = :root OR path LIKE :escapedPrefix || '%' ESCAPE '\\' ORDER BY isDirectory DESC, name ASC")
+    suspend fun getFilesRecursively(root: String, escapedPrefix: String): List<IndexedFileEntity>
 
     @Query("SELECT * FROM indexed_files WHERE category = :category ORDER BY lastModified DESC LIMIT :limit")
     suspend fun getFilesByCategory(category: String, limit: Int = 300): List<IndexedFileEntity>
