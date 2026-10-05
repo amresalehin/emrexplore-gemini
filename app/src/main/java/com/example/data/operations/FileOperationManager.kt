@@ -30,7 +30,11 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 class FileOperationManager(
-    private val onFilesMutated: suspend (affectedPaths: List<String>) -> Unit,
+    private val onFilesMutated: suspend (
+        relocatedPaths: List<Pair<String, String>>,
+        removedPaths: List<String>,
+        affectedPaths: List<String>
+    ) -> Unit,
     private val deleteFile: suspend (path: String, toTrash: Boolean) -> Boolean = { path, _ -> File(path).let { file ->
         if (file.isDirectory) file.deleteRecursively() else file.delete()
     } }
@@ -183,6 +187,8 @@ class FileOperationManager(
 
             val affectedDirectories = mutableSetOf<String>()
             if (targetDir.isNotBlank()) affectedDirectories.add(targetDir)
+            val relocatedPaths = mutableListOf<Pair<String, String>>()
+            val removedPaths = mutableListOf<String>()
 
             var processedFilesCount = 0
             var processedBytesSum = 0L
@@ -238,6 +244,7 @@ class FileOperationManager(
                                     }
                                 }
                             )
+                            relocatedPaths.add(src.absolutePath to dest.absolutePath)
                         }
 
                         OperationType.MOVE -> {
@@ -287,6 +294,7 @@ class FileOperationManager(
                                     throw IOException("Copied successfully but could not delete source")
                                 }
                             }
+                            relocatedPaths.add(src.absolutePath to dest.absolutePath)
                         }
 
                         OperationType.DELETE -> {
@@ -296,6 +304,7 @@ class FileOperationManager(
                                 throw IOException("Could not delete " + src.name)
                             }
                             processedFilesCount++
+                            removedPaths.add(src.absolutePath)
                             _progress.update { current ->
                                 current.copy(filesProcessed = processedFilesCount)
                             }
@@ -315,7 +324,11 @@ class FileOperationManager(
                     )
                 }
 
-                onFilesMutated(affectedDirectories.toList())
+                onFilesMutated(
+                    relocatedPaths = relocatedPaths,
+                    removedPaths = removedPaths,
+                    affectedPaths = affectedDirectories.toList()
+                )
 
             } catch (e: CancellationException) {
                 _progress.update {
@@ -325,7 +338,11 @@ class FileOperationManager(
                         estimatedRemainingTimeMs = 0L
                     )
                 }
-                onFilesMutated(affectedDirectories.toList())
+                onFilesMutated(
+                    relocatedPaths = relocatedPaths,
+                    removedPaths = removedPaths,
+                    affectedPaths = affectedDirectories.toList()
+                )
             } catch (e: Exception) {
                 _progress.update {
                     it.copy(
@@ -334,7 +351,11 @@ class FileOperationManager(
                         speedBytesPerSec = 0L
                     )
                 }
-                onFilesMutated(affectedDirectories.toList())
+                onFilesMutated(
+                    relocatedPaths = relocatedPaths,
+                    removedPaths = removedPaths,
+                    affectedPaths = affectedDirectories.toList()
+                )
             }
         }
     }
