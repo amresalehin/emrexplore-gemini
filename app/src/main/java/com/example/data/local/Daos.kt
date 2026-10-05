@@ -102,13 +102,14 @@ interface FileIndexDao {
         SELECT * FROM indexed_files
         WHERE isDirectory = 0
           AND extension IN (:extensions)
+          AND path > :afterPath
         ORDER BY path ASC
-        LIMIT :limit OFFSET :offset
+        LIMIT :limit
     """)
     suspend fun getBrainCandidatesPage(
         extensions: List<String>,
-        limit: Int,
-        offset: Int
+        afterPath: String,
+        limit: Int
     ): List<IndexedFileEntity>
 
     @Query("SELECT * FROM indexed_files WHERE name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
