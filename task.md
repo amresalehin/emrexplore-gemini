@@ -16,8 +16,14 @@ This file is the engineering source of truth. Completed work is recorded once. O
 - [x] Keep Gallery AI enrichment outside the Brain subsystem.
 - [x] Add the provider-independent `BrainAiGateway` boundary.
 - [x] Add bounded text, PDF, and image content extraction.
-- [x] Make deterministic offline embeddings mandatory.
-- [x] Treat provider embeddings as an optional second retrieval signal.
+- [x] Add a real downloadable on-device neural embedding model path.
+- [x] Store the model in app-private storage with atomic activation and SHA-256 validation.
+- [x] Implement BERT WordPiece tokenization compatible with the selected model.
+- [x] Execute on-device embeddings with ONNX Runtime.
+- [x] Make the downloaded neural model the primary Brain indexing/query embedding space.
+- [x] Automatically reindex after successful local model installation.
+- [x] Treat provider embeddings as a compatibility/secondary retrieval signal.
+- [x] Retain deterministic vectors only as an emergency compatibility fallback.
 - [x] Fuse heterogeneous vector rankings with RRF.
 - [x] Keep lexical fallback separate from vector/RRF score spaces.
 - [x] Reject low-relevance vector matches.
@@ -37,6 +43,7 @@ This file is the engineering source of truth. Completed work is recorded once. O
 - [x] Add Brain schema migration through database version 13.
 - [x] Route rename, restore, and text-editor save hooks through Brain.
 - [x] Add Brain core unit tests and database-surface assertions.
+- [x] Add tokenizer and vector-codec regression tests.
 
 ## 2. Logic-hardening fixes — complete
 
@@ -103,6 +110,8 @@ This file is the engineering source of truth. Completed work is recorded once. O
 
 ### Brain retrieval validation
 - [ ] Add explicit no-match regression tests.
+- [ ] Add end-to-end device test that downloads the current model and verifies two semantically related queries share the expected local embedding space.
+- [ ] Add a model-upgrade regression proving old chunks are invalidated and rebuilt when the local model identity changes.
 - [ ] Add tests proving offline and online embeddings are combined by rank, not raw score.
 - [ ] Add tests for lexical fallback, disappearing files, hidden sources, and `.trash`.
 - [ ] Benchmark retrieval and scan volume at 1k, 10k, and 100k chunks.
