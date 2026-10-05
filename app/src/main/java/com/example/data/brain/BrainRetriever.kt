@@ -67,7 +67,11 @@ class BrainRetriever(
         bestHits = bestHits
             .filter { hit ->
                 val file = File(hit.chunk.filePath)
-                file.isFile && file.canRead()
+                val segments = file.absolutePath.split(File.separatorChar)
+                file.name.startsWith(".").not() &&
+                    segments.none { it == ".trash" } &&
+                    file.isFile &&
+                    file.canRead()
             }
             .take(limit)
 
