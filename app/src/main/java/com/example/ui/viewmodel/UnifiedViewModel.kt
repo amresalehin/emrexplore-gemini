@@ -283,11 +283,13 @@ data class UiState(
 
 class UnifiedViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = FileRepository(application)
+    private val brainRepository = BrainRepository(application)
+    private val repository = FileRepository(application) { relocatedPaths, removedPaths ->
+        brainRepository.reconcileMutation(relocatedPaths, removedPaths)
+    }
     private val metadataExtractor = MetadataExtractor(application.applicationContext)
     private val mediaRepository = MediaRepository(application)
     private val mediaMetadataRepository = MediaMetadataRepository(application.applicationContext)
-    private val brainRepository = BrainRepository(application)
     private val galleryAiStore = BrainTargetedOperationStore(application.applicationContext)
     private val galleryFilterFlow = MutableStateFlow<MediaFilter?>(MediaFilter.ALL)
     private val galleryDateFilterFlow = MutableStateFlow(GalleryDateFilter.ALL)
@@ -389,20 +391,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.update { it.copy(fileOperationProgress = progress) }
                 if (progress.status == OperationStatus.COMPLETED) {
                     if (progress.type == OperationType.COPY || progress.type == OperationType.MOVE) {
-                        enqueueBrainMutationSync()
                         _uiState.update { state ->
                             if (state.clipboard != null) state.copy(clipboard = null) else state
-                        }
-                    }
-                    if (progress.type == OperationType.DELETE) {
-                        val deleted = pendingDeletePaths
-                        pendingDeletePaths = emptyList()
-                        if (deleted.isNotEmpty()) {
-                            launch(Dispatchers.IO) {
-                                deleted.forEach { deletedPath ->
-                                    runCatching { brainRepository.removeIndexedSource(deletedPath) }
-                                }
-                            }
                         }
                     }
                     loadFiles()
@@ -1079,23 +1069,6 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun enqueueBrainMutationSync() {
-        if (!brainRepository.isOnDeviceBrainModelReady()) return
-        val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>()
-            .setInputData(
-                androidx.work.workDataOf(
-                    "force" to false,
-                    "refreshStorageIndex" to false
-                )
-            )
-            .build()
-        WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
-            com.example.data.ai.BrainIndexWorker.UNIQUE_NAME,
-            ExistingWorkPolicy.APPEND_OR_REPLACE,
-            request
-        )
-    }
-
     fun reindexStorage(force: Boolean = true) {
         viewModelScope.launch {
             _uiState.update { it.copy(isIndexing = true, indexStatusMessage = "Indexing storage...") }
@@ -1540,8 +1513,6 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val ok = repository.renameFile(oldPath, newName.trim())
             if (ok) {
-                val newPath = File(File(oldPath).parentFile, newName).absolutePath
-                brainRepository.onFileRenamed(oldPath, newPath)
                 showMessage("Renamed to '$newName'")
                 loadFiles()
                 refreshGallery()
@@ -1552,7 +1523,6 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun deleteFile(path: String, toTrash: Boolean = true) {
-        pendingDeletePaths = listOf(path)
         repository.operationManager.startDelete(listOf(path), toTrash)
         _uiState.update {
             it.copy(userMessage = if (toTrash) "Delete operation started" else "Permanent delete started")
@@ -1562,7 +1532,6 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     fun deletePathsAfterConfirmation(paths: List<String>, toTrash: Boolean = true) {
         val selected = paths.distinct().filter { it.isNotBlank() }
         if (selected.isEmpty()) return
-        pendingDeletePaths = selected
         repository.operationManager.startDelete(selected, toTrash)
         clearSelection()
         _uiState.update {
@@ -2411,14 +2380,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val ok = repository.restoreTrashItem(trashEntity)
             if (ok) {
-                val restored = File(trashEntity.originalPath)
-                if (restored.isDirectory) {
-                    enqueueBrainMutationSync()
-                } else if (brainRepository.isOnDeviceBrainModelReady()) {
-                    brainRepository.indexFile(restored, _uiState.value.aiConfig, force = true)
-                }
                 showMessage("Restored ${trashEntity.name}")
                 loadFiles()
+                refreshGallery()
                 loadStorageStats()
             } else {
                 showMessage("Could not restore ${trashEntity.name}")
