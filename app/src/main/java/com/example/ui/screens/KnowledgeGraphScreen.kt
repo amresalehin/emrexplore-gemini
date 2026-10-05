@@ -176,6 +176,7 @@ fun KnowledgeGraphScreen(
     onDetachFile: () -> Unit = {},
     onClearChat: () -> Unit = {},
     apiConfigured: Boolean = false,
+    onCancelRag: () -> Unit = {},
     onQueryRag: (String) -> Unit,
     onIndexAllFiles: () -> Unit,
     onOpenAiSettings: () -> Unit,
@@ -258,7 +259,15 @@ fun KnowledgeGraphScreen(
                                 text = if (isIndexing) {
                                     "Indexing storage (${(indexingProgress * 100).toInt()}%)…"
                                 } else if (nodes.isEmpty()) {
-                                    "Ready to scan files"
+                                    if (onDeviceBrainModel.status == OnDeviceBrainModelStatus.NOT_INSTALLED) {
+                                        "Download the local Brain model to enable semantic search"
+                                    } else if (onDeviceBrainModel.status == OnDeviceBrainModelStatus.DOWNLOADING) {
+                                        "Downloading the local Brain model…"
+                                    } else if (onDeviceBrainModel.status == OnDeviceBrainModelStatus.ERROR) {
+                                        "Local Brain model unavailable"
+                                    } else {
+                                        "Brain is ready — sync storage to build the semantic index"
+                                    }
                                 } else {
                                     "$nodeCount entities • $edgeCount links"
                                 },
@@ -420,7 +429,10 @@ fun KnowledgeGraphScreen(
                         smartSuggestions = smartSuggestions,
                         availableNodes = nodes,
                         onQuery = onQueryRag,
+                        onCancel = onCancelRag,
                         onOpenFile = onOpenFile,
+                        cloudAiReady = apiConfigured,
+                        localBrainReady = onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
                         onOpenImage = onOpenImage
                     )
                 }
@@ -505,6 +517,9 @@ fun DeclutteredAskAiView(
     smartSuggestions: List<String>,
     availableNodes: List<BrainNodeEntity>,
     onQuery: (String) -> Unit,
+    onCancel: () -> Unit = {},
+    cloudAiReady: Boolean = false,
+    localBrainReady: Boolean = false,
     onOpenFile: (File) -> Unit,
     onOpenImage: (File) -> Unit
 ) {
@@ -585,6 +600,24 @@ fun DeclutteredAskAiView(
                     )
                 }
             }
+        }
+
+        Surface(
+            color = if (cloudAiReady) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+            else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f),
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+        ) {
+            Text(
+                text = when {
+                    !localBrainReady -> "Local Brain model required for semantic search and indexing. Download it in Brain Settings."
+                    !cloudAiReady -> "Local Brain retrieval is ready. Configure an optional AI provider for generated answers."
+                    else -> "Local Brain retrieval is ready. Cloud AI is enabled for generated answers and optional enrichment."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+            )
         }
 
         HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
@@ -1047,7 +1080,9 @@ fun DeclutteredAskAiView(
                 // Send Button
                 IconButton(
                     onClick = {
-                        if (queryText.isNotBlank() && !isQuerying) {
+                        if (isQuerying) {
+                            onCancel()
+                        } else if (queryText.isNotBlank()) {
                             val q = queryText.trim()
                             queryText = ""
                             onQuery(q)
@@ -1055,13 +1090,13 @@ fun DeclutteredAskAiView(
                             onQuery("Tell me about this file: ${attachedFile.name}")
                         }
                     },
-                    enabled = !isQuerying && (queryText.isNotBlank() || attachedFile != null),
+                    enabled = isQuerying || queryText.isNotBlank() || attachedFile != null,
                     modifier = Modifier
                         .size(38.dp)
                         .testTag("rag_submit_query_btn")
                 ) {
                     if (isQuerying) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Icon(Icons.Default.Close, contentDescription = "Cancel", modifier = Modifier.size(18.dp))
                     } else {
                         val active = queryText.isNotBlank() || attachedFile != null
                         Icon(
@@ -1533,9 +1568,9 @@ fun DeclutteredCanvasView(
                         )
                         Button(
                             onClick = onIndexFiles,
-                            enabled = !isIndexing
+                            enabled = !isIndexing && onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY
                         ) {
-                            Text(if (isIndexing) "Indexing…" else "Sync Brain")
+                            Text(if (isIndexing) "Indexing…" else if (onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY) "Sync Brain" else "Download model in Settings")
                         }
                     }
                 }
