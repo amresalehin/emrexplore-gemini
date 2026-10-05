@@ -1,8 +1,6 @@
 package com.example.data.brain
 
-import com.example.data.ai.OfflineEmbeddingEngine
 import com.example.data.ai.ProviderType
-import com.example.data.ai.isKeylessAiConfig
 import com.example.data.local.AiProviderConfigEntity
 import java.io.File
 import java.util.PriorityQueue
@@ -24,11 +22,9 @@ data class BrainRetrieval(
 }
 
 class BrainRetriever(
-    private val context: android.content.Context,
     private val chunkDao: BrainChunkDao,
     private val nodeDao: BrainNodeDao,
     private val edgeDao: BrainEdgeDao,
-    private val client: BrainAiGateway,
     private val onDeviceEmbedding: OnDeviceEmbeddingEngine
 ) {
     suspend fun retrieve(
@@ -41,62 +37,25 @@ class BrainRetriever(
             return BrainRetrieval(emptyList(), emptyList(), emptyList())
         }
 
-        // Prefer the exact same neural model used to build the on-device Brain index.
-        // This keeps query/document vectors in one semantic space and works fully offline.
         val localModel = onDeviceEmbedding.modelIdIfReady()
-        val localQuery = if (localModel != null) {
-            runCatching { onDeviceEmbedding.embedText(clean) }.getOrNull()
-        } else {
-            null
-        }
-
-        val localHits = if (localModel != null && localQuery != null) {
-            collectModelHits(localModel, localQuery, limit * 3)
-        } else {
-            emptyList()
-        }
-
-        // Provider embeddings remain a compatibility/secondary path for old indexes or
-        // devices that have not downloaded the local model yet.
-        val onlineModel = config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() }
-        val onlineQuery = if (
-            localHits.isEmpty() &&
-            config.isEnabled &&
-            onlineModel.isNotBlank() &&
-            (isKeylessAiConfig(config) || config.apiKey.isNotBlank())
-        ) {
-            runCatching { client.embedTextQuery(clean, config) }.getOrNull()
-        } else {
-            null
-        }
-
-        val onlineHits = if (onlineQuery != null) {
-            collectModelHits(onlineModel, onlineQuery, limit * 3)
+        val semanticHits = if (localModel != null) {
+            val queryVector = runCatching { onDeviceEmbedding.embedText(clean) }.getOrNull()
+            if (queryVector != null) {
+                collectLocalHits(localModel, queryVector, limit * 3)
+            } else {
+                emptyList()
+            }
         } else {
             emptyList()
         }
 
-        val legacyOfflineHits = if (localHits.isEmpty() && onlineHits.isEmpty()) {
-            val offlineQuery = OfflineEmbeddingEngine.embedText(clean)
-            collectOfflineHits(offlineQuery, limit * 3)
-        } else {
-            emptyList()
-        }
-
-        var bestHits = when {
-            localHits.isNotEmpty() -> fuseRanks(localHits, onlineHits, limit)
-            onlineHits.isNotEmpty() -> onlineHits.take(limit)
-            else -> legacyOfflineHits.take(limit)
-        }
-        if (bestHits.size < limit) {
-            bestHits = mergeLexicalFallback(clean, bestHits, limit)
-        }
-
-        bestHits = bestHits
+        // Lexical search remains useful for exact filenames, IDs, names, and other
+        // terms that a semantic encoder can under-rank.
+        val bestHits = mergeLexicalFallback(clean, semanticHits, limit)
             .filter { hit ->
                 val file = File(hit.chunk.filePath)
                 val segments = file.absolutePath.split(File.separatorChar)
-                file.name.startsWith(".").not() &&
+                !file.name.startsWith(".") &&
                     segments.none { it == ".trash" } &&
                     file.isFile &&
                     file.canRead()
@@ -176,37 +135,7 @@ class BrainRetriever(
         return contextBuilder.toString().trim() to evidence
     }
 
-    private suspend fun collectOfflineHits(
-        queryVector: FloatArray,
-        limit: Int
-    ): List<BrainSearchHit> {
-        if (queryVector.isEmpty() || limit <= 0) return emptyList()
-
-        val queue = PriorityQueue<BrainSearchHit>(limit * 2) { a, b ->
-            a.score.compareTo(b.score)
-        }
-        var offset = 0
-        while (true) {
-            val page = chunkDao.getOfflinePage(PAGE_SIZE, offset)
-            if (page.isEmpty()) break
-
-            for (chunk in page) {
-                val vector = BrainVectorCodec.fromJson(chunk.offlineEmbeddingJson)
-                if (vector.isEmpty() || vector.size != queryVector.size) continue
-                val score = BrainVectorCodec.cosine(queryVector, vector)
-                if (score >= MIN_VECTOR_SCORE) {
-                    offer(queue, BrainSearchHit(chunk, score), limit)
-                }
-            }
-
-            if (page.size < PAGE_SIZE) break
-            offset += page.size
-            if (offset >= MAX_SCAN_ROWS) break
-        }
-        return drainTop(queue, limit)
-    }
-
-    private suspend fun collectModelHits(
+    private suspend fun collectLocalHits(
         model: String,
         queryVector: FloatArray,
         limit: Int
@@ -224,7 +153,7 @@ class BrainRetriever(
             for (chunk in page) {
                 val vector = BrainVectorCodec.fromJson(chunk.embeddingJson)
                 if (vector.isEmpty() || vector.size != queryVector.size) continue
-                val score = OfflineEmbeddingEngine.cosine(queryVector, vector)
+                val score = BrainVectorCodec.cosine(queryVector, vector)
                 if (score >= MIN_VECTOR_SCORE) {
                     offer(queue, BrainSearchHit(chunk, score), limit)
                 }
@@ -268,78 +197,3 @@ class BrainRetriever(
             .map { BrainSearchHit(it.chunk, it.rrf) }
     }
 
-    private suspend fun mergeLexicalFallback(
-        question: String,
-        existing: List<BrainSearchHit>,
-        limit: Int
-    ): List<BrainSearchHit> {
-        if (existing.size >= limit) return existing.take(limit)
-
-        val existingIds = existing.asSequence().map { it.chunk.id }.toHashSet()
-        val lexicalScores = LinkedHashMap<String, Float>()
-        val tokens = tokenize(question)
-
-        for (token in tokens) {
-            val candidates = chunkDao.lexical(token, 8)
-            for (chunk in candidates) {
-                if (chunk.id in existingIds) continue
-                val score = lexicalScore(chunk.content, tokens)
-                lexicalScores[chunk.id] = maxOf(lexicalScores[chunk.id] ?: 0f, score)
-            }
-        }
-
-        if (lexicalScores.isEmpty()) return existing
-
-        val lexicalIds = lexicalScores
-            .entries
-            .sortedByDescending { it.value }
-            .take((limit - existing.size).coerceAtLeast(0))
-            .map { it.key }
-
-        val chunks = chunkDao.getByIds(lexicalIds).associateBy { it.id }
-        val lexicalHits = lexicalIds.mapNotNull { id ->
-            chunks[id]?.let { chunk -> BrainSearchHit(chunk, lexicalScores[id] ?: 0f) }
-        }
-
-        return (existing + lexicalHits).take(limit)
-    }
-
-    private fun tokenize(value: String): List<String> =
-        value.lowercase(Locale.US)
-            .split(Regex("[^\\p{L}\\p{N}_-]+"))
-            .filter { it.length >= 3 }
-            .distinct()
-            .take(12)
-
-    private fun lexicalScore(content: String, tokens: List<String>): Float {
-        if (tokens.isEmpty()) return 0f
-        val lower = content.lowercase(Locale.US)
-        val hits = tokens.count { token -> lower.contains(token) }
-        return hits.toFloat() / max(tokens.size, 1).toFloat()
-    }
-
-    private fun offer(
-        queue: PriorityQueue<BrainSearchHit>,
-        item: BrainSearchHit,
-        capacity: Int
-    ) {
-        queue.offer(item)
-        while (queue.size > capacity) queue.poll()
-    }
-
-    private fun drainTop(queue: PriorityQueue<BrainSearchHit>, limit: Int): List<BrainSearchHit> =
-        buildList {
-            while (queue.isNotEmpty()) add(queue.poll())
-        }.asReversed().take(limit)
-
-    companion object {
-        const val PAGE_SIZE = 128
-        const val MAX_SCAN_ROWS = 20_000
-        const val MAX_FILE_SOURCES = 12
-        const val MAX_RELATED_NODES = 24
-        const val MAX_EVIDENCE = 18
-        const val MAX_CONTEXT_CHARS = 18_000
-        const val MIN_VECTOR_SCORE = 0.12f
-        const val RRF_K = 60f
-    }
-}
