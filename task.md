@@ -20,9 +20,8 @@ This file is the engineering source of truth. Completed work is recorded once. O
 - [x] Store the model in app-private storage with atomic activation and SHA-256 validation.
 - [x] Implement BERT WordPiece tokenization compatible with the selected model.
 - [x] Execute on-device embeddings with ONNX Runtime.
-- [x] Make the downloaded neural model the primary Brain indexing/query embedding space.
+- [x] Make the downloaded neural model the single canonical Brain indexing/query embedding space.
 - [x] Automatically reindex after successful local model installation.
-- [x] Make the downloaded neural model the single canonical Brain semantic embedding space.
 - [x] Keep lexical search as a separate exact-match fallback.
 - [x] Remove obsolete hash/RRF retrieval machinery.
 - [x] Reject low-relevance vector matches.
@@ -60,8 +59,6 @@ This file is the engineering source of truth. Completed work is recorded once. O
 - [x] Distinguish provider success from local fallback in Brain answers.
 - [x] Redact precise location from cloud direct-file and RAG prompts.
 - [x] Preserve exact provider identity during normalization.
-- [x] Validate persisted embedding model identity.
-- [x] Prevent failed remote embeddings from causing destructive partial Brain replacement.
 
 ---
 
