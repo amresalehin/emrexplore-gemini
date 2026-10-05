@@ -143,13 +143,61 @@ interface BrainEdgeDao {
 
     @Query("""
         DELETE FROM brain_edges
-        WHERE evidenceSource = :filePath
-           OR sourceNodeId = :fileNodeId
+        WHERE sourceNodeId = :fileNodeId
            OR targetNodeId = :fileNodeId
     """)
-    suspend fun deleteForFile(filePath: String, fileNodeId: String)
+    suspend fun deleteForFileNode(fileNodeId: String)
 
     @Query("DELETE FROM brain_edges")
+    suspend fun clearAll()
+}
+
+@Dao
+interface BrainEdgeEvidenceDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<BrainEdgeEvidenceEntity>)
+
+    @Query("DELETE FROM brain_edge_evidence WHERE evidenceSource = :filePath")
+    suspend fun deleteForFile(filePath: String)
+
+    @Query("""
+        UPDATE brain_edges
+        SET
+            evidenceSource = (
+                SELECT ev.evidenceSource
+                FROM brain_edge_evidence ev
+                WHERE ev.sourceNodeId = brain_edges.sourceNodeId
+                  AND ev.targetNodeId = brain_edges.targetNodeId
+                  AND ev.relation = brain_edges.relation
+                ORDER BY ev.createdAt DESC, ev.evidenceSource ASC
+                LIMIT 1
+            ),
+            evidenceSnippet = (
+                SELECT ev.evidenceSnippet
+                FROM brain_edge_evidence ev
+                WHERE ev.sourceNodeId = brain_edges.sourceNodeId
+                  AND ev.targetNodeId = brain_edges.targetNodeId
+                  AND ev.relation = brain_edges.relation
+                ORDER BY ev.createdAt DESC, ev.evidenceSource ASC
+                LIMIT 1
+            )
+    """)
+    suspend fun refreshRepresentatives()
+
+    @Query("""
+        DELETE FROM brain_edges
+        WHERE evidenceSource IS NULL
+           OR NOT EXISTS (
+                SELECT 1
+                FROM brain_edge_evidence ev
+                WHERE ev.sourceNodeId = brain_edges.sourceNodeId
+                  AND ev.targetNodeId = brain_edges.targetNodeId
+                  AND ev.relation = brain_edges.relation
+           )
+    """)
+    suspend fun deleteEdgesWithoutEvidence()
+
+    @Query("DELETE FROM brain_edge_evidence")
     suspend fun clearAll()
 }
 
