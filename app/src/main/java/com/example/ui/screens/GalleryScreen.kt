@@ -223,10 +223,7 @@ fun GalleryScreen(
     }
 
     val albumPagedMedia = if (selectedAlbumId != null) {
-        val albumFlow = viewModel.albumPagingFlow(selectedAlbumId).map { pagingData: PagingData<MediaItem> ->
-            pagingData.map { media -> GalleryGridItem.Media(media) as GalleryGridItem }
-        }
-        albumFlow.collectAsLazyPagingItems()
+        viewModel.albumGridPagingFlow(selectedAlbumId).collectAsLazyPagingItems()
     } else null
 
     // If inside an album, handle back button
