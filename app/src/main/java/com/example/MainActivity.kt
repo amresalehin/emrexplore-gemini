@@ -413,8 +413,8 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             onIndexChange = { newIdx -> viewModel.moveFullscreenMedia(newIdx) },
             onToggleFavorite = { fileItem -> viewModel.toggleFavorite(fileItem) },
             onInspectMetadata = { mediaItem -> viewModel.inspectMetadata(mediaItem) },
-            onLoadAiMetadata = { mediaItem -> viewModel.getAiMetadata(mediaItem) },
-            onReAnalyzeAi = { mediaItem -> viewModel.reAnalyzeGalleryImage(mediaItem) }
+            onLoadBrainNode = { mediaItem -> viewModel.getBrainNode(mediaItem) },
+            onReindexWithBrain = { mediaItem -> viewModel.reAnalyzeGalleryImage(mediaItem) }
         )
     }
 
