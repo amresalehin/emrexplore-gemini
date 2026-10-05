@@ -93,19 +93,31 @@ class BrainRepository(context: Context) {
     fun getOnDeviceBrainModelState(error: String? = null): OnDeviceBrainModelUiState =
         onDeviceEmbedding.manager().uiState(error)
 
+    fun getOnDeviceBrainModelSpecs(): List<OnDeviceBrainModelSpec> =
+        onDeviceEmbedding.manager().availableSpecs()
+
     fun getOnDeviceBrainModelSpec(): OnDeviceBrainModelSpec =
         onDeviceEmbedding.manager().defaultSpec()
 
+    fun selectOnDeviceBrainModel(modelId: String): OnDeviceBrainModelSpec =
+        onDeviceEmbedding.manager().selectModel(modelId).also {
+            onDeviceEmbedding.unload()
+        }
+
     suspend fun downloadOnDeviceBrainModel(
+        modelId: String? = null,
         onProgress: (Float, Long, Long) -> Unit = { _, _, _ -> }
     ) = withContext(Dispatchers.IO) {
-        onDeviceEmbedding.manager().downloadDefaultModel(onProgress)
+        if (!modelId.isNullOrBlank()) {
+            onDeviceEmbedding.manager().selectModel(modelId)
+        }
+        onDeviceEmbedding.manager().downloadSelectedModel(onProgress)
         onDeviceEmbedding.unload()
     }
 
     suspend fun deleteOnDeviceBrainModel() = withContext(Dispatchers.IO) {
         onDeviceEmbedding.unload()
-        onDeviceEmbedding.manager().deleteDefaultModel()
+        onDeviceEmbedding.manager().deleteSelectedModel()
     }
 
     fun isOnDeviceBrainModelReady(): Boolean = onDeviceEmbedding.isReady()
