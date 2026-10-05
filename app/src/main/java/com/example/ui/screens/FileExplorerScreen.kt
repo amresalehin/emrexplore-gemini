@@ -82,7 +82,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.VideogameAsset
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -690,7 +690,7 @@ fun FileExplorerScreen(
                                                 ExplorerFilterType.VIDEOS -> Icons.Default.Movie
                                                 ExplorerFilterType.AUDIO -> Icons.Default.AudioFile
                                                 ExplorerFilterType.ARCHIVES -> Icons.Default.Archive
-                                                ExplorerFilterType.APKS -> Icons.Default.VideogameAsset
+                                                ExplorerFilterType.APKS -> Icons.Default.Android
                                             }
                                             if (filterType != ExplorerFilterType.ALL || isSelected) {
                                                 Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
