@@ -388,6 +388,48 @@ class FileRepository(private val context: Context) {
 
     suspend fun indexFileOrDir(file: File) = withContext(Dispatchers.IO) {
         if (!file.exists()) return@withContext
+        if (file.isDirectory) reconcileIndexedDirectory(file) else indexSingleFileOrDirectory(file)
+    }
+
+    /**
+     * Reconciles a filesystem subtree into the canonical FileRepository index.
+     * Brain consumes this index; it never performs its own storage scan.
+     */
+    private suspend fun reconcileIndexedDirectory(root: File) {
+        if (!root.exists() || !root.isDirectory) return
+
+        val visited = mutableSetOf<String>()
+        val stack = ArrayDeque<File>()
+        stack.add(root)
+
+        while (stack.isNotEmpty()) {
+            val dir = stack.removeFirst()
+            val canonical = try { dir.canonicalPath } catch (_: Exception) { dir.absolutePath }
+            if (!visited.add(canonical)) continue
+
+            indexSingleFileOrDirectory(dir)
+            val children = dir.listFiles() ?: continue
+            val actualPaths = children.asSequence()
+                .filterNot { it.name.startsWith(".") }
+                .map { it.absolutePath }
+                .toSet()
+
+            for (indexed in fileIndexDao.getIndexedChildren(dir.absolutePath)) {
+                if (indexed.path !in actualPaths) {
+                    fileIndexDao.deleteByPathTree(indexed.path, indexed.path)
+                }
+            }
+
+            for (child in children) {
+                if (child.name.startsWith(".")) continue
+                indexSingleFileOrDirectory(child)
+                if (child.isDirectory) stack.add(child)
+            }
+        }
+    }
+
+    private suspend fun indexSingleFileOrDirectory(file: File) {
+        if (!file.exists()) return
         val isDir = file.isDirectory
         val ext = if (isDir) "" else file.extension.lowercase()
         val mime = if (isDir) "inode/directory" else (MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: inferMime(ext))
