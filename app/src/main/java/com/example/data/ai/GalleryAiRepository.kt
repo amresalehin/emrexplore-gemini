@@ -4,6 +4,7 @@ import com.example.data.ai.AiProviderClient
 import com.example.data.ai.AnalysisResult
 import com.example.data.ai.isKeylessAiConfig
 import com.example.data.ai.ProviderType
+import com.example.data.brain.BrainContentReader
 import com.example.data.local.AiProviderConfigEntity
 import com.example.data.media.MediaMetadataRepository
 import com.example.data.model.MediaItem
