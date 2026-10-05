@@ -1,11 +1,15 @@
 package com.example.data.brain
 
 import android.content.Context
-import androidx.work.Constraints
 import androidx.work.CoroutineWorker
-import androidx.work.NetworkType
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.Constraints
+import androidx.work.NetworkType
 import androidx.work.workDataOf
+import com.example.data.ai.BrainIndexWorker
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
@@ -29,10 +33,19 @@ class BrainModelDownloadWorker(
                     )
                 )
             }
+
+            val indexRequest = OneTimeWorkRequestBuilder<BrainIndexWorker>().build()
+            WorkManager.getInstance(applicationContext).enqueueUniqueWork(
+                BrainIndexWorker.UNIQUE_NAME,
+                ExistingWorkPolicy.REPLACE,
+                indexRequest
+            )
+
             Result.success(
                 workDataOf(
                     "modelId" to manager.defaultSpec().id,
-                    "displayName" to manager.defaultSpec().displayName
+                    "displayName" to manager.defaultSpec().displayName,
+                    "indexWorkEnqueued" to true
                 )
             )
         } catch (error: Exception) {
