@@ -628,8 +628,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                             }
                         }
                         androidx.work.WorkInfo.State.CANCELLED -> {
+                            // Cancellation is a terminal unavailable state, not a download error.
                             _uiState.update {
-                                it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState("Download cancelled"))
+                                it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState())
                             }
                         }
                         else -> Unit
