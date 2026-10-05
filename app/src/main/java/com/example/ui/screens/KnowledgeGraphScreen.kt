@@ -448,12 +448,12 @@ fun BrainScreen(
                         onIndexFiles = onIndexAllFiles,
                         isIndexing = isIndexing,
                         onAskAiForFile = { node ->
-                            selectedTab = GraphScreenTab.ASK_AI
+                            selectedTab = BrainScreenTab.ASK_AI
                             onAskAiForFile(node)
                         }
                     )
                 }
-                GraphScreenTab.TOPICS -> {
+                BrainScreenTab.TOPICS -> {
                     DeclutteredTopicsView(
                         topics = brainTopics,
                         selectedTopic = selectedBrainTopic,
@@ -464,14 +464,14 @@ fun BrainScreen(
                         onSaveTopic = onSaveBrainTopic,
                         onDeleteTopic = onDeleteBrainTopic,
                         onAskAiForFile = { node ->
-                            selectedTab = GraphScreenTab.ASK_AI
+                            selectedTab = BrainScreenTab.ASK_AI
                             onAskAiForFile(node)
                         },
                         onOpenFile = onOpenFile,
                         onOpenImage = onOpenImage
                     )
                 }
-                GraphScreenTab.DOTS -> {
+                BrainScreenTab.DOTS -> {
                     DeclutteredConnectionsView(
                         nodes = nodes,
                         edges = edges,
