@@ -28,7 +28,8 @@ class BrainIndexer(
     private val edgeEvidenceDao: BrainEdgeEvidenceDao,
     private val runDao: BrainRunDao,
     private val client: BrainAiGateway,
-    private val db: AppDatabase
+    private val db: AppDatabase,
+    private val onDeviceEmbedding: OnDeviceEmbeddingEngine
 ) {
     private val reader = BrainContentReader(context)
 
@@ -227,9 +228,9 @@ class BrainIndexer(
                     filePath = path,
                     chunkIndex = index,
                     content = text,
-                    embeddingJson = OfflineEmbeddingEngine.embeddingToJson(embeddings[index]),
+                    embeddingJson = BrainVectorCodec.toJson(embeddings[index]),
                     embeddingModel = embeddingModel,
-                    offlineEmbeddingJson = OfflineEmbeddingEngine.embeddingToJson(embeddingBundle.offline[index]),
+                    offlineEmbeddingJson = BrainVectorCodec.toJson(embeddingBundle.offline[index]),
                     locator = if (input.isImage) file.name else "chunk-" + index,
                     pageNumber = null,
                     indexedAt = now
@@ -360,12 +361,27 @@ class BrainIndexer(
         config: AiProviderConfigEntity
     ): EmbeddingBundle {
         if (texts.isEmpty()) {
-            return EmbeddingBundle(emptyList(), OfflineEmbeddingEngine.MODEL_NAME, emptyList())
+            return EmbeddingBundle(emptyList(), onDeviceEmbedding.modelSignature(), emptyList())
         }
 
-        val offline = OfflineEmbeddingEngine.embedTextPassages(texts)
-        val configuredModel = config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() }
+        // A real neural encoder is the preferred Brain representation. The model is
+        // downloaded explicitly by the user and then reused for every file/query.
+        val local = runCatching { onDeviceEmbedding.embedTextPassages(texts) }.getOrNull()
+        if (local != null &&
+            local.size == texts.size &&
+            local.all { it.isNotEmpty() }
+        ) {
+            // Keep the historical offline field populated with the same real vectors so
+            // older retrieval code/data migrations cannot accidentally treat hash vectors
+            // as the canonical Brain representation.
+            return EmbeddingBundle(
+                primary = local,
+                primaryModel = onDeviceEmbedding.modelIdIfReady() ?: onDeviceEmbedding.modelSignature(),
+                offline = local
+            )
+        }
 
+        val configuredModel = config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() }
         if (config.isEnabled && configuredModel.isNotBlank() &&
             (isKeylessAiConfig(config) || config.apiKey.isNotBlank())
         ) {
@@ -377,11 +393,15 @@ class BrainIndexer(
                 online.size == texts.size &&
                 online.all { it.isNotEmpty() }
             ) {
-                return EmbeddingBundle(online, configuredModel, offline)
+                val fallbackOffline = OfflineEmbeddingEngine.embedTextPassages(texts)
+                return EmbeddingBundle(online, configuredModel, fallbackOffline)
             }
         }
 
-        return EmbeddingBundle(offline, OfflineEmbeddingEngine.MODEL_NAME, offline)
+        // Last-resort compatibility path only. It is intentionally never preferred over
+        // the downloaded neural model.
+        val deterministic = OfflineEmbeddingEngine.embedTextPassages(texts)
+        return EmbeddingBundle(deterministic, OfflineEmbeddingEngine.MODEL_NAME, deterministic)
     }
 
     private fun localAnalysis(input: BrainFileContent): AnalysisResult {
@@ -450,7 +470,8 @@ class BrainIndexer(
             config.isEnabled.toString(),
             config.chatModel.trim(),
             config.visionModel.trim(),
-            config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() }
+            config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() },
+            onDeviceEmbedding.modelSignature()
         ).joinToString("|")
 
     private fun sha256(file: File): String {
@@ -473,7 +494,7 @@ class BrainIndexer(
             .filter { it !in STOP_WORDS }
 
     companion object {
-        const val MODEL_VERSION = "brain-v4"
+        const val MODEL_VERSION = "brain-v5-ondevice"
         const val MAX_CHUNK_CHARS = 1600
         const val CHUNK_OVERLAP = 240
         const val MAX_CHUNKS = 120
