@@ -31,7 +31,7 @@ class BrainContentReader(
 ) {
     private val metadataExtractor = MetadataExtractor(context.applicationContext)
 
-    fun read(file: File, config: AiProviderConfigEntity): BrainFileContent {
+    suspend fun read(file: File, config: AiProviderConfigEntity): BrainFileContent {
         require(file.exists() && file.isFile && file.canRead()) {
             "File is not readable: " + file.absolutePath
         }
