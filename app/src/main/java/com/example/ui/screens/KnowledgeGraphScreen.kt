@@ -1564,7 +1564,7 @@ fun DeclutteredCanvasView(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                             if (!localBrainReady) "Download the local model in Brain Settings to enable semantic search and indexing."
+                             if (!localBrainReady) "Download the local model in Brain Settings to enable semantic search and indexing." else "Brain is ready. Sync storage to build the semantic index.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
