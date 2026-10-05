@@ -166,7 +166,9 @@ class BrainRetriever(
                 val vector = OfflineEmbeddingEngine.parseEmbedding(chunk.offlineEmbeddingJson)
                 if (vector.isEmpty() || vector.size != queryVector.size) continue
                 val score = OfflineEmbeddingEngine.cosine(queryVector, vector)
-                offer(queue, BrainSearchHit(chunk, score), limit)
+                if (score >= MIN_VECTOR_SCORE) {
+                    offer(queue, BrainSearchHit(chunk, score), limit)
+                }
             }
 
             if (page.size < PAGE_SIZE) break
@@ -195,7 +197,9 @@ class BrainRetriever(
                 val vector = OfflineEmbeddingEngine.parseEmbedding(chunk.embeddingJson)
                 if (vector.isEmpty() || vector.size != queryVector.size) continue
                 val score = OfflineEmbeddingEngine.cosine(queryVector, vector)
-                offer(queue, BrainSearchHit(chunk, score), limit)
+                if (score >= MIN_VECTOR_SCORE) {
+                    offer(queue, BrainSearchHit(chunk, score), limit)
+                }
             }
 
             if (page.size < PAGE_SIZE) break
