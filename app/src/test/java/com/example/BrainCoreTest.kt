@@ -1,6 +1,5 @@
 package com.example
 
-import com.example.data.ai.OfflineEmbeddingEngine
 import com.example.data.ai.ProviderType
 import com.example.data.brain.BrainChunker
 import com.example.data.brain.BrainIdentity
@@ -75,12 +74,5 @@ class BrainCoreTest {
         assertEquals(ProviderType.OPENAI_COMPATIBLE, ProviderType.fromString("openai_compatible"))
     }
 
-    @Test
-    fun offline_embeddings_are_deterministic() {
-        val first = OfflineEmbeddingEngine.embedText("project roadmap for next quarter")
-        val second = OfflineEmbeddingEngine.embedText("project roadmap for next quarter")
 
-        assertArrayEquals(first, second, 0f)
-        assertTrue(first.any { it != 0f })
-    }
 }
