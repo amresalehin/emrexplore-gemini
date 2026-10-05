@@ -605,12 +605,14 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                             }
                         }
                         androidx.work.WorkInfo.State.SUCCEEDED -> {
+                            val wasDownloading = _uiState.value.onDeviceBrainModel.status ==
+                                OnDeviceBrainModelStatus.DOWNLOADING
                             val ready = brainRepository.getOnDeviceBrainModelState()
                             _uiState.update { it.copy(onDeviceBrainModel = ready) }
-                            // The index is invalidated by the model identity in Brain's
-                            // model signature, and a forced rebuild ensures every chunk
-                            // immediately uses the new neural embedding space.
-                            if (!_uiState.value.isKgIndexing) {
+                            // Only the download that just completed triggers the rebuild.
+                            // A historical SUCCEEDED WorkInfo must not reindex Brain on
+                            // every subsequent ViewModel/activity creation.
+                            if (wasDownloading && !_uiState.value.isKgIndexing) {
                                 indexAllFilesForKnowledgeGraph()
                             }
                         }
