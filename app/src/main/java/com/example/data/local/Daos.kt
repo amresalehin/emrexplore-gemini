@@ -177,6 +177,9 @@ interface FileIndexDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(files: List<IndexedFileEntity>)
 
+    @Query("SELECT * FROM indexed_files WHERE path = :path LIMIT 1")
+    suspend fun getByPath(path: String): IndexedFileEntity?
+
     @Query("DELETE FROM indexed_files WHERE path = :path")
     suspend fun deleteByPath(path: String)
 
