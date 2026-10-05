@@ -579,14 +579,9 @@ class FileRepository(private val context: Context) {
                 val sorted = sortFileList(refreshed, sortOption)
                 val pagedItems: List<FileItem>
                 val hasMore: Boolean
-                if (sorted.size <= 300) {
-                    pagedItems = sorted
-                    hasMore = false
-                } else {
-                    val offset = page * pageSize
-                    pagedItems = if (offset >= sorted.size) emptyList() else sorted.subList(offset, minOf(offset + pageSize, sorted.size))
-                    hasMore = (offset + pageSize) < sorted.size
-                }
+                val offset = page * pageSize
+                pagedItems = if (offset >= sorted.size) emptyList() else sorted.subList(offset, minOf(offset + pageSize, sorted.size))
+                hasMore = (offset + pageSize) < sorted.size
                 val elapsed = System.currentTimeMillis() - startTimeMs
                 if (page == 0) PerformanceMonitor.recordFolderOpen(elapsed)
                 PerformanceMonitor.recordPagedLoad(elapsed)
@@ -1212,70 +1207,7 @@ class FileRepository(private val context: Context) {
                 val escapedPrefix = escapeSqlLike(effectiveDir.absolutePath + File.separator)
                 val escapedQuery = escapeSqlLike(q)
 
-                if (prefs.enableFastRoomSearch) {
-                    val catString = when (filterType) {
-                        ExplorerFilterType.IMAGES -> "IMAGES"
-                        ExplorerFilterType.VIDEOS -> "VIDEOS"
-                        ExplorerFilterType.AUDIO -> "AUDIO"
-                        ExplorerFilterType.DOCUMENTS -> "DOCUMENTS"
-                        ExplorerFilterType.ARCHIVES -> "ARCHIVES"
-                        ExplorerFilterType.APKS -> "APKS"
-                        else -> null
-                    }
-
-                    val entities = if (q.isNotEmpty()) {
-                        if (catString != null) {
-                            fileIndexDao.searchFilesUnderPathByCategory(
-                                root = effectiveDir.absolutePath,
-                                escapedPrefix = escapedPrefix,
-                                query = escapedQuery,
-                                category = catString
-                            )
-                        } else {
-                            fileIndexDao.searchFilesUnderPath(
-                                root = effectiveDir.absolutePath,
-                                escapedPrefix = escapedPrefix,
-                                query = escapedQuery
-                            )
-                        }
-                    } else {
-                        fileIndexDao.getFilesRecursively(
-                            root = effectiveDir.absolutePath,
-                            escapedPrefix = escapedPrefix
-                        )
-                    }
-
-                    entities.forEach { entity ->
-                        val item = FileItem(
-                            name = entity.name,
-                            path = entity.path,
-                            size = entity.size,
-                            lastModified = entity.lastModified,
-                            isDirectory = entity.isDirectory,
-                            mimeType = entity.mimeType,
-                            extension = entity.extension,
-                            isFavorite = favSet.contains(entity.path),
-                            childCount = entity.childCount,
-                            uri = Uri.fromFile(File(entity.path))
-                        )
-                        if (filterPredicate(item)) rawItems.add(item)
-                    }
-                    loadedFromRoom = entities.isNotEmpty() || q.isBlank()
-                }
-
-                if (!loadedFromRoom) {
-                    if (effectiveDir.exists() && effectiveDir.isDirectory) {
-                        scanDirectoryRecursive(
-                            effectiveDir,
-                            filterPredicate,
-                            favSet,
-                            rawItems,
-                            maxDepth = Int.MAX_VALUE,
-                            currentDepth = 0
-                        )
-                    }
-                }
-            }
+                
 
             ExplorerSearchScope.ALL_STORAGE -> {
                 val prefs = getPreferences()
