@@ -1,7 +1,5 @@
 package com.example.data.ai
 
-import com.example.data.brain.AttachedAiFile
-import com.example.data.brain.BrainNodeEntity
 
 enum class ProviderType(
     val displayName: String,
