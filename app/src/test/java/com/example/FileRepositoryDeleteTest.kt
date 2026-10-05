@@ -3,8 +3,12 @@ package com.example
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.AppDatabase
+import com.example.data.model.OperationStatus
+import com.example.data.operations.FileOperationManager
 import com.example.data.repository.FileRepository
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertFalse
@@ -60,6 +64,30 @@ class FileRepositoryDeleteTest {
         assertNotEquals(source.absolutePath, row.trashPath)
         assertTrue(File(row.trashPath).exists())
         assertTrue(db.fileIndexDao().getByPath(source.absolutePath) == null)
+    }
+
+
+    @Test
+    fun operationManagerDelegatesTrashFlagWithoutDeletingSourceItself() = runBlocking {
+        val source = File(testRoot, "manager.txt").apply { writeText("keep me") }
+        var requestedToTrash: Boolean? = null
+        val manager = FileOperationManager(
+            onFilesMutated = {},
+            deleteFile = { path, toTrash ->
+                requestedToTrash = toTrash
+                assertTrue(File(path).exists())
+                true
+            }
+        )
+
+        manager.startDelete(listOf(source.absolutePath), toTrash = true)
+        withTimeout(5_000) {
+            manager.progress.filter { it.status == OperationStatus.COMPLETED }.first()
+        }
+
+        assertTrue(source.exists())
+        assertTrue(requestedToTrash == true)
+        manager.shutdown()
     }
 
     @Test
