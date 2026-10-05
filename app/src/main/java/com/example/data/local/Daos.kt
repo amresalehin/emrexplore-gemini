@@ -92,8 +92,6 @@ interface FileIndexDao {
     @Query("SELECT * FROM indexed_files ORDER BY lastModified DESC LIMIT 100")
     fun getAllIndexedFiles(): Flow<List<IndexedFileEntity>>
 
-    @Query("SELECT * FROM indexed_files WHERE isDirectory = 0")
-    suspend fun getAllIndexedFilesForBrain(): List<IndexedFileEntity>
 
     @Query("SELECT COUNT(*) FROM indexed_files WHERE isDirectory = 0 AND extension IN (:extensions)")
     suspend fun getBrainCandidateCount(extensions: List<String>): Int
