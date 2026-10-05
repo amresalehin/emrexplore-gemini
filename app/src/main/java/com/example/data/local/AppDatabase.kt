@@ -31,7 +31,7 @@ import com.example.data.brain.BrainRunEntity
         BrainDocumentEntity::class,
         BrainRunEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -47,6 +47,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun aiProviderConfigDao(): AiProviderConfigDao
     abstract fun brainNodeDao(): com.example.data.brain.BrainNodeDao
     abstract fun brainEdgeDao(): com.example.data.brain.BrainEdgeDao
+    abstract fun brainEdgeEvidenceDao(): com.example.data.brain.BrainEdgeEvidenceDao
     abstract fun brainTopicDao(): com.example.data.brain.BrainTopicDao
     abstract fun brainChunkDao(): com.example.data.brain.BrainChunkDao
     abstract fun brainDocumentDao(): com.example.data.brain.BrainDocumentDao
@@ -352,6 +353,32 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `brain_edge_evidence` (
+                        `sourceNodeId` TEXT NOT NULL,
+                        `targetNodeId` TEXT NOT NULL,
+                        `relation` TEXT NOT NULL,
+                        `evidenceSource` TEXT NOT NULL,
+                        `evidenceSnippet` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`sourceNodeId`, `targetNodeId`, `relation`, `evidenceSource`)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_edge_evidence_evidenceSource` ON `brain_edge_evidence` (`evidenceSource`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_brain_edge_evidence_edge` ON `brain_edge_evidence` (`sourceNodeId`, `targetNodeId`, `relation`)")
+                db.execSQL("""
+                    INSERT OR IGNORE INTO `brain_edge_evidence` (
+                        `sourceNodeId`, `targetNodeId`, `relation`, `evidenceSource`, `evidenceSnippet`, `createdAt`
+                    )
+                    SELECT `sourceNodeId`, `targetNodeId`, `relation`, `evidenceSource`, `evidenceSnippet`, `createdAt`
+                    FROM `brain_edges`
+                    WHERE `evidenceSource` IS NOT NULL AND `evidenceSource` != ''
+                """.trimIndent())
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -369,7 +396,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_8_9,
                         MIGRATION_9_10,
                         MIGRATION_10_11,
-                        MIGRATION_11_12
+                        MIGRATION_11_12,
+                        MIGRATION_12_13
                     )
                     .fallbackToDestructiveMigrationFrom(1, 2, 3, 5)
                     .fallbackToDestructiveMigrationOnDowngrade()
