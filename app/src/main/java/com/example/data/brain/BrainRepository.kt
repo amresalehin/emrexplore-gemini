@@ -186,37 +186,15 @@ class BrainRepository(context: Context) {
         indexer.index(file, normalizeAiConfig(config), force).success
     }
 
-    suspend fun indexPath(path: File, config: AiProviderConfigEntity) = withContext(Dispatchers.IO) {
-        if (!path.exists()) return@withContext
-
-        if (path.isFile) {
-            indexFile(path, config, force = true)
-            return@withContext
-        }
-
-        // This bridge consumes the canonical FileRepository index. Brain never
-        // recursively walks the filesystem for a second indexing pass.
-        val normalizedPath = path.absolutePath.trimEnd(File.separatorChar)
-        val candidates = fileIndexDao.getFilesUnderPathForBrain(
-            normalizedPath,
-            normalizedPath
-        )
-
-        for (candidate in candidates) {
-            currentCoroutineContext().ensureActive()
-            val file = File(candidate.path)
-            if (!file.exists() || !file.isFile || !file.canRead()) continue
-            if (candidate.extension.lowercase(Locale.US) !in BrainContentReader.SUPPORTED_EXTENSIONS) continue
-            indexFile(file, config, force = true)
-        }
-        brainNodeDao.recomputeDegrees()
-    }
-
-    suspend fun indexPath(path: File) = indexPath(path, getAiConfig())
-
     suspend fun onFileRenamed(oldPath: String, newPath: String) = withContext(Dispatchers.IO) {
         removeIndexedSource(oldPath)
-        indexPath(File(newPath), getAiConfig())
+        val indexed = fileIndexDao.getByPath(newPath) ?: return@withContext
+        if (!indexed.isDirectory &&
+            indexed.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS
+        ) {
+            indexFile(File(indexed.path), getAiConfig(), force = true)
+            brainNodeDao.recomputeDegrees()
+        }
     }
 
     suspend fun removeIndexedSource(filePath: String) = withContext(Dispatchers.IO) {
