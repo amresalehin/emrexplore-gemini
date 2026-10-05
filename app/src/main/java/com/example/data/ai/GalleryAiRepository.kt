@@ -97,7 +97,7 @@ class GalleryAiRepository(private val context: android.content.Context) {
             }
         }.toString()
 
-        MetadataWriter.writeAiMetadata(file, analysis.summary.trim(), analysis.tags)
+        MetadataWriter.writeAiMetadata(appContext, file, analysis.summary.trim(), analysis.tags)
         mediaMetadataRepository.getOrRead(item, requireOriginalLocation = false)
         mediaMetadataRepository.saveAiEnrichment(
             item = item,
