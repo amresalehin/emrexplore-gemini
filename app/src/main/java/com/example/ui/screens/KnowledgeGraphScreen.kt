@@ -1559,20 +1559,20 @@ fun DeclutteredCanvasView(
                             modifier = Modifier.size(32.dp)
                         )
                         Text(
-                            "No indexed entities found",
+                             if (!localBrainReady) "Local Brain model required" else "No indexed entities found",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            "Tap Sync to scan and index storage entities into your graph.",
+                             if (!localBrainReady) "Download the local model in Brain Settings to enable semantic search and indexing."
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Button(
                             onClick = onIndexFiles,
-                            enabled = !isIndexing && onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY
+                             enabled = !isIndexing && localBrainReady
                         ) {
-                            Text(if (isIndexing) "Indexing…" else if (onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY) "Sync Brain" else "Download model in Settings")
+                             Text(if (isIndexing) "Indexing…" else if (localBrainReady) "Sync Brain" else "Open Brain Settings")
                         }
                     }
                 }
