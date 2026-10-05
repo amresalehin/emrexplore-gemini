@@ -132,7 +132,7 @@ class OnDeviceEmbeddingModelManager(context: Context) {
     }
 
     suspend fun downloadDefaultModel(
-        onProgress: suspend (Float, Long, Long) -> Unit = { _, _, _ -> }
+        onProgress: (Float, Long, Long) -> Unit = { _, _, _ -> }
     ) = withContext(Dispatchers.IO) {
         val spec = defaultSpec()
         if (isInstalled(spec)) {
@@ -237,7 +237,7 @@ class OnDeviceEmbeddingModelManager(context: Context) {
         url: String,
         destination: File,
         expectedSha256: String?,
-        onProgress: suspend (downloaded: Long, total: Long) -> Unit
+        onProgress: (downloaded: Long, total: Long) -> Unit
     ) {
         val request = Request.Builder()
             .url(url)
