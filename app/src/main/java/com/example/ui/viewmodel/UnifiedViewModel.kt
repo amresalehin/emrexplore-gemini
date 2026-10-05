@@ -2283,7 +2283,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val ok = repository.restoreTrashItem(trashEntity)
             if (ok) {
-                brainRepository.indexPath(File(trashEntity.originalPath))
+                brainRepository.indexFile(File(trashEntity.originalPath), _uiState.value.aiConfig, force = true)
                 showMessage("Restored ${trashEntity.name}")
                 loadFiles()
                 loadStorageStats()
