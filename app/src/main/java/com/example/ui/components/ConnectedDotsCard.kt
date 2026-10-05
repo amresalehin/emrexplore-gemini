@@ -35,7 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.ai.ConnectedDotsItem
+import com.example.data.brain.ConnectedDotsItem
 import com.example.ui.theme.ColorDocuments
 import com.example.ui.theme.ColorImages
 import java.io.File
