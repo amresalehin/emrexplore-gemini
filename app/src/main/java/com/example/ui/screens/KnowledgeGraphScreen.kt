@@ -386,7 +386,7 @@ fun BrainScreen(
                     contentColor = MaterialTheme.colorScheme.primary,
                     divider = {}
                 ) {
-                    GraphScreenTab.entries.forEach { tab ->
+                    BrainScreenTab.entries.forEach { tab ->
                         Tab(
                             selected = selectedTab == tab,
                             onClick = { selectedTab = tab },
