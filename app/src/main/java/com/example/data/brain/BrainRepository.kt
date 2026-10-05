@@ -292,6 +292,32 @@ class BrainRepository(context: Context) {
         out.take(24)
     }
 
+    suspend fun searchContent(query: String, rootPath: String?, limit: Int = 100): List<Pair<String, Float>> = withContext(Dispatchers.IO) {
+        val clean = query.trim()
+        if (clean.isBlank() || limit <= 0) return@withContext emptyList()
+        val normalizedRoot = rootPath?.let { File(it).absoluteFile.normalize().path }
+        val retrieval = retriever.retrieve(clean, getAiConfig(), limit.coerceAtLeast(8))
+        retrieval.hits
+            .asSequence()
+            .map { hit -> hit.chunk.filePath to hit.score }
+            .filter { (path, _) ->
+                val file = File(path)
+                if (!file.isFile || !file.canRead()) {
+                    false
+                } else if (normalizedRoot == null) {
+                    true
+                } else {
+                    val candidate = file.absoluteFile.normalize().path
+                    candidate == normalizedRoot || candidate.startsWith(normalizedRoot + File.separator)
+                }
+            }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, scores) -> scores.maxOrNull() ?: 0f }
+            .entries
+            .sortedByDescending { it.value }
+            .take(limit)
+            .map { it.key to it.value }
+
     suspend fun getSmartSuggestions(): List<String> = withContext(Dispatchers.IO) {
         val suggestions = mutableListOf<String>()
         brainNodeDao.recentFiles(6).forEach { node -> suggestions += if (node.nodeType == "IMAGE") "Details for " + node.label else "Summarize " + node.label }
