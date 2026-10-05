@@ -382,7 +382,6 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     private var ragRequestId: Long = 0L
     private var permissionRefreshJob: Job? = null
     private var permissionsInitialized = false
-    private var pendingDeletePaths: List<String> = emptyList()
 
     init {
         // Collect decoupled file operations progress
