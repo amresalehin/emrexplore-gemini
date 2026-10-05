@@ -11,6 +11,7 @@ import com.example.data.local.AiProviderConfigEntity
 import com.example.data.local.AppDatabase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
