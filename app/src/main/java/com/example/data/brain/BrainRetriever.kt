@@ -110,7 +110,7 @@ class BrainRetriever(
             .mapNotNull { edge ->
                 val source = nodeMap[edge.sourceNodeId] ?: return@mapNotNull null
                 val target = nodeMap[edge.targetNodeId] ?: return@mapNotNull null
-                val snippet = redactSensitive(edge.evidenceSnippet)
+                val snippet = BrainPrivacy.redactSensitive(edge.evidenceSnippet)
                 "[" + source.label + "] -" + edge.relation + "-> [" + target.label + "]" +
                     if (snippet.isBlank()) "" else " (" + snippet + ")"
             }
@@ -134,7 +134,7 @@ class BrainRetriever(
             val file = File(hit.chunk.filePath)
             if (!file.exists() || !file.isFile) continue
 
-            val content = if (safe) hit.chunk.content else redactSensitive(hit.chunk.content)
+            val content = if (safe) hit.chunk.content else BrainPrivacy.redactSensitive(hit.chunk.content)
             val header = "=== SOURCE " + sourceNumber + ": " + file.name + " ===\n"
             val remaining = maxChars - contextBuilder.length
             if (remaining <= header.length) break
@@ -303,16 +303,6 @@ class BrainRetriever(
         buildList {
             while (queue.isNotEmpty()) add(queue.poll())
         }.asReversed().take(limit)
-
-    private fun redactSensitive(value: String): String {
-        return value
-            .replace(Regex("(?im)^\\s*(GPS|Location):.*(?:\\R|$)"), "")
-            .replace(
-                Regex("(?i)(exact coordinates|geographic coordinates|coordinates?)\\s*[:=]?\\s*-?\\d+(?:\\.\\d+)?\\s*,\\s*-?\\d+(?:\\.\\d+)?")
-            ) { match ->
-                match.groupValues[1] + ": [redacted]"
-            }
-    }
 
     companion object {
         const val PAGE_SIZE = 128
