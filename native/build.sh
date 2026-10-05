@@ -90,7 +90,7 @@ fetch_exiftool() {
     local tarball="${SRC_DIR}/Image-ExifTool-${EXIFTOOL_VERSION}.tar.gz"
     if [[ ! -f "${tarball}" ]]; then
         curl -fsSL -o "${tarball}" \
-            "https://exiftool.org/Image-ExifTool-${EXIFTOOL_VERSION}.tar.gz"
+            "https://sourceforge.net/projects/exiftool/files/Image-ExifTool-${EXIFTOOL_VERSION}.tar.gz/download"
     fi
     verify_sha256 "${tarball}" "${EXIFTOOL_TARBALL_SHA256}"
 }
