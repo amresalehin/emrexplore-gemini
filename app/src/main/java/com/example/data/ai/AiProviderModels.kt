@@ -1,5 +1,7 @@
 package com.example.data.ai
 
+import com.example.data.brain.AttachedAiFile
+import com.example.data.brain.BrainNodeEntity
 
 enum class ProviderType(
     val displayName: String,
@@ -123,12 +125,3 @@ data class AvailableAiModel(
     val priceKnown: Boolean = false
 )
 
-data class AskAiChatMessage(
-    val id: String = java.util.UUID.randomUUID().toString(),
-    val isUser: Boolean,
-    val text: String,
-    val timestamp: Long = System.currentTimeMillis(),
-    val attachedFile: AttachedAiFile? = null,
-    val referencedNodes: List<BrainNodeEntity> = emptyList(),
-    val isError: Boolean = false
-)
