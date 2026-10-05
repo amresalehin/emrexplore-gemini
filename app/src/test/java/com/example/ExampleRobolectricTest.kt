@@ -93,6 +93,7 @@ class ExampleRobolectricTest {
         assertNotNull(db.brainChunkDao())
         assertNotNull(db.brainNodeDao())
         assertNotNull(db.brainEdgeDao())
+        assertNotNull(db.brainEdgeEvidenceDao())
         assertNotNull(db.brainDocumentDao())
         assertNotNull(db.brainTopicDao())
         val writableDb = db.openHelper.writableDatabase
