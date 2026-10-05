@@ -104,6 +104,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -148,11 +149,11 @@ import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
-enum class GraphScreenTab(val label: String, val icon: ImageVector) {
+enum class BrainScreenTab(val label: String, val icon: ImageVector) {
     ASK_AI("Ask AI", Icons.Default.AutoAwesome),
-    CANVAS("Graph", Icons.Default.Hub),
+    CANVAS("Canvas", Icons.Default.Hub),
     TOPICS("Topics", Icons.Default.Category),
-    DOTS("Links", Icons.Default.LinearScale)
+    DOTS("Connections", Icons.Default.LinearScale)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -193,7 +194,7 @@ fun KnowledgeGraphScreen(
     onOpenImage: (File) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedTab by remember { mutableStateOf(GraphScreenTab.ASK_AI) }
+    var selectedTab by rememberSaveable { mutableStateOf(BrainScreenTab.ASK_AI) }
     var selectedNode by remember { mutableStateOf<BrainNodeEntity?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -287,11 +288,11 @@ fun KnowledgeGraphScreen(
                             enabled = !isIndexing && onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
                             modifier = Modifier
                                 .size(38.dp)
-                                .testTag("kg_sync_button")
+                                .testTag("brain_sync_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
-                                contentDescription = "Sync Brain",
+                                contentDescription = "Sync Brain index",
                                 tint = if (isIndexing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = if (isIndexing) Modifier.rotate(syncRotation) else Modifier.size(20.dp)
                             )
@@ -300,11 +301,11 @@ fun KnowledgeGraphScreen(
                             onClick = onOpenAiSettings,
                             modifier = Modifier
                                 .size(38.dp)
-                                .testTag("kg_settings_button")
+                                .testTag("brain_settings_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Settings,
-                                contentDescription = "AI Settings",
+                                contentDescription = "Brain and AI settings",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -1180,7 +1181,7 @@ fun DeclutteredAskAiView(
                         }
                     }
 
-                    // Option 3: Pick from App Knowledge Graph Files
+                    // Option 3: Pick from Brain-indexed Files
                     val localFiles = remember(availableNodes) {
                         availableNodes
                             .mapNotNull { it.sourceFilePath?.let(::File) }
