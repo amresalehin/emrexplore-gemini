@@ -20,6 +20,9 @@ interface FavoriteDao {
     @Query("SELECT path FROM favorites")
     suspend fun getAllFavoritePathsSync(): List<String>
 
+    @Query("SELECT * FROM favorites WHERE path = :root OR path LIKE :prefix || '/%'")
+    suspend fun getFavoritesUnderPath(root: String, prefix: String): List<FavoriteEntity>
+
     @Query("SELECT path FROM favorites ORDER BY timestamp DESC, path ASC LIMIT :limit OFFSET :offset")
     suspend fun getFavoritePathsPage(limit: Int, offset: Int): List<String>
 
@@ -62,6 +65,9 @@ interface RecentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addRecent(recent: RecentEntity)
 
+    @Query("SELECT * FROM recents WHERE path = :root OR path LIKE :prefix || '/%'")
+    suspend fun getRecentsUnderPath(root: String, prefix: String): List<RecentEntity>
+
     @Query("DELETE FROM recents WHERE path = :path")
     suspend fun removeRecent(path: String)
 
@@ -76,6 +82,9 @@ interface BookmarkDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addBookmark(bookmark: BookmarkEntity)
+
+    @Query("SELECT * FROM bookmarks WHERE path = :root OR path LIKE :prefix || '/%'")
+    suspend fun getBookmarksUnderPath(root: String, prefix: String): List<BookmarkEntity>
 
     @Query("DELETE FROM bookmarks WHERE path = :path")
     suspend fun removeBookmark(path: String)
@@ -241,6 +250,9 @@ interface MediaMetadataDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(metadata: MediaMetadataEntity)
+
+    @Query("SELECT * FROM media_metadata WHERE path = :root OR path LIKE :prefix || '/%'")
+    suspend fun getByPathTree(root: String, prefix: String): List<MediaMetadataEntity>
 
     @Query("DELETE FROM media_metadata WHERE uri = :uri")
     suspend fun delete(uri: String)
