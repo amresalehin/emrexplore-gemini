@@ -2476,7 +2476,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 .map { if (it.isUser) "User" to it.text else "AI" to it.text }
 
             val answer = try {
-                if (attached != null && attached.file.exists()) {
+                if (attached != null) {
                     brainRepository.queryFileSpecifically(attached.file, cleanQuestion, history)
                 } else {
                     brainRepository.queryRag(cleanQuestion, history)
