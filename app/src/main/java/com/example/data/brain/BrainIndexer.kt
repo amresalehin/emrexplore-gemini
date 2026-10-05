@@ -19,7 +19,7 @@ data class BrainIndexOutcome(
 )
 
 class BrainIndexer(
-    private val context: android.content.Context,
+    context: android.content.Context,
     private val documentDao: BrainDocumentDao,
     private val chunkDao: BrainChunkDao,
     private val nodeDao: BrainNodeDao,
@@ -306,19 +306,25 @@ class BrainIndexer(
         }
         if (!config.isEnabled) return localAnalysis(input)
 
-        return if (input.isImage) {
-            client.analyzeImage(
-                base64Jpeg = input.imageBase64,
-                metadataSummary = input.metadataSummary,
-                fileName = input.file.name,
-                config = config
-            )
-        } else {
-            client.analyzeDocument(
-                text = input.text.take(12_000),
-                fileName = input.file.name,
-                config = config
-            )
+        return runCatching {
+            if (input.isImage) {
+                client.analyzeImage(
+                    base64Jpeg = input.imageBase64,
+                    metadataSummary = input.metadataSummary,
+                    fileName = input.file.name,
+                    config = config
+                )
+            } else {
+                client.analyzeDocument(
+                    text = input.text.take(12_000),
+                    fileName = input.file.name,
+                    config = config
+                )
+            }
+        }.getOrElse {
+            // Semantic indexing must not disappear just because optional provider
+            // enrichment is unavailable. The local model can still index the file.
+            localAnalysis(input)
         }
     }
 
