@@ -184,8 +184,7 @@ data class UiState(
     val gallerySearchSubmittedQuery: String = "",
     val gallerySearchActive: Boolean = false,
     val galleryRecentSearches: List<String> = emptyList(),
-    val allMediaItems: List<MediaItem> = emptyList(),
-    val mediaItems: List<MediaItem> = emptyList(),
+    val galleryGroupBy: String = "Month",
     val mediaAlbums: List<MediaAlbum> = emptyList(),
     val selectedAlbum: MediaAlbum? = null,
     val galleryColumns: Int = 3,
@@ -295,6 +294,14 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     private val galleryRefreshFlow = MutableStateFlow(0L)
     private val gallerySearchFlow = MutableStateFlow("")
     private val gallerySortFlow = MutableStateFlow(GallerySortOption.DATE_DESC)
+
+    fun setGalleryGroupBy(groupBy: String) {
+        _uiState.update { it.copy(galleryGroupBy = groupBy) }
+    }
+
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+    fun albumPagingFlow(albumId: String): Flow<PagingData<MediaItem>> =
+        mediaRepository.albumPager(albumId, _uiState.value.gallerySortOption)
 
     private fun todayDateString(): String =
         java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
