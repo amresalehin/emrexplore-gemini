@@ -232,7 +232,16 @@ fun GalleryScreen(
         viewModel.selectAlbum(null)
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    val hasMediaPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+        context,
+        android.Manifest.permission.READ_MEDIA_IMAGES
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+        androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.READ_EXTERNAL_STORAGE
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    Column(modifier = modifier.fillMaxSize())
 
         AnimatedVisibility(
             visible = chromeVisible,
@@ -722,8 +731,19 @@ fun GalleryScreen(
         } else {
             when (uiState.gallerySubTab) {
                 GallerySubTab.TIMELINE -> {
-                    PagedMediaGrid(
-                        items = pagedMedia,
+                    if (pagedMedia.itemCount == 0 && pagedMedia.loadState.refresh is LoadState.NotLoading) {
+                        EmptyGalleryMessage(
+                            if (!hasMediaPermission) {
+                                "Photo access is not granted. Allow media access to show Gallery photos."
+                            } else if (uiState.gallerySearchQuery.isNotBlank()) {
+                                "No photos match your search."
+                            } else {
+                                "No photos or videos found on this device."
+                            }
+                        )
+                    } else {
+                        PagedMediaGrid(
+                            items = pagedMedia,
                         gridState = galleryGridState,
                         columns = uiState.galleryColumns,
                         onItemClick = { item ->
@@ -750,8 +770,9 @@ fun GalleryScreen(
                             }
                         },
                         onItemLongClick = { item -> viewModel.toggleGallerySelection(item) },
-                        selectedPaths = uiState.gallerySelection.map { it.path }.toSet()
-                    )
+                            selectedPaths = uiState.gallerySelection.map { it.path }.toSet()
+                        )
+                    }
                 }
                 GallerySubTab.ALBUMS -> {
                     if (discoveredAlbums.isEmpty()) {
