@@ -22,10 +22,9 @@ This file is the engineering source of truth. Completed work is recorded once. O
 - [x] Execute on-device embeddings with ONNX Runtime.
 - [x] Make the downloaded neural model the primary Brain indexing/query embedding space.
 - [x] Automatically reindex after successful local model installation.
-- [x] Treat provider embeddings as a compatibility/secondary retrieval signal.
-- [x] Retain deterministic vectors only as an emergency compatibility fallback.
-- [x] Fuse heterogeneous vector rankings with RRF.
-- [x] Keep lexical fallback separate from vector/RRF score spaces.
+- [x] Make the downloaded neural model the single canonical Brain semantic embedding space.
+- [x] Keep lexical search as a separate exact-match fallback.
+- [x] Remove obsolete hash/RRF retrieval machinery.
 - [x] Reject low-relevance vector matches.
 - [x] Validate retrieved sources against the live filesystem.
 - [x] Exclude hidden files and `.trash` at Brain indexing and retrieval boundaries.
@@ -40,7 +39,7 @@ This file is the engineering source of truth. Completed work is recorded once. O
 - [x] Replace `OFFSET` Brain candidate paging with keyset pagination.
 - [x] Make Brain subtree matching safe for literal filesystem paths.
 - [x] Preserve graph-edge provenance per supporting source file.
-- [x] Add Brain schema migration through database version 13.
+- [x] Add Brain schema migration through database version 14, including removal of duplicate legacy chunk embeddings.
 - [x] Route rename, restore, and text-editor save hooks through Brain.
 - [x] Add Brain core unit tests and database-surface assertions.
 - [x] Add tokenizer and vector-codec regression tests.
@@ -112,7 +111,6 @@ This file is the engineering source of truth. Completed work is recorded once. O
 - [ ] Add explicit no-match regression tests.
 - [ ] Add end-to-end device test that downloads the current model and verifies two semantically related queries share the expected local embedding space.
 - [ ] Add a model-upgrade regression proving old chunks are invalidated and rebuilt when the local model identity changes.
-- [ ] Add tests proving offline and online embeddings are combined by rank, not raw score.
 - [ ] Add tests for lexical fallback, disappearing files, hidden sources, and `.trash`.
 - [ ] Benchmark retrieval and scan volume at 1k, 10k, and 100k chunks.
 - [ ] Measure indexing latency, chunk counts, vector failures, and retrieval latency.
@@ -133,10 +131,10 @@ This file is the engineering source of truth. Completed work is recorded once. O
 - [ ] Cancellation, pause/resume, partial-copy cleanup, insufficient storage, nested directories.
 
 ### Room migrations
-- [ ] Test supported upgrade paths through database version 13.
+- [ ] Test supported upgrade paths through database version 14.
 - [ ] Insert representative legacy KG/RAG data before migration.
 - [ ] Verify intentional legacy Brain reset and new Brain tables.
-- [ ] Verify primary keys, indices, nullability, and `brain_edge_evidence` provenance.
+- [ ] Verify primary keys, indices, nullability, `brain_edge_evidence` provenance, and the 13 -> 14 chunk-table migration.
 
 ### AI client
 - [ ] Endpoint validation and local-endpoint allowances.
