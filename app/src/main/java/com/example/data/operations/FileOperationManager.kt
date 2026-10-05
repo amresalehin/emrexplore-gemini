@@ -508,7 +508,7 @@ class FileOperationManager(
             when {
                 canonicalSource == canonicalDestination ->
                     "Source and destination are the same path."
-                source.isDirectory && canonicalDestination.toPath().startsWith(canonicalSource.toPath()) ->
+                source.isDirectory && canonicalDestination.absolutePath.startsWith(canonicalSource.absolutePath + File.separator) ->
                     "Cannot copy or move a folder into itself or one of its descendants."
                 else -> null
             }
