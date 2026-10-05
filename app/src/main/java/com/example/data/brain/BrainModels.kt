@@ -29,12 +29,3 @@ data class AttachedAiFile(
     val isImage: Boolean = false
 )
 
-data class AskAiChatMessage(
-    val id: String = java.util.UUID.randomUUID().toString(),
-    val isUser: Boolean,
-    val text: String,
-    val timestamp: Long = System.currentTimeMillis(),
-    val attachedFile: AttachedAiFile? = null,
-    val referencedNodes: List<BrainNodeEntity> = emptyList(),
-    val isError: Boolean = false
-)
