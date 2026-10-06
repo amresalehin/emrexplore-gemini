@@ -656,7 +656,7 @@ fun GalleryScreen(
                 ) {
                     Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
                     Text(
-                        text = "Gallery AI needs the on-device Brain model.",
+                        text = "Gallery AI: VLM → saved profile → offline embedding.",
                         style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.weight(1f)
                     )
@@ -672,7 +672,7 @@ fun GalleryScreen(
                 onClear = { viewModel.clearGallerySelection() },
                 onFavorite = { viewModel.favoriteGallerySelection() },
                 onAiProcess = { viewModel.processGalleryAiSelection() },
-                aiReady = uiState.onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
+                aiReady = uiState.onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY && uiState.aiConfig.isEnabled && (com.example.data.ai.isKeylessAiConfig(uiState.aiConfig) || uiState.aiConfig.apiKey.isNotBlank()) && uiState.aiConfig.visionModel.isNotBlank(),
                 onShare = {
                     val uris = ArrayList(uiState.gallerySelection.map { it.uri })
                     try {
