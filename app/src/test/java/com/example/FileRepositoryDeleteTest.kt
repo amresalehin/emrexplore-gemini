@@ -28,7 +28,7 @@ class FileRepositoryDeleteTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         db = AppDatabase.getDatabase(context)
         repository = FileRepository(context)
-        testRoot = File(repository.baseWorkingDir, "delete-test-\${System.nanoTime()}").apply { mkdirs() }
+        testRoot = File(repository.baseWorkingDir, "delete-test-${System.nanoTime()}").apply { mkdirs() }
         runBlocking {
             db.trashDao().clearAllTrash()
             db.fileIndexDao().deleteByPathTree(testRoot.absolutePath, testRoot.absolutePath)
