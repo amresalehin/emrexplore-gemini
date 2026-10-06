@@ -408,7 +408,11 @@ class BrainRepository(context: Context) {
         if (indexed) BrainIndexOutcome(true) else BrainIndexOutcome(false, error = "Embedding failed")
     }
 
-    suspend fun runGalleryAi(file: File, force: Boolean = true): BrainIndexOutcome = withContext(Dispatchers.IO) {
+    suspend fun runGalleryAi(
+        file: File,
+        force: Boolean = true,
+        precomputedImageEmbedding: FloatArray
+    ): BrainIndexOutcome = withContext(Dispatchers.IO) {
         if (!file.exists() || !file.isFile || !file.canRead()) {
             return@withContext BrainIndexOutcome(false, error = "File is not readable")
         }
@@ -460,18 +464,9 @@ class BrainRepository(context: Context) {
                 imageEmbeddingModel = ""
             )
         )
-        // Gallery AI owns the image embedding stage too. Brain never generates image vectors.
-        val imageVector = if (config.multimodalEmbeddingModel.isNotBlank()) {
-            try {
-                embeddingClient.embedMultimodalDocument(input.imageBase64, config)
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                return@withContext BrainIndexOutcome(false, error = "Image embedding failed: " + (error.message ?: "inference error"))
-            }
-        } else null
         brainImageProfileDao.insert(
             brainImageProfileDao.get(file.absolutePath)?.copy(
-                imageEmbeddingModel = if (imageVector != null) config.multimodalEmbeddingModel.trim() else ""
+                imageEmbeddingModel = config.multimodalEmbeddingModel.trim()
             ) ?: return@withContext BrainIndexOutcome(false, error = "Gallery AI profile could not be saved")
         )
         // Gallery AI owns both image and text embedding stages. Brain receives only completed vectors.
