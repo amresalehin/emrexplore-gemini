@@ -492,7 +492,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(isGalleryAiPaused = galleryAiStore.isPaused()) }
         viewModelScope.launch {
             WorkManager.getInstance(getApplication<Application>())
-                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME)
+                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
                 .collectLatest { works ->
                     val work = works.firstOrNull() ?: run {
                         if (galleryAiStore.isPaused()) {
@@ -503,7 +503,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                     isGalleryAiProcessing = false,
                                     isGalleryAiPaused = true,
                                     galleryAiProgress = if (total > 0) completed.toFloat() / total else 0f,
-                                    galleryAiStatus = "Brain processing paused"
+                                    galleryAiStatus = "Gallery AI paused"
                                 )
                             }
                         }
@@ -523,12 +523,10 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                 isGalleryAiPaused = false,
                                 galleryAiProgress = if (total > 0) current.toFloat() / total else 0f,
                                 galleryAiStatus = if (path.isBlank()) {
-                                    "Processing with Brain…"
+                                    "Gallery AI: analyzing → offline embedding"
                                 } else {
-                                    val config = _uiState.value.aiConfig
-                                    val embedModel = config.textEmbeddingModel.ifBlank { config.embeddingModel }.ifBlank { "embedding model" }
-                                    val visionModel = config.visionModel.ifBlank { "vision model" }
-                                    "Brain: " + File(path).name + " ($current/$total) · VLM " + visionModel + " · Embed " + embedModel
+                                    val visionModel = _uiState.value.aiConfig.visionModel.ifBlank { "VLM" }
+                                    "Gallery AI: " + File(path).name + " ($current/$total) · " + visionModel + " → offline embedding"
                                 }
                             )
                         }
@@ -540,7 +538,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                     isGalleryAiProcessing = false,
                                     isGalleryAiPaused = false,
                                     galleryAiProgress = 1f,
-                                    galleryAiStatus = "Brain processing complete ($processed processed)"
+                                    galleryAiStatus = "Gallery AI complete ($processed processed)"
                                 )
                             }
                             refreshGallery()
@@ -554,7 +552,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                     isGalleryAiProcessing = false,
                                     isGalleryAiPaused = hasPending,
                                     galleryAiStatus = if (hasPending) {
-                                        "Brain stopped — Resume to retry" + (error?.let { ": $it" } ?: "")
+                                        "Gallery AI stopped — Resume to retry" + (error?.let { ": $it" } ?: "")
                                     } else {
                                         error ?: "Brain processing failed"
                                     }
@@ -570,7 +568,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                     isGalleryAiProcessing = false,
                                     isGalleryAiPaused = paused,
                                     galleryAiProgress = if (total > 0) completed.toFloat() / total else 0f,
-                                    galleryAiStatus = if (paused) "Brain processing paused" else "Brain processing cancelled"
+                                    galleryAiStatus = if (paused) "Gallery AI paused" else "Gallery AI cancelled"
                                 )
                             }
                         }
@@ -1758,7 +1756,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 isGalleryAiProcessing = true,
                 isGalleryAiPaused = false,
                 galleryAiProgress = if (total > 0) completed.toFloat() / total else 0f,
-                galleryAiStatus = "Brain processing queued..."
+                galleryAiStatus = "Gallery AI queued..."
             )
         }
 
@@ -1769,7 +1767,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         val paths = galleryAiStore.pendingPaths()
         if (paths.isEmpty()) return
         val forcePaths = paths.filter { galleryAiStore.isForce(it) }
-        val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>()
+        val request = OneTimeWorkRequestBuilder<com.example.data.ai.GalleryAiWorker>()
             .setInputData(
                 androidx.work.workDataOf(
                     "paths" to paths.toTypedArray(),
@@ -1778,7 +1776,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             )
             .build()
         WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
-            com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME,
+            com.example.data.ai.GalleryAiWorker.UNIQUE_NAME,
             ExistingWorkPolicy.REPLACE,
             request
         )
@@ -1786,7 +1784,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun pauseGalleryAi() {
         if (!galleryAiStore.hasPendingWork()) {
-            showMessage("No gallery Brain processing is active")
+            showMessage("No Gallery AI processing is active")
             return
         }
         galleryAiStore.setPaused(true)
@@ -1798,13 +1796,13 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         WorkManager.getInstance(getApplication<Application>())
-            .cancelUniqueWork(com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME)
+            .cancelUniqueWork(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
     }
 
     fun cancelGalleryAi() {
         val hadWork = galleryAiStore.hasPendingWork() || galleryAiStore.isPaused()
         WorkManager.getInstance(getApplication<Application>())
-            .cancelUniqueWork(com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME)
+            .cancelUniqueWork(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
         galleryAiStore.clear()
         _uiState.update {
             it.copy(
@@ -1841,7 +1839,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             it.copy(
                 isGalleryAiProcessing = true,
                 isGalleryAiPaused = false,
-                galleryAiStatus = "Resuming Brain processing..."
+                galleryAiStatus = "Resuming Gallery AI..."
             )
         }
         enqueueGalleryBrainWorker()
@@ -1856,7 +1854,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
 
         startGalleryAiProcessing(listOf(item.path), force = true)
-        showMessage("Re-analysis queued for ${item.name}")
+        showMessage("Gallery AI re-analysis queued for ${item.name}")
     }
 
     suspend fun getBrainNode(item: MediaItem): BrainNodeEntity? =
@@ -2214,21 +2212,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val ok = repository.writeText(file.path, content)
             if (ok) {
-                val brainReady = brainRepository.isOnDeviceBrainModelReady()
-                val reindexed = if (brainReady) {
-                    brainRepository.indexFile(
-                        File(file.path),
-                        config = brainRepository.getAiConfig(),
-                        force = true
-                    )
-                } else true
-                showMessage(
-                    when {
-                        !brainReady -> "Saved changes to " + file.name
-                        reindexed -> "Saved changes to " + file.name
-                        else -> "Saved changes to " + file.name + "; Brain will refresh later"
-                    }
-                )
+                showMessage("Saved changes to " + file.name + ". Run File AI to update its AI data and embedding.")
                 _uiState.update {
                     it.copy(isEditingText = false, savedTextFileContent = content)
                 }
@@ -2876,7 +2860,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         val workManager = WorkManager.getInstance(getApplication<Application>())
         workManager.cancelUniqueWork(BrainModelDownloadWorker.UNIQUE_NAME)
         workManager.cancelUniqueWork(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
-        workManager.cancelUniqueWork(com.example.data.ai.BrainIndexWorker.TARGETED_UNIQUE_NAME)
+        workManager.cancelUniqueWork(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
 
         // Reflect the capability loss immediately; disk cleanup happens off the main thread.
         val spec = brainRepository.getOnDeviceBrainModelSpec()
@@ -2920,94 +2904,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun indexAllFilesForBrain(force: Boolean = false) {
-        if (_uiState.value.isBrainIndexing) return
-        val brainConfig = _uiState.value.aiConfig
-        if (EmbeddingProviderType.fromString(brainConfig.embeddingProviderType) == EmbeddingProviderType.OFFLINE && !brainRepository.isOnDeviceBrainModelReady()) {
-            showMessage("Download the selected on-device text embedding model before Brain processing")
-            return
-        }
-
-        _uiState.update {
-            it.copy(
-                isBrainIndexing = true,
-                isBrainIndexingPaused = false,
-                brainIndexingProgress = 0f,
-                brainIndexingStatus = "Brain indexing queued..."
-            )
-        }
-        val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>()
-            .setInputData(
-                androidx.work.workDataOf(
-                    "force" to force,
-                    "refreshStorageIndex" to true
-                )
-            )
-            .build()
-        WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
-            com.example.data.ai.BrainIndexWorker.UNIQUE_NAME,
-            ExistingWorkPolicy.REPLACE,
-            request
-        )
-        viewModelScope.launch {
-            WorkManager.getInstance(getApplication<Application>())
-                .getWorkInfoByIdFlow(request.id)
-                .collectLatest { info ->
-                    if (info == null) return@collectLatest
-                    val progress = info.progress
-                    val total = progress.getInt("total", 0)
-                    val current = progress.getInt("current", 0)
-                    val path = progress.getString("path").orEmpty()
-                    when (info.state) {
-                        androidx.work.WorkInfo.State.RUNNING -> _uiState.update { state ->
-                            state.copy(
-                                isBrainIndexing = true,
-                                brainIndexingProgress = if (total > 0) current.toFloat() / total else 0f,
-                                brainIndexingStatus = if (path.isBlank()) {
-                                    "Indexing Brain · Embed " +
-                                        brainConfig.textEmbeddingModel.ifBlank { brainConfig.embeddingModel.ifBlank { "On-device model" } } +
-                                        " · VLM " + brainConfig.visionModel.ifBlank { "not configured" }
-                                } else {
-                                    "Indexing " + File(path).name + " · Embed " +
-                                        brainConfig.textEmbeddingModel.ifBlank { brainConfig.embeddingModel.ifBlank { "On-device model" } } +
-                                        " · VLM " + brainConfig.visionModel.ifBlank { "not configured" } +
-                                        " (" + current + "/" + total + ")"
-                                }
-                            )
-                        }
-                        androidx.work.WorkInfo.State.SUCCEEDED -> {
-                            val indexed = info.outputData.getInt("indexed", 0)
-                            val skipped = info.outputData.getInt("skipped", 0)
-                            val failed = info.outputData.getInt("failed", 0)
-                            val suggestions = try { brainRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
-                            _uiState.update { state ->
-                                state.copy(
-                                    isBrainIndexing = false,
-                                    isBrainIndexingPaused = false,
-                                    brainIndexingProgress = 1f,
-                                    brainIndexingStatus = "Brain ready — " + indexed + " indexed, " + skipped + " skipped, " + failed + " failed",
-                                    brainSmartSuggestions = suggestions
-                                )
-                            }
-                            return@collectLatest
-                        }
-                        androidx.work.WorkInfo.State.FAILED -> {
-                            val error = info.outputData.getString("error") ?: "Brain indexing failed"
-                            _uiState.update { state -> state.copy(isBrainIndexing = false, isBrainIndexingPaused = false, brainIndexingStatus = error) }
-                            return@collectLatest
-                        }
-                        androidx.work.WorkInfo.State.CANCELLED -> {
-                            _uiState.update { state ->
-                                state.copy(
-                                    isBrainIndexing = false,
-                                    brainIndexingStatus = if (state.isBrainIndexingPaused) "Brain indexing paused" else "Brain indexing cancelled"
-                                )
-                            }
-                            return@collectLatest
-                        }
-                        else -> Unit
-                    }
-                }
-        }
+        showMessage("Brain does not index files. Use File AI for documents or Gallery AI for images.")
     }
 
     fun pauseBrainIndexing() {
