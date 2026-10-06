@@ -179,3 +179,26 @@ data class AvailableAiModel(
     val priceKnown: Boolean = false
 )
 
+enum class VectorDatabaseType(
+    val displayName: String,
+    val description: String,
+    val isLocal: Boolean,
+    val requiresEndpoint: Boolean
+) {
+    ROOM("Room — Local", "Built into the app. Vectors stay on this device.", true, false),
+    QDRANT("Qdrant", "Open-source vector database. Self-hosted or cloud.", false, true);
+
+    companion object {
+        fun fromString(value: String): VectorDatabaseType =
+            entries.firstOrNull { it.name.equals(value.trim(), ignoreCase = true) } ?: ROOM
+    }
+}
+
+data class BrainModelChoice(
+    val id: String,
+    val displayName: String,
+    val provider: ProviderType,
+    val isLocal: Boolean,
+    val description: String
+)
+
