@@ -712,12 +712,18 @@ fun DeclutteredCanvasView(
                 Column(Modifier.weight(1f)) {
                     Text("Brain index", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     Text(
-                        if (isIndexing) "Building the graph from your files" else if (nodes.isEmpty()) "Nothing indexed yet" else "${nodes.size} entities · ${edges.size} links",
+                        if (isIndexing) indexingStatus else if (nodes.isEmpty()) "Nothing indexed yet" else "${nodes.size} entities · ${edges.size} links",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (isIndexing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (isIndexing) {
+                        LinearProgressIndicator(
+                            progress = { indexingProgress.coerceIn(0f, 1f) },
+                            modifier = Modifier.fillMaxWidth().padding(top = 5.dp)
+                        )
+                    }
                 }
                 if (isIndexing) {
                     TextButton(onClick = onPauseIndexing) { Text("Pause") }
