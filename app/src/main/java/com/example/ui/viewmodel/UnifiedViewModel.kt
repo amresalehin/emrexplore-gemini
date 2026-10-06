@@ -771,8 +771,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(currentTab = tab) }
         when (tab) {
             MainTab.HOME -> {
-                loadStorageStats()
-                calculateCategoryCounts()
+                // Home is state-backed; switching tabs must not re-query storage or
+                // flash/scroll-reset the dashboard. Mutations refresh these values explicitly.
             }
             MainTab.FILES -> {
                 if (_uiState.value.files.isEmpty()) {
