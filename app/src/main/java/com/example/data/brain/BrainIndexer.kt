@@ -39,7 +39,12 @@ class BrainIndexer(
         vectorStoreFor(config, chunkDao)
     private val reader = BrainContentReader(context)
 
-    suspend fun index(file: File, config: AiProviderConfigEntity, force: Boolean = false): BrainIndexOutcome {
+    suspend fun index(
+        file: File,
+        config: AiProviderConfigEntity,
+        force: Boolean = false,
+        precomputedImageEmbedding: FloatArray? = null
+    ): BrainIndexOutcome {
         val startedAt = System.currentTimeMillis()
         val path = file.absolutePath
         if (!file.exists() || !file.isFile || !file.canRead()) {
@@ -231,8 +236,8 @@ class BrainIndexer(
                     content = text,
                     embeddingJson = BrainVectorCodec.toJson(embeddings[index]),
                     embeddingModel = embeddingModel,
-                    imageEmbeddingJson = "",
-                    imageEmbeddingModel = "",
+                    imageEmbeddingJson = if (input.isImage && precomputedImageEmbedding != null) BrainVectorCodec.toJson(precomputedImageEmbedding) else "",
+                    imageEmbeddingModel = if (input.isImage && precomputedImageEmbedding != null) config.multimodalEmbeddingModel.trim() else "",
                     locator = if (input.isImage) file.name else "chunk-" + index,
                     pageNumber = null,
                     indexedAt = now
@@ -463,33 +468,46 @@ class BrainIndexer(
     }
 
     private suspend fun embed(texts: List<String>, config: AiProviderConfigEntity): Pair<List<FloatArray>, String> {
-        if (texts.isEmpty()) return emptyList<FloatArray>() to onDeviceEmbedding.modelIdIfReady().orEmpty()
-
-        if (EmbeddingProviderType.fromString(config.embeddingProviderType) != EmbeddingProviderType.OFFLINE) {
-            throw IllegalStateException("Only the offline embedding engine is supported")
+        if (texts.isEmpty()) {
+            val provider = EmbeddingProviderType.fromString(config.embeddingProviderType)
+            return emptyList<FloatArray>() to when (provider) {
+                EmbeddingProviderType.OFFLINE -> onDeviceEmbedding.modelIdIfReady().orEmpty()
+                else -> config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
+            }
         }
 
-        return run {
+        val provider = EmbeddingProviderType.fromString(config.embeddingProviderType)
+        val vectors = when (provider) {
+            EmbeddingProviderType.OFFLINE -> {
                 if (!onDeviceEmbedding.isReady()) {
-                    throw IllegalStateException("Download the selected on-device embedding model before indexing")
+                    throw IllegalStateException("Download the selected on-device embedding model before running AI")
                 }
-                val vectors = try {
+                try {
                     onDeviceEmbedding.embedTextPassages(texts) ?: emptyList()
                 } catch (error: Exception) {
                     if (error is kotlinx.coroutines.CancellationException) throw error
-                    throw IllegalStateException(
-                        "On-device embedding failed: " + (error.message ?: "inference error"),
-                        error
-                    )
+                    throw IllegalStateException("On-device embedding failed: " + (error.message ?: "inference error"), error)
                 }
-                val modelId = onDeviceEmbedding.modelIdIfReady()
-                    ?: throw IllegalStateException("Selected on-device embedding model is unavailable")
-                vectors to modelId
-        }.also { (vectors, _) ->
-            if (vectors.size != texts.size || vectors.any { it.isEmpty() }) {
-                throw IllegalStateException("Embedding provider returned an incomplete embedding batch")
+            }
+            else -> {
+                val model = config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
+                if (model.isBlank()) throw IllegalStateException("Choose a text embedding model before running AI")
+                try {
+                    embeddingClient.embedTextPassages(texts, config)
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    throw IllegalStateException("Embedding provider failed: " + (error.message ?: "inference error"), error)
+                }
             }
         }
+        val modelId = when (provider) {
+            EmbeddingProviderType.OFFLINE -> onDeviceEmbedding.modelIdIfReady().orEmpty()
+            else -> config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
+        }
+        if (vectors.size != texts.size || vectors.any { it.isEmpty() }) {
+            throw IllegalStateException("Embedding provider returned an incomplete embedding batch")
+        }
+        vectors to modelId
     }
 
     private fun localAnalysis(input: BrainFileContent): AnalysisResult {
