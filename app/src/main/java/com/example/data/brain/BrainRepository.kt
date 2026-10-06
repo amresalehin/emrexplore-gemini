@@ -106,6 +106,12 @@ class BrainRepository(context: Context) {
     suspend fun testEmbeddingConnection(config: AiProviderConfigEntity): ConnectionTestResult =
         client.testEmbeddingConnection(normalizeAiConfig(config))
 
+    suspend fun pullOllamaModel(
+        config: AiProviderConfigEntity,
+        modelId: String,
+        onProgress: suspend (completed: Long, total: Long, status: String) -> Unit
+    ) = client.pullOllamaModel(normalizeAiConfig(config), modelId, onProgress)
+
     fun getOnDeviceBrainModelState(error: String? = null): OnDeviceBrainModelUiState =
         onDeviceEmbedding.manager().uiState(error)
 
