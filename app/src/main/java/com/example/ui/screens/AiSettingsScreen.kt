@@ -97,6 +97,10 @@ fun AiSettingsScreen(
     modelFetchError: String? = null,
     onFetchModels: (AiProviderConfigEntity) -> Unit = {},
     onFetchEmbeddingModels: (AiProviderConfigEntity) -> Unit = {},
+    onDownloadOllamaModel: (AiProviderConfigEntity, String) -> Unit = { _, _ -> },
+    isDownloadingOllamaModel: Boolean = false,
+    ollamaDownloadProgress: Float = 0f,
+    ollamaDownloadStatus: String = "",
     onTestEmbeddingConnection: (AiProviderConfigEntity) -> Unit = {},
     embeddingTestResult: ConnectionTestResult? = null,
     onDeviceBrainModel: OnDeviceBrainModelUiState = OnDeviceBrainModelUiState(),
@@ -130,6 +134,7 @@ fun AiSettingsScreen(
     var showEmbeddingPicker by remember { mutableStateOf(false) }
     var showMultimodalEmbeddingPicker by remember { mutableStateOf(false) }
     var showOfflineBrainPicker by remember { mutableStateOf(false) }
+    var ollamaDownloadModel by remember { mutableStateOf("") }
     var showAdvanced by remember { mutableStateOf(false) }
     var selectedVectorDatabase by remember { mutableStateOf(VectorDatabaseType.fromString(currentConfig.vectorDatabaseType)) }
     var vectorDatabaseBaseUrl by remember { mutableStateOf(currentConfig.vectorDatabaseBaseUrl) }
@@ -612,6 +617,44 @@ fun AiSettingsScreen(
                                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text(if (isFetchingModels) "Refreshing models…" else "Refresh available models")
+                            }
+                        }
+                    }
+                }
+
+                if (selectedProvider == ProviderType.OLLAMA) {
+                    SectionTitle("DOWNLOAD LLM / VLM")
+                    OutlinedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                            Text("Download directly into the connected Ollama server.", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Enter any Ollama library model ID, including vision models such as gemma3, qwen2.5vl, or llava.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedTextField(
+                                value = ollamaDownloadModel,
+                                onValueChange = { ollamaDownloadModel = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Ollama model ID") },
+                                placeholder = { Text("gemma3:latest") },
+                                singleLine = true
+                            )
+                            Button(
+                                onClick = { onDownloadOllamaModel(draftConfig(), ollamaDownloadModel) },
+                                enabled = !isDownloadingOllamaModel && ollamaDownloadModel.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (isDownloadingOllamaModel) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                                else Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (isDownloadingOllamaModel) "Downloading…" else "Download model")
+                            }
+                            if (isDownloadingOllamaModel || ollamaDownloadProgress > 0f) {
+                                LinearProgressIndicator(progress = { ollamaDownloadProgress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                            }
+                            if (ollamaDownloadStatus.isNotBlank()) {
+                                Text(ollamaDownloadStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
