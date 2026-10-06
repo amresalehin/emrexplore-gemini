@@ -21,6 +21,7 @@ data class BrainFileContent(
     val mimeType: String,
     val isImage: Boolean,
     val text: String,
+    val ocrText: String = "",
     val imageBase64: String?,
     val metadata: MetadataReport?,
     val metadataSummary: String
@@ -30,6 +31,7 @@ class BrainContentReader(
     private val context: android.content.Context
 ) {
     private val metadataExtractor = MetadataExtractor(context.applicationContext)
+    private val imageOcr = LocalImageOcr(context.applicationContext)
 
     suspend fun read(file: File, config: AiProviderConfigEntity): BrainFileContent {
         require(file.exists() && file.isFile && file.canRead()) {
@@ -44,6 +46,7 @@ class BrainContentReader(
         } else {
             null
         }
+        val ocrText = if (isImage) imageOcr.extract(file) else ""
         val metadataSummary = buildMetadataSummary(file, metadata, config)
 
         return when {
@@ -51,7 +54,8 @@ class BrainContentReader(
                 file = file,
                 mimeType = mimeType,
                 isImage = true,
-                text = "",
+                text = ocrText,
+                ocrText = ocrText,
                 imageBase64 = encodePreview(file),
                 metadata = metadata,
                 metadataSummary = metadataSummary
