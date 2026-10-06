@@ -53,6 +53,15 @@ interface BrainChunkDao {
         offset: Int
     ): List<BrainChunkEntity>
 
+    @Query("""
+        SELECT * FROM brain_chunks
+        WHERE imageEmbeddingModel = :imageEmbeddingModel
+          AND imageEmbeddingJson != ''
+        ORDER BY indexedAt DESC
+        LIMIT :limit OFFSET :offset
+    """)
+    suspend fun getImageEmbeddedPage(imageEmbeddingModel: String, limit: Int, offset: Int): List<BrainChunkEntity>
+
     @Query("SELECT * FROM brain_chunks WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<String>): List<BrainChunkEntity>
 
@@ -66,6 +75,21 @@ interface BrainChunkDao {
     suspend fun deleteForFile(filePath: String)
 
     @Query("DELETE FROM brain_chunks")
+    suspend fun clearAll()
+}
+
+@Dao
+interface BrainImageProfileDao {
+    @Query("SELECT * FROM brain_image_profiles WHERE filePath = :filePath LIMIT 1")
+    suspend fun get(filePath: String): BrainImageProfileEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(profile: BrainImageProfileEntity)
+
+    @Query("DELETE FROM brain_image_profiles WHERE filePath = :filePath")
+    suspend fun delete(filePath: String)
+
+    @Query("DELETE FROM brain_image_profiles")
     suspend fun clearAll()
 }
 
