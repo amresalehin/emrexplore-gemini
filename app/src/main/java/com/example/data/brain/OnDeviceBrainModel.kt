@@ -63,6 +63,18 @@ object OnDeviceBrainModelCatalog {
         sizeLabel = "~23 MB"
     )
 
+    private val l12Arm64 = OnDeviceBrainModelSpec(
+        id = "all-MiniLM-L12-v2-int8-arm64",
+        displayName = "all-MiniLM-L12-v2 · INT8 (ARM64)",
+        modelUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L12-v2/resolve/main/onnx/model_qint8_arm64.onnx",
+        modelSha256 = "d37479e69ddcb2f7af2ae225a41cb57b0b6fd547dd8740aef4f0c8e5b41d4fcf",
+        modelFileName = "model.onnx",
+        vocabUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L12-v2/resolve/main/vocab.txt",
+        maxTokens = 256,
+        embeddingDimension = 384,
+        sizeLabel = "~34 MB"
+    )
+
     private val generic = OnDeviceBrainModelSpec(
         id = "all-MiniLM-L6-v2-fp32",
         displayName = "all-MiniLM-L6-v2 · FP32",
@@ -75,7 +87,7 @@ object OnDeviceBrainModelCatalog {
         sizeLabel = "~90 MB"
     )
 
-    val all: List<OnDeviceBrainModelSpec> = listOf(arm64, generic)
+    val all: List<OnDeviceBrainModelSpec> = listOf(arm64, generic, l12Arm64)
 
     val default: OnDeviceBrainModelSpec
         get() = if (Build.SUPPORTED_ABIS.any { it == "arm64-v8a" }) arm64 else generic
@@ -94,7 +106,8 @@ class OnDeviceEmbeddingModelManager(context: Context) {
 
     fun availableSpecs(): List<OnDeviceBrainModelSpec> =
         OnDeviceBrainModelCatalog.all.filter { spec ->
-            spec.id != "all-MiniLM-L6-v2-int8-arm64" ||
+            spec.id != "all-MiniLM-L6-v2-int8-arm64" &&
+                spec.id != "all-MiniLM-L12-v2-int8-arm64" ||
                 Build.SUPPORTED_ABIS.any { it == "arm64-v8a" }
         }
 
