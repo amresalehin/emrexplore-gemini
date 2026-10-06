@@ -57,21 +57,27 @@ class BrainIndexer(
 
         val initialSize = file.length()
         val initialModified = file.lastModified()
-        val signature = modelSignature(config)
         val existing = documentDao.get(path)
         if (!force &&
             existing != null &&
             existing.state == BrainIndexStates.READY &&
             existing.size == file.length() &&
             existing.lastModified == file.lastModified() &&
-            existing.modelSignature == signature
+            chunkDao.getForFile(path).any { it.embeddingJson.isNotBlank() }
         ) {
             return BrainIndexOutcome(true, skipped = true)
         }
 
         return try {
             val input = reader.read(file, config)
-            val analysis = analyze(input, config)
+            val analysis = if (input.isImage) {
+                val profile = imageProfileDao.get(path)
+                    ?: return fail(path, "Gallery AI must analyze this image before Brain can consume it", startedAt)
+                analysisFromImageProfile(profile)
+            } else {
+                existing?.let(::analysisFromDocument)
+                    ?: return fail(path, "File AI must analyze this document before Brain can consume it", startedAt)
+            }
             val chunkTexts = buildChunkTexts(input, analysis)
             if (input.text.isNotBlank() && chunkTexts.isEmpty()) {
                 return fail(path, "No indexable chunks could be created", startedAt)
@@ -251,7 +257,13 @@ class BrainIndexer(
                 size = file.length(),
                 lastModified = file.lastModified(),
                 contentHash = sha256(file),
-                modelSignature = signature,
+                aiSummary = existing?.aiSummary.orEmpty(),
+                aiTagsJson = existing?.aiTagsJson ?: "[]",
+                aiEntitiesJson = existing?.aiEntitiesJson ?: "[]",
+                aiRelationsJson = existing?.aiRelationsJson ?: "[]",
+                aiModel = existing?.aiModel.orEmpty(),
+                aiUpdatedAt = existing?.aiUpdatedAt ?: 0L,
+                modelSignature = embeddingModel,
                 state = BrainIndexStates.READY,
                 error = null,
                 indexedAt = now
@@ -342,37 +354,64 @@ class BrainIndexer(
         return BrainIndexOutcome(false, error = message.take(500))
     }
 
-    private suspend fun analyze(
-        input: BrainFileContent,
-        config: AiProviderConfigEntity
-    ): AnalysisResult {
-        if (!isKeylessAiConfig(config) && config.apiKey.isBlank()) {
-            return localAnalysis(input)
-        }
-        if (!config.isEnabled) return localAnalysis(input)
-
-        try {
-            return if (input.isImage) {
-                client.analyzeImage(
-                    base64Jpeg = input.imageBase64,
-                    ocrText = input.ocrText,
-                    metadataSummary = input.metadataSummary,
-                    fileName = input.file.name,
-                    config = config
-                )
-            } else {
-                client.analyzeDocument(
-                    text = input.text.take(12_000),
-                    fileName = input.file.name,
-                    config = config
-                )
+    private fun analysisFromDocument(document: BrainDocumentEntity): AnalysisResult {
+        val entities = runCatching {
+            val array = org.json.JSONArray(document.aiEntitiesJson)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i) ?: continue
+                    val name = item.optString("name").trim()
+                    if (name.isNotBlank()) add(ExtractedEntity(name, item.optString("type", "TOPIC"), item.optDouble("confidence", 1.0).toFloat()))
+                }
             }
-        } catch (error: Exception) {
-            if (error is kotlinx.coroutines.CancellationException) throw error
-            // Semantic indexing must not disappear just because optional provider
-            // enrichment is unavailable. The local model can still index the file.
-            return localAnalysis(input)
-        }
+        }.getOrDefault(emptyList())
+        val relations = runCatching {
+            val array = org.json.JSONArray(document.aiRelationsJson)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i) ?: continue
+                    val source = item.optString("source").trim()
+                    val target = item.optString("target").trim()
+                    if (source.isNotBlank() && target.isNotBlank()) {
+                        add(ExtractedRelation(source, item.optString("relation", "ASSOCIATED_WITH"), target, item.optString("evidence")))
+                    }
+                }
+            }
+        }.getOrDefault(emptyList())
+        val tags = runCatching {
+            val array = org.json.JSONArray(document.aiTagsJson)
+            buildList { for (i in 0 until array.length()) array.optString(i).trim().takeIf { it.isNotBlank() }?.let(::add) }
+        }.getOrDefault(emptyList())
+        return AnalysisResult(document.aiSummary.ifBlank { document.name }, entities, relations, tags)
+    }
+
+    private fun analysisFromImageProfile(profile: BrainImageProfileEntity): AnalysisResult {
+        val entities = runCatching {
+            val array = org.json.JSONArray(profile.entitiesJson)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i) ?: continue
+                    val name = item.optString("name").trim()
+                    if (name.isNotBlank()) add(ExtractedEntity(name, item.optString("type", "TOPIC"), item.optDouble("confidence", 1.0).toFloat()))
+                }
+            }
+        }.getOrDefault(emptyList())
+        val relations = runCatching {
+            val array = org.json.JSONArray(profile.relationsJson)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i) ?: continue
+                    val source = item.optString("source").trim()
+                    val target = item.optString("target").trim()
+                    if (source.isNotBlank() && target.isNotBlank()) add(ExtractedRelation(source, item.optString("relation", "ASSOCIATED_WITH"), target, item.optString("evidence")))
+                }
+            }
+        }.getOrDefault(emptyList())
+        val tags = runCatching {
+            val array = org.json.JSONArray(profile.tagsJson)
+            buildList { for (i in 0 until array.length()) array.optString(i).trim().takeIf { it.isNotBlank() }?.let(::add) }
+        }.getOrDefault(emptyList())
+        return AnalysisResult(profile.description.ifBlank { profile.fileName }, entities, relations, tags)
     }
 
     private fun buildChunkTexts(input: BrainFileContent, analysis: AnalysisResult): List<String> {
@@ -416,12 +455,13 @@ class BrainIndexer(
     }
 
     private suspend fun embed(texts: List<String>, config: AiProviderConfigEntity): Pair<List<FloatArray>, String> {
-        if (texts.isEmpty()) {
-            return emptyList<FloatArray>() to embeddingSignature(config)
+        if (texts.isEmpty()) return emptyList<FloatArray>() to onDeviceEmbedding.modelIdIfReady().orEmpty()
+
+        if (EmbeddingProviderType.fromString(config.embeddingProviderType) != EmbeddingProviderType.OFFLINE) {
+            throw IllegalStateException("Only the offline embedding engine is supported")
         }
 
-        return when (EmbeddingProviderType.fromString(config.embeddingProviderType)) {
-            EmbeddingProviderType.OFFLINE -> {
+        return run {
                 if (!onDeviceEmbedding.isReady()) {
                     throw IllegalStateException("Download the selected on-device embedding model before indexing")
                 }
@@ -437,23 +477,6 @@ class BrainIndexer(
                 val modelId = onDeviceEmbedding.modelIdIfReady()
                     ?: throw IllegalStateException("Selected on-device embedding model is unavailable")
                 vectors to modelId
-            }
-            else -> {
-                val model = config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
-                if (model.isBlank()) {
-                    throw IllegalStateException("Choose an embedding model before indexing")
-                }
-                val vectors = try {
-                    embeddingClient.embedTextPassages(texts, config)
-                } catch (error: Exception) {
-                    if (error is kotlinx.coroutines.CancellationException) throw error
-                    throw IllegalStateException(
-                        "Remote embedding failed: " + (error.message ?: "provider error"),
-                        error
-                    )
-                }
-                vectors to embeddingSignature(config)
-            }
         }.also { (vectors, _) ->
             if (vectors.size != texts.size || vectors.any { it.isEmpty() }) {
                 throw IllegalStateException("Embedding provider returned an incomplete embedding batch")
@@ -520,31 +543,8 @@ class BrainIndexer(
             .replace(Regex("[^A-Z0-9_]"), "_")
             .ifBlank { "TOPIC" }
 
-    private fun embeddingSignature(config: AiProviderConfigEntity): String =
-        when (EmbeddingProviderType.fromString(config.embeddingProviderType)) {
-            EmbeddingProviderType.OFFLINE -> "offline:" + onDeviceEmbedding.modelSignature()
-            else -> "remote:" + listOf(
-                EmbeddingProviderType.fromString(config.embeddingProviderType).name,
-                config.embeddingBaseUrl.trim(),
-                config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
-            ).joinToString(":")
-        }
-
     private fun modelSignature(config: AiProviderConfigEntity): String =
-        listOf(
-            MODEL_VERSION,
-            "ocr:mlkit-local-v1",
-            ProviderType.fromString(config.providerType).name,
-            config.isEnabled.toString(),
-            config.chatModel.trim(),
-            config.visionModel.trim(),
-            config.multimodalEmbeddingModel.trim(),
-            embeddingSignature(config),
-            config.vectorDatabaseType.trim(),
-            config.vectorDatabaseBaseUrl.trim(),
-            config.vectorDatabaseCollection.trim()
-        ).joinToString("|")
-
+        MODEL_VERSION
     private fun sha256(file: File): String {
         val digest = java.security.MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input ->
