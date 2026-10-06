@@ -297,7 +297,7 @@ class BrainRetriever(
     private fun offer(queue: PriorityQueue<BrainSearchHit>, hit: BrainSearchHit, limit: Int) {
         if (queue.size < limit) {
             queue.offer(hit)
-        } else if (queue.peek().score < hit.score) {
+        } else if ((queue.peek()?.score ?: Float.NEGATIVE_INFINITY) < hit.score) {
             queue.poll()
             queue.offer(hit)
         }
@@ -305,7 +305,9 @@ class BrainRetriever(
 
     private fun drainTop(queue: PriorityQueue<BrainSearchHit>, limit: Int): List<BrainSearchHit> {
         val result = ArrayList<BrainSearchHit>(queue.size)
-        while (queue.isNotEmpty()) result += queue.poll()
+        while (queue.isNotEmpty()) {
+            queue.poll()?.let { result += it }
+        }
         result.reverse()
         return result.take(limit)
     }
