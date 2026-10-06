@@ -428,7 +428,6 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                 offlineModels = uiState.offlineBrainModels,
                 onSelectOfflineModel = { viewModel.selectOnDeviceBrainModel(it) },
                 onSaveConfig = { viewModel.saveAiConfig(it) },
-                onOpenAdvancedSettings = { viewModel.setShowAiSettings(false); viewModel.setShowAiSettings(true) },
                 onNavigateBack = { viewModel.setShowAiSettings(false) }
             )
         } else {
