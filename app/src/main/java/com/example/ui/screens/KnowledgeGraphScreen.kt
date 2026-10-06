@@ -346,7 +346,6 @@ fun BrainScreen(
                     onPauseIndexing = onPauseIndexing,
                     onResumeIndexing = onResumeIndexing,
                     isIndexing = isIndexing,
-                    embeddingReady = embeddingReady,
                     onAskAiForFile = { node ->
                         selectedTab = BrainScreenTab.ASK_AI
                         onAskAiForFile(node)
@@ -600,7 +599,6 @@ fun DeclutteredCanvasView(
     onPauseIndexing: () -> Unit,
     onResumeIndexing: () -> Unit,
     isIndexing: Boolean,
-    embeddingReady: Boolean,
     onAskAiForFile: (BrainNodeEntity) -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("ALL") }
