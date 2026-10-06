@@ -11,8 +11,8 @@ import androidx.work.WorkerParameters
 import com.example.data.ai.VectorDatabaseType
 import com.example.data.local.AppDatabase
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlin.coroutines.coroutineContext
 
 class BrainVectorSyncWorker(
     appContext: Context,
@@ -34,12 +34,12 @@ class BrainVectorSyncWorker(
         val chunkDao = db.brainChunkDao()
 
         while (true) {
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
             val operations = outbox.getPending(BATCH_SIZE)
             if (operations.isEmpty()) break
 
             for (operation in operations) {
-                coroutineContext.ensureActive()
+                currentCoroutineContext().ensureActive()
                 outbox.markInFlight(operation.id, System.currentTimeMillis())
                 try {
                     when (operation.operation) {
