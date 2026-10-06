@@ -1235,6 +1235,19 @@ fun FileExplorerScreen(
                                     activeMenuItem = null
                                 }
                             )
+                            if (!item.isDirectory &&
+                                !item.mimeType.startsWith("image/") &&
+                                !item.mimeType.startsWith("video/")
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Run File AI") },
+                                    leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                                    onClick = {
+                                        viewModel.processFileAi(File(item.path))
+                                        activeMenuItem = null
+                                    }
+                                )
+                            }
                             if (!item.isDirectory) {
                                 DropdownMenuItem(
                                     text = { Text("Share") },
