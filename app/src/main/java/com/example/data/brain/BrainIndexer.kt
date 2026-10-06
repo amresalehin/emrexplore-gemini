@@ -32,6 +32,8 @@ class BrainIndexer(
     private val db: AppDatabase,
     private val onDeviceEmbedding: OnDeviceEmbeddingEngine
 ) {
+    private fun vectorStore(config: AiProviderConfigEntity): BrainVectorStore =
+        vectorStoreFor(config, chunkDao)
     private val reader = BrainContentReader(context)
 
     suspend fun index(file: File, config: AiProviderConfigEntity, force: Boolean = false): BrainIndexOutcome {
@@ -246,6 +248,7 @@ class BrainIndexer(
                 indexedAt = now
             )
 
+            val previousChunks = chunkDao.getForFile(path)
             withTransaction {
                 edgeEvidenceDao.deleteForFile(path)
                 edgeEvidenceDao.refreshRepresentatives()
@@ -261,6 +264,11 @@ class BrainIndexer(
                 if (chunks.isNotEmpty()) chunkDao.insertAll(chunks)
                 documentDao.insert(document)
             }
+
+            vectorStore(config).upsert(chunks, config)
+            val newIds = chunks.map { it.id }.toSet()
+            val removedIds = previousChunks.map { it.id }.filterNot { it in newIds }
+            vectorStore(config).delete(removedIds, config)
 
             runDao.insert(
                 BrainRunEntity(
