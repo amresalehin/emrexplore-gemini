@@ -2784,8 +2784,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 brainRepository.getOnDeviceBrainModelState()
             }.onSuccess { state ->
                 _uiState.update { it.copy(onDeviceBrainModel = state) }
-                showMessage("Offline Brain model selected · Brain will re-index")
-                runCatching { brainRepository.syncAll(force = false) }
+                showMessage("Offline embedding model selected. Existing AI data and embeddings are unchanged; rerun File AI or Gallery AI explicitly to regenerate vectors.")
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(error.message))
