@@ -21,7 +21,7 @@ data class BrainIndexOutcome(
 )
 
 class BrainIndexer(
-    context: android.content.Context,
+    private val context: android.content.Context,
     private val documentDao: BrainDocumentDao,
     private val chunkDao: BrainChunkDao,
     private val nodeDao: BrainNodeDao,
