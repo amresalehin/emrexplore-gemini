@@ -34,7 +34,7 @@ import com.example.data.brain.BrainTopicEntity
         BrainDocumentEntity::class,
         BrainRunEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -465,6 +465,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE ai_provider_config ADD COLUMN embeddingProviderType TEXT NOT NULL DEFAULT 'OFFLINE'")
+                db.execSQL("ALTER TABLE ai_provider_config ADD COLUMN embeddingApiKey TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE ai_provider_config ADD COLUMN embeddingBaseUrl TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -485,7 +493,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_11_12,
                         MIGRATION_12_13,
                         MIGRATION_13_14,
-                        MIGRATION_14_15
+                        MIGRATION_14_15,
+                        MIGRATION_15_16
                     )
                     .fallbackToDestructiveMigrationFrom(1, 2, 3, 5)
                     .fallbackToDestructiveMigrationOnDowngrade()
