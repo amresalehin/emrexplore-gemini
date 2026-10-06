@@ -733,7 +733,7 @@ fun DeclutteredCanvasView(
                 if (isIndexing) {
                     TextButton(onClick = onPauseIndexing) { Text("Pause") }
                 } else if (indexingStatus.contains("paused", ignoreCase = true)) {
-                    Button(onClick = onResumeIndexing, enabled = embeddingReady, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
+                    Button(onClick = onResumeIndexing, enabled = localBrainReady, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
                         Text("Resume")
                     }
                 } else {
