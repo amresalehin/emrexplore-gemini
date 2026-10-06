@@ -42,7 +42,7 @@ class RoomBrainVectorStore(private val chunkDao: BrainChunkDao) : BrainVectorSto
                 val score = BrainVectorCodec.cosine(vector, stored)
                 if (score >= 0.20f) {
                     if (queue.size < limit) queue.offer(VectorSearchResult(chunk.id, score))
-                    else if (queue.peek()?.score ?: Float.NEGATIVE_INFINITY < score) { queue.poll(); queue.offer(VectorSearchResult(chunk.id, score)) }
+                    else if ((queue.peek()?.score ?: Float.NEGATIVE_INFINITY) < score) { queue.poll(); queue.offer(VectorSearchResult(chunk.id, score)) }
                 }
             }
             if (page.size < 128) break
