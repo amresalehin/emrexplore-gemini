@@ -165,7 +165,7 @@ fun BrainSetupScreen(
                 Text("Chat, embeddings, and vector storage are independent. Mix local and cloud choices freely.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(16.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("AI roles", "Text embedding", "Image embedding", "Storage").forEachIndexed { index, label ->
+                    listOf("AI models", "Embeddings", "Storage").forEachIndexed { index, label ->
                         Surface(Modifier.weight(1f), shape = RoundedCornerShape(10.dp), color = if (step == index) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
                             Text("${index + 1}. $label", Modifier.padding(vertical = 9.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium, fontWeight = if (step == index) FontWeight.Bold else FontWeight.Normal)
                         }
