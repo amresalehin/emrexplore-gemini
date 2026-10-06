@@ -398,6 +398,10 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     private val pinboardStore = PinboardStore(getApplication())
 
     init {
+        // Brain is a consumer now. Cancel any pre-refactor Brain indexing work left by an older app build.
+        WorkManager.getInstance(getApplication<Application>())
+            .cancelUniqueWork(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
+
         // Collect decoupled file operations progress
         viewModelScope.launch {
             repository.operationManager.progress.collect { progress ->
