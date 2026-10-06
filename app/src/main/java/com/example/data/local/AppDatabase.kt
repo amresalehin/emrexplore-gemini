@@ -35,9 +35,10 @@ import com.example.data.brain.BrainVectorSyncOperationEntity
         BrainChunkEntity::class,
         BrainDocumentEntity::class,
         BrainRunEntity::class,
-        BrainImageProfileEntity::class
+        BrainImageProfileEntity::class,
+        BrainVectorSyncOperationEntity::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
