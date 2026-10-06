@@ -517,6 +517,7 @@ class BrainRepository(context: Context) {
         val provider = ProviderType.fromString(config.providerType)
         val explicitTextEmbedding = config.textEmbeddingModel.trim()
         val legacyEmbedding = config.embeddingModel.trim()
+        val canonicalTextEmbedding = explicitTextEmbedding.ifBlank { legacyEmbedding }
         val embeddingProvider = EmbeddingProviderType.fromString(config.embeddingProviderType)
         val defaultEmbeddingBase = embeddingProvider.defaultBaseUrl
         return config.copy(
@@ -528,8 +529,10 @@ class BrainRepository(context: Context) {
             vectorDatabaseCollection = config.vectorDatabaseCollection.trim().ifBlank { "emrexplore_brain" },
             embeddingApiKey = config.embeddingApiKey.trim(),
             embeddingBaseUrl = config.embeddingBaseUrl.trim().ifBlank { defaultEmbeddingBase },
-            textEmbeddingModel = explicitTextEmbedding.ifBlank { legacyEmbedding },
-            embeddingModel = legacyEmbedding
+            textEmbeddingModel = canonicalTextEmbedding,
+            // Keep the legacy field in lockstep so old readers and migrations cannot
+            // silently discard a newly selected text embedding model.
+            embeddingModel = canonicalTextEmbedding
         )
     }
 
