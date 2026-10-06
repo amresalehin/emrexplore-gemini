@@ -551,6 +551,8 @@ private fun PersistentTabHost(
                 onQueryRag = viewModel::queryRag,
                 onCancelRag = viewModel::cancelRagQuery,
                 onIndexAllFiles = viewModel::indexAllFilesForBrain,
+                onPauseIndexing = viewModel::pauseBrainIndexing,
+                onResumeIndexing = viewModel::resumeBrainIndexing,
                 onAskAiForFile = { node ->
                     node.sourceFilePath?.let { path ->
                         viewModel.askAiAboutFile(File(path))
