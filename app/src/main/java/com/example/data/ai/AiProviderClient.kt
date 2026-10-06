@@ -503,48 +503,39 @@ class AiProviderClient {
 
     suspend fun analyzeImage(
         base64Jpeg: String?,
+        ocrText: String,
         metadataSummary: String,
         fileName: String,
         config: AiProviderConfigEntity
     ): AnalysisResult = withContext(Dispatchers.IO) {
         val prompt = """
-            You are a Knowledge Graph and multimodal image analysis engine.
-            Analyze this image named "$fileName".
-            Metadata available from camera/sensors:
-            $metadataSummary
-            
-            Extract:
-            1. summary: Detailed description of what is depicted (objects, scene, activities, locations, people, visible text or diagrams).
-            2. entities: Identified subjects, places, landmarks, OCR text subjects, or event types. Format: [{"name": "...", "type": "LOCATION|PERSON|TOPIC|OBJECT|EVENT"}]
-            3. relations: Relationships between the image and entities. Format: [{"source": "$fileName", "relation": "DEPICTS|LOCATED_AT|CONTAINS_TEXT|ASSOCIATED_WITH", "target": "...", "evidence": "..."}]
-            4. tags: 3 to 6 relevant visual/topic tags.
-            
-            Return ONLY a valid JSON object matching this schema without markdown:
-            {
-              "summary": "...",
-              "entities": [{"name": "...", "type": "..."}],
-              "relations": [{"source": "...", "relation": "...", "target": "...", "evidence": "..."}],
-              "tags": ["tag1", "tag2"]
-            }
+            You are the Vision Language Model enrichment stage of Brain.
+            Use the supplied image as the visual source of truth.
+            Local OCR was extracted on-device and ExifTool/media metadata was extracted locally; use both as supporting evidence.
+            Correct obvious OCR errors only when the image supports the correction. Never invent unsupported facts.
+            Build a reusable image profile for semantic search and clustering.
+            Return ONLY valid JSON:
+            {"summary":"1-3 sentence visual description","entities":[{"name":"...","type":"PERSON|LOCATION|ORGANIZATION|EVENT|OBJECT|TOPIC"}],"relations":[{"source":"$fileName","relation":"DEPICTS|LOCATED_AT|CONTAINS_TEXT|ASSOCIATED_WITH","target":"...","evidence":"..."}],"tags":["tag1","tag2","tag3"]}
         """.trimIndent()
 
+        val userPrompt = buildString {
+            append("File name: ").append(fileName).append("\n\n")
+            append("Local OCR (on-device):\n").append(ocrText.take(20_000).ifBlank { "<none>" }).append("\n\n")
+            append("ExifTool / media metadata:\n").append(metadataSummary.ifBlank { "<none>" }).append("\n\n")
+            append("Validate and enrich these signals against the image.")
+        }
+
         try {
-            val responseText = if (base64Jpeg != null && base64Jpeg.isNotBlank()) {
-                executeMultimodalPrompt(
-                    prompt = prompt,
-                    base64Jpeg = base64Jpeg,
-                    config = config
-                )
+            val responseText = if (base64Jpeg.isNullOrBlank()) {
+                executePrompt("$prompt\n\n$userPrompt", config)
             } else {
-                executePrompt(
-                    prompt = prompt,
-                    config = config
-                )
+                executeMultimodalPrompt("$prompt\n\n$userPrompt", base64Jpeg, config)
             }
             parseAnalysisJson(responseText, fileName)
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e("AiProviderClient", "Image analysis failed: " + e.javaClass.simpleName)
-            fallbackImageAnalysis(fileName, metadataSummary)
+            fallbackImageAnalysis(fileName, metadataSummary + if (ocrText.isBlank()) "" else "\nOCR: " + ocrText.take(1200))
         }
     }
 
