@@ -12,7 +12,7 @@ import java.io.File
 /**
  * Gallery AI owns image/VLM enrichment. Brain consumes the persisted profile and embeds it last.
  */
-class GalleryAiWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
+class GalleryVlmWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
         val paths = inputData.getStringArray("paths").orEmpty().map(String::trim).filter(String::isNotBlank).distinct()
         if (paths.isEmpty()) return Result.success()
