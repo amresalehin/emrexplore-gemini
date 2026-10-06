@@ -472,12 +472,12 @@ class BrainRepository(context: Context) {
         // Gallery AI owns both image and text embedding stages. Brain receives only completed vectors.
         val embeddingTexts = try {
             indexer.buildEmbeddingTexts(file, config)
-        } catch (error) {
+        } catch (error: Exception) {
             return@withContext BrainIndexOutcome(false, error = error.message ?: "Could not prepare embedding input")
         }
         val (textEmbeddings, textEmbeddingModel) = try {
             embedTextForAi(embeddingTexts, config)
-        } catch (error) {
+        } catch (error: Exception) {
             if (error is CancellationException) throw error
             return@withContext BrainIndexOutcome(false, error = error.message ?: "Text embedding failed")
         }
