@@ -535,7 +535,7 @@ fun AiSettingsScreen(
                     }
                 }
 
-                ModelPicker("General files / chat", firstUsable(chats, chatModel), { showChatPicker = true }, "ai_chat_model_field", chats)
+                ModelPicker("LLM — Brain answers + File AI", firstUsable(chats, chatModel), { showChatPicker = true }, "ai_chat_model_field", chats)
                 SectionTitle("CHECK")
                 Button(
                     onClick = { onTestConnection(draftConfig()) },
