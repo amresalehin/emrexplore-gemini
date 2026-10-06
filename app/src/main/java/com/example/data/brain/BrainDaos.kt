@@ -44,7 +44,6 @@ interface BrainChunkDao {
         SELECT * FROM brain_chunks
         WHERE embeddingModel = :embeddingModel
           AND embeddingJson != ''
-        ORDER BY indexedAt DESC
         AND (
             :afterIndexedAt IS NULL
             OR indexedAt < :afterIndexedAt
@@ -64,7 +63,6 @@ interface BrainChunkDao {
         SELECT * FROM brain_chunks
         WHERE imageEmbeddingModel = :imageEmbeddingModel
           AND imageEmbeddingJson != ''
-        ORDER BY indexedAt DESC
         AND (
             :afterIndexedAt IS NULL
             OR indexedAt < :afterIndexedAt
