@@ -311,7 +311,6 @@ class BrainIndexer(
                 if (chunks.isNotEmpty()) chunkDao.insertAll(chunks)
                 if (vectorSyncOperations.isNotEmpty()) vectorSyncDao.insertAll(vectorSyncOperations)
                 documentDao.insert(document)
-                if (input.isImage) imageProfileDao.insert(buildImageProfile(input, analysis, config, imageEmbedding != null))
             }
 
             if (vectorSyncOperations.isNotEmpty()) {
@@ -428,7 +427,21 @@ class BrainIndexer(
                 }.take(MAX_CHUNK_CHARS)
             )
         } else {
-            BrainChunker.chunk(input.text, MAX_CHUNK_CHARS, CHUNK_OVERLAP, MAX_CHUNKS)
+            val chunks = BrainChunker.chunk(input.text, MAX_CHUNK_CHARS, CHUNK_OVERLAP, MAX_CHUNKS).toMutableList()
+            if (chunks.isNotEmpty()) {
+                val aiContext = buildString {
+                    append("File AI summary: ").append(analysis.summary.trim()).append('\n')
+                    if (analysis.tags.isNotEmpty()) append("File AI tags: ").append(analysis.tags.joinToString(", ")).append('\n')
+                    if (analysis.entities.isNotEmpty()) append("File AI entities: ").append(analysis.entities.joinToString(", ") { it.name }).append('\n')
+                    if (analysis.relations.isNotEmpty()) append("File AI relations: ").append(
+                        analysis.relations.joinToString("; ") { it.source + " " + it.relation + " " + it.target }
+                    )
+                }.trim()
+                if (aiContext.isNotBlank()) {
+                    chunks[0] = (aiContext + "\n\n" + chunks[0]).take(MAX_CHUNK_CHARS)
+                }
+            }
+            chunks
         }
     }
 
