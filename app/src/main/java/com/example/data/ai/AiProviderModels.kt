@@ -116,6 +116,7 @@ enum class EmbeddingProviderType(
         "Google's hosted embedding API.",
         "https://generativelanguage.googleapis.com/",
         "gemini-embedding-2",
+        "",
         "AIzaSy..."
     ),
     OPENROUTER(
