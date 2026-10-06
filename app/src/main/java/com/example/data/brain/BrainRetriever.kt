@@ -1,6 +1,8 @@
 package com.example.data.brain
 
 import com.example.data.ai.ProviderType
+import com.example.data.ai.EmbeddingProviderType
+import com.example.data.ai.AiProviderClient
 import com.example.data.local.AiProviderConfigEntity
 import kotlinx.coroutines.CancellationException
 import java.io.File
@@ -25,7 +27,8 @@ class BrainRetriever(
     private val chunkDao: BrainChunkDao,
     private val nodeDao: BrainNodeDao,
     private val edgeDao: BrainEdgeDao,
-    private val onDeviceEmbedding: OnDeviceEmbeddingEngine
+    private val onDeviceEmbedding: OnDeviceEmbeddingEngine,
+    private val embeddingClient: AiProviderClient
 ) {
     suspend fun retrieve(
         question: String,
@@ -35,15 +38,23 @@ class BrainRetriever(
         val clean = question.trim()
         if (clean.isBlank() || limit <= 0) return BrainRetrieval(emptyList(), emptyList(), emptyList())
 
-        val semanticHits = if (onDeviceEmbedding.modelIdIfReady() != null) {
-            runCatching {
-                onDeviceEmbedding.embedText(clean)?.let { collectLocalHits(onDeviceEmbedding.modelIdIfReady().orEmpty(), it, limit * 3) }
-                    ?: emptyList()
-            }.getOrElse { error ->
-                if (error is CancellationException) throw error
-                emptyList()
+        val embeddingProvider = EmbeddingProviderType.fromString(config.embeddingProviderType)
+        val semanticHits = runCatching {
+            when (embeddingProvider) {
+                EmbeddingProviderType.OFFLINE -> {
+                    onDeviceEmbedding.embedText(clean)?.let {
+                        collectLocalHits(onDeviceEmbedding.modelIdIfReady().orEmpty(), it, limit * 3)
+                    }.orEmpty()
+                }
+                else -> {
+                    val model = config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
+                    embeddingClient.embedTextQuery(clean, config)?.let {
+                        collectLocalHits(remoteEmbeddingSignature(config, model), it, limit * 3)
+                    }.orEmpty()
+                }
             }
-        } else {
+        }.getOrElse { error ->
+            if (error is CancellationException) throw error
             emptyList()
         }
 
@@ -125,6 +136,13 @@ class BrainRetriever(
 
         return context.toString().trim() to retrieval.evidence.joinToString("\n")
     }
+
+    private fun remoteEmbeddingSignature(config: AiProviderConfigEntity, model: String): String =
+        "remote:" + listOf(
+            EmbeddingProviderType.fromString(config.embeddingProviderType).name,
+            config.embeddingBaseUrl.trim(),
+            model
+        ).joinToString(":")
 
     private suspend fun collectLocalHits(
         model: String,
