@@ -596,8 +596,6 @@ class BrainRepository(context: Context) {
         val explicitTextEmbedding = config.textEmbeddingModel.trim()
         val legacyEmbedding = config.embeddingModel.trim()
         val canonicalTextEmbedding = explicitTextEmbedding.ifBlank { legacyEmbedding }
-        val embeddingProvider = EmbeddingProviderType.fromString(config.embeddingProviderType)
-        val defaultEmbeddingBase = embeddingProvider.defaultBaseUrl
         return config.copy(
             providerType = provider.name,
             // Embeddings are always local. Existing remote-provider settings are
