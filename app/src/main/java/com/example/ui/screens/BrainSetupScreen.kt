@@ -353,10 +353,11 @@ private fun SetupModelCard(model: AvailableAiModel, selected: Boolean, onClick: 
     val badges = buildList {
         if (model.supportsChat) add("Chat")
         if (model.supportsVision) add("Vision")
-        if (model.supportsEmbedding) add("Embed")
+        if (model.supportsEmbedding) add("Text embed")
         if (model.supportsMultimodalEmbedding) add("Image embed")
         if (model.supportsTools) add("Tools")
-        if (model.isFree) add("Free")
+        if (model.priceKnown) add(if (model.isFree) "FREE" else "Paid")
+        else add("Price unknown")
     }
     SetupChoiceCard(
         model.displayName.ifBlank { model.id },
