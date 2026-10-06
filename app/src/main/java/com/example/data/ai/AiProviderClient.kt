@@ -187,7 +187,7 @@ class AiProviderClient {
                 return@withContext ConnectionTestResult(false, "Choose an embedding model first.", System.currentTimeMillis() - started)
             }
             val vector = embedText(listOf("embedding connection test"), config, model, "query").firstOrNull()
-            if (vector.isNullOrEmpty()) {
+            if (vector == null || vector.isEmpty()) {
                 ConnectionTestResult(false, "Embedding provider returned no vector.", System.currentTimeMillis() - started)
             } else {
                 ConnectionTestResult(true, "Embedding connected · " + provider.displayName, System.currentTimeMillis() - started)
