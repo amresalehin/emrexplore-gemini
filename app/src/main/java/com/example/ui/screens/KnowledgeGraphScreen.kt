@@ -218,41 +218,37 @@ fun BrainScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = if (selectedTab == BrainScreenTab.ASK_AI) Icons.Default.AutoAwesome else Icons.Default.Hub,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            text = if (selectedTab == BrainScreenTab.ASK_AI) "Chat" else "Knowledge Graph",
+                            "Brain",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
-                        if (selectedTab == BrainScreenTab.ASK_AI) {
-                            val chatProvider = aiConfig?.let {
-                                com.example.data.ai.ProviderType.fromString(it.providerType).displayName
-                            } ?: "Not configured"
-                            val chatModel = aiConfig?.chatModel?.ifBlank { "No model selected" } ?: "No model selected"
-                            Text(
-                                text = "$chatProvider  •  $chatModel",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        } else {
-                            Text(
-                                text = "$nodeCount nodes  •  $edgeCount links",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            if (selectedTab == BrainScreenTab.ASK_AI) {
+                                aiConfig?.chatModel?.ifBlank { "Ask your files" } ?: "Ask your files"
+                            } else {
+                                "${nodeCount} nodes • ${edgeCount} links"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            if (isRagQuerying) onCancelRag()
+                            onClearChat()
+                            onDetachFile()
+                        },
+                        enabled = selectedTab == BrainScreenTab.ASK_AI,
+                        modifier = Modifier.testTag("brain_new_chat_button")
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "New chat")
                     }
                     IconButton(
                         onClick = onOpenAiSettings,
@@ -262,34 +258,17 @@ fun BrainScreen(
                     }
                 }
 
-                if (selectedTab == BrainScreenTab.ASK_AI && aiConfig != null) {
-                    val embeddingProvider = com.example.data.ai.EmbeddingProviderType.fromString(aiConfig.embeddingProviderType)
-                    val embeddingModel = if (embeddingProvider == com.example.data.ai.EmbeddingProviderType.OFFLINE) {
-                        onDeviceBrainModel.displayName
-                    } else {
-                        aiConfig.textEmbeddingModel.ifBlank { aiConfig.embeddingModel }.ifBlank { "No model selected" }
-                    }
-                    Text(
-                        text = "Embeddings: ${embeddingProvider.displayName}  •  $embeddingModel",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 48.dp, end = 16.dp, bottom = 8.dp)
-                    )
-                }
-
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                        .padding(horizontal = 12.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.Center
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                        shape = RoundedCornerShape(22.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     ) {
-                        Row(Modifier.padding(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.padding(2.dp), verticalAlignment = Alignment.CenterVertically) {
                             BrainScreenTab.entries.forEach { tab ->
                                 val selected = selectedTab == tab
                                 Surface(
@@ -298,7 +277,7 @@ fun BrainScreen(
                                     color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                                 ) {
                                     Row(
-                                        Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
+                                        Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
@@ -310,8 +289,6 @@ fun BrainScreen(
                         }
                     }
                 }
-            }
-        }
 
         Box(
             modifier = Modifier
