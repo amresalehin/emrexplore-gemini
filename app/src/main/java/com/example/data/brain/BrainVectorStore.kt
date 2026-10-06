@@ -114,10 +114,10 @@ class QdrantBrainVectorStore : BrainVectorStore {
 
     override suspend fun clear(config: AiProviderConfigEntity) {
         BrainVectorKind.entries.forEach { kind ->
-            runCatching {
-                val req = Request.Builder().url(endpoint(config, "", kind)).delete().applyHeaders(config).build()
-                client.newCall(req).execute().use { response ->
-                    if (!response.isSuccessful && response.code != 404) throw IllegalStateException("Could not clear vector collection")
+            val req = Request.Builder().url(endpoint(config, "", kind)).delete().applyHeaders(config).build()
+            client.newCall(req).execute().use { response ->
+                if (!response.isSuccessful && response.code != 404) {
+                    throw IllegalStateException("Could not clear vector collection (" + response.code + ")")
                 }
             }
         }
