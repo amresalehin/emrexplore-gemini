@@ -476,7 +476,7 @@ fun FullscreenMediaViewer(
                                     strokeWidth = 2.dp
                                 )
                                 Text(
-                                    text = "Loading Brain analysis…",
+                                    text = "Loading saved AI analysis…",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -496,16 +496,16 @@ fun FullscreenMediaViewer(
                         else -> {
                             Text(
                                 text = if (currentItem.isVideo) {
-                                    "No Brain analysis is available for this media yet."
+                                    "No Gallery AI profile is available for this media yet."
                                 } else {
-                                    "This media has not been indexed by Brain yet."
+                                    "Gallery AI has not analyzed this media yet."
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             if (!currentItem.isVideo) {
                                 TextButton(onClick = { onReindexWithBrain(currentItem) }) {
-                                    Text("Re-index with Brain")
+                                    Text("Run Gallery AI")
                                 }
                             }
                         }
