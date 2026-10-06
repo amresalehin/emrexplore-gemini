@@ -42,6 +42,10 @@ class BrainRepository(context: Context) {
     private val aiConfigDao = db.aiProviderConfigDao()
     private val fileIndexDao = db.fileIndexDao()
 
+    init {
+        BrainVectorSyncWorker.enqueue(appContext)
+    }
+
     private val client = AiProviderClient()
     private val brainAi = DefaultBrainAiGateway(client)
     private val onDeviceEmbedding = OnDeviceEmbeddingEngine(appContext)
@@ -58,7 +62,8 @@ class BrainRepository(context: Context) {
         client = brainAi,
         embeddingClient = client,
         db = db,
-        onDeviceEmbedding = onDeviceEmbedding
+        onDeviceEmbedding = onDeviceEmbedding,
+        vectorSyncDao = db.brainVectorSyncDao()
     )
     private val retriever = BrainRetriever(
         chunkDao = brainChunkDao,
@@ -135,8 +140,18 @@ class BrainRepository(context: Context) {
 
     suspend fun clearGraph() = withContext(Dispatchers.IO) {
         val config = getAiConfig()
-        runCatching { vectorStoreFor(config, brainChunkDao).clear(config) }
+        val syncDao = db.brainVectorSyncDao()
         db.withTransaction {
+            if (com.example.data.ai.VectorDatabaseType.fromString(config.vectorDatabaseType) == com.example.data.ai.VectorDatabaseType.QDRANT) {
+                syncDao.insertAll(
+                    listOf(
+                        BrainVectorSyncOperationEntity(
+                            id = UUID.randomUUID().toString(),
+                            operation = BrainVectorSyncOperations.CLEAR
+                        )
+                    )
+                )
+            }
             brainEdgeEvidenceDao.clearAll()
             brainEdgeDao.clearAll()
             brainNodeDao.clearAll()
@@ -144,6 +159,9 @@ class BrainRepository(context: Context) {
             brainDocumentDao.clearAll()
             brainRunDao.clearAll()
             brainImageProfileDao.clearAll()
+        }
+        if (com.example.data.ai.VectorDatabaseType.fromString(config.vectorDatabaseType) == com.example.data.ai.VectorDatabaseType.QDRANT) {
+            BrainVectorSyncWorker.enqueue(appContext)
         }
     }
 
@@ -280,13 +298,21 @@ class BrainRepository(context: Context) {
 
     suspend fun removeIndexedSource(filePath: String) = withContext(Dispatchers.IO) {
         val config = getAiConfig()
-        val store = vectorStoreFor(config, brainChunkDao)
+        val syncDao = db.brainVectorSyncDao()
         val paths = brainDocumentDao.getPathsUnder(filePath, filePath + File.separator).ifEmpty { listOf(filePath) }
-        for (path in paths) {
-            val ids = brainChunkDao.getForFile(path).map { it.id }
-            runCatching { store.delete(ids, config) }
-        }
+        val ids = paths.flatMap { brainChunkDao.getForFile(it).map { chunk -> chunk.id } }.distinct()
         db.withTransaction {
+            if (com.example.data.ai.VectorDatabaseType.fromString(config.vectorDatabaseType) == com.example.data.ai.VectorDatabaseType.QDRANT && ids.isNotEmpty()) {
+                syncDao.insertAll(
+                    ids.map { id ->
+                        BrainVectorSyncOperationEntity(
+                            id = UUID.randomUUID().toString(),
+                            operation = BrainVectorSyncOperations.DELETE,
+                            chunkId = id
+                        )
+                    }
+                )
+            }
             for (path in paths) {
                 val fileNodeId = BrainIdentity.fileNodeId(path)
                 brainEdgeEvidenceDao.deleteForFile(path)
@@ -298,6 +324,9 @@ class BrainRepository(context: Context) {
             }
             brainEdgeEvidenceDao.refreshRepresentatives()
             brainEdgeEvidenceDao.deleteEdgesWithoutEvidence()
+        }
+        if (com.example.data.ai.VectorDatabaseType.fromString(config.vectorDatabaseType) == com.example.data.ai.VectorDatabaseType.QDRANT && ids.isNotEmpty()) {
+            BrainVectorSyncWorker.enqueue(appContext)
         }
         brainNodeDao.deleteOrphans()
         brainNodeDao.recomputeDegrees()
