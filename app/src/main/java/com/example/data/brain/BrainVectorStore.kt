@@ -61,7 +61,7 @@ class QdrantBrainVectorStore : BrainVectorStore {
             points.put(JSONObject().put("id", stablePointId(chunk.id)).put("vector", JSONArray(vector.toList()))
                 .put("payload", JSONObject().put("chunkId", chunk.id).put("filePath", chunk.filePath).put("embeddingModel", chunk.embeddingModel)))
         }
-        request("POST", endpoint(config, "/points?wait=true"), JSONObject().put("points", points), config)
+        request("PUT", endpoint(config, "/points?wait=true"), JSONObject().put("points", points), config)
     }
 
     override suspend fun delete(ids: List<String>, config: AiProviderConfigEntity) {
@@ -122,7 +122,10 @@ class QdrantBrainVectorStore : BrainVectorStore {
 
     private fun request(method: String, url: String, body: JSONObject, config: AiProviderConfigEntity): JSONObject {
         val requestBuilder = Request.Builder().url(url).applyHeaders(config)
-        val request = requestBuilder.post(body.toString().toRequestBody(jsonType)).build()
+        val request = when (method) {
+            "PUT" -> requestBuilder.put(body.toString().toRequestBody(jsonType)).build()
+            else -> requestBuilder.post(body.toString().toRequestBody(jsonType)).build()
+        }
         client.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw IllegalStateException("Vector database request failed (${response.code}): ${text.take(300)}")
