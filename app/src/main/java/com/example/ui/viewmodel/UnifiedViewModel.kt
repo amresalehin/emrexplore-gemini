@@ -2475,10 +2475,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 val all = brainRepository.listAiModels(config)
                 _uiState.update {
                     it.copy(
-                        aiModels = all.filter { model -> model.supportsChat },
-                        aiVisionModels = all.filter { model -> model.supportsChat && model.supportsVision },
-                        aiEmbeddingModels = all.filter { model -> model.supportsEmbedding && !model.supportsMultimodalEmbedding },
-                        aiMultimodalEmbeddingModels = all.filter { model -> model.supportsMultimodalEmbedding },
+                        // Keep the complete endpoint catalog in every model list. The UI applies
+                        // role-specific capability filters, so discovery never silently discards models.
+                        aiModels = all,
+                        aiVisionModels = all,
+                        aiEmbeddingModels = all,
+                        aiMultimodalEmbeddingModels = all,
                         isFetchingAiModels = false
                     )
                 }
@@ -2496,8 +2498,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 val all = brainRepository.listEmbeddingModels(config)
                 _uiState.update {
                     it.copy(
-                        aiEmbeddingModels = all.filter { model -> model.supportsEmbedding && !model.supportsMultimodalEmbedding },
-                        aiMultimodalEmbeddingModels = all.filter { model -> model.supportsMultimodalEmbedding },
+                        aiEmbeddingModels = all,
+                        aiMultimodalEmbeddingModels = all,
                         isFetchingAiModels = false
                     )
                 }
@@ -2919,7 +2921,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         indexAllFilesForBrain()
     }
 
-    fun indexAllFilesForBrain() {
+    fun indexAllFilesForBrain(force: Boolean = false) {
         if (_uiState.value.isBrainIndexing) return
         val brainConfig = _uiState.value.aiConfig
         if (EmbeddingProviderType.fromString(brainConfig.embeddingProviderType) == EmbeddingProviderType.OFFLINE && !brainRepository.isOnDeviceBrainModelReady()) {
@@ -2938,7 +2940,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>()
             .setInputData(
                 androidx.work.workDataOf(
-                    "force" to true,
+                    "force" to force,
                     "refreshStorageIndex" to true
                 )
             )
@@ -2989,17 +2991,50 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                         }
                         androidx.work.WorkInfo.State.FAILED -> {
                             val error = info.outputData.getString("error") ?: "Brain indexing failed"
-                            _uiState.update { state -> state.copy(isBrainIndexing = false, brainIndexingStatus = error) }
+                            _uiState.update { state -> state.copy(isBrainIndexing = false, isBrainIndexingPaused = false, brainIndexingStatus = error) }
                             return@collectLatest
                         }
                         androidx.work.WorkInfo.State.CANCELLED -> {
-                            _uiState.update { state -> state.copy(isBrainIndexing = false, brainIndexingStatus = "Brain indexing cancelled") }
+                            _uiState.update { state ->
+                                state.copy(
+                                    isBrainIndexing = false,
+                                    brainIndexingStatus = if (state.isBrainIndexingPaused) "Brain indexing paused" else "Brain indexing cancelled"
+                                )
+                            }
                             return@collectLatest
                         }
                         else -> Unit
                     }
                 }
         }
+    }
+
+    fun pauseBrainIndexing() {
+        if (!_uiState.value.isBrainIndexing) return
+        _uiState.update {
+            it.copy(
+                isBrainIndexingPaused = true,
+                brainIndexingStatus = "Pausing Brain indexing…"
+            )
+        }
+        WorkManager.getInstance(getApplication<Application>())
+            .cancelUniqueWork(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
+    }
+
+    fun resumeBrainIndexing() {
+        if (_uiState.value.isBrainIndexing || !_uiState.value.isBrainIndexingPaused) return
+        indexAllFilesForBrain(force = false)
+    }
+
+    fun cancelBrainIndexing() {
+        _uiState.update {
+            it.copy(
+                isBrainIndexingPaused = false,
+                brainIndexingStatus = "Cancelling Brain indexing…"
+            )
+        }
+        WorkManager.getInstance(getApplication<Application>())
+            .cancelUniqueWork(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
     }
 
     fun loadStorageStats() {
