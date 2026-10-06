@@ -45,9 +45,29 @@ data class BrainChunkEntity(
     val content: String,
     val embeddingJson: String,
     val embeddingModel: String,
+    val imageEmbeddingJson: String = "",
+    val imageEmbeddingModel: String = "",
     val locator: String = "",
     val pageNumber: Int? = null,
     val indexedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "brain_image_profiles",
+    indices = [Index(value = ["visionModel"]), Index(value = ["updatedAt"])]
+)
+data class BrainImageProfileEntity(
+    @PrimaryKey val filePath: String,
+    val fileName: String,
+    val ocrText: String = "",
+    val metadataSummary: String = "",
+    val description: String = "",
+    val tagsJson: String = "[]",
+    val entitiesJson: String = "[]",
+    val relationsJson: String = "[]",
+    val visionModel: String = "",
+    val imageEmbeddingModel: String = "",
+    val updatedAt: Long = System.currentTimeMillis()
 )
 
 @Entity(
