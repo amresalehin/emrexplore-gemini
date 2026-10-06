@@ -115,7 +115,7 @@ fun AiSettingsScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     var selectedProvider by remember { mutableStateOf(normalizeProvider(currentConfig.providerType)) }
-    var selectedEmbeddingProvider by remember { mutableStateOf(EmbeddingProviderType.OFFLINE) }
+    var selectedEmbeddingProvider by remember { mutableStateOf(EmbeddingProviderType.fromString(currentConfig.embeddingProviderType)) }
     var apiKey by remember { mutableStateOf(currentConfig.apiKey) }
     var baseUrl by remember { mutableStateOf(currentConfig.baseUrl) }
     var embeddingApiKey by remember { mutableStateOf(currentConfig.embeddingApiKey) }
@@ -146,14 +146,14 @@ fun AiSettingsScreen(
         providerType = selectedProvider.name,
         apiKey = apiKey.trim(),
         baseUrl = baseUrl.trim(),
-        embeddingProviderType = EmbeddingProviderType.OFFLINE.name,
-        embeddingApiKey = "",
-        embeddingBaseUrl = "",
+        embeddingProviderType = selectedEmbeddingProvider.name,
+        embeddingApiKey = if (selectedEmbeddingProvider == EmbeddingProviderType.OFFLINE) "" else embeddingApiKey.trim(),
+        embeddingBaseUrl = if (selectedEmbeddingProvider == EmbeddingProviderType.OFFLINE) "" else embeddingBaseUrl.trim(),
         chatModel = chatModel.trim(),
         visionModel = visionModel.trim(),
-        embeddingModel = selectedOfflineBrainModelId.ifBlank { embeddingModel.trim() },
-        textEmbeddingModel = selectedOfflineBrainModelId.ifBlank { embeddingModel.trim() },
-        multimodalEmbeddingModel = "",
+        embeddingModel = if (selectedEmbeddingProvider == EmbeddingProviderType.OFFLINE) selectedOfflineBrainModelId.ifBlank { embeddingModel.trim() } else embeddingModel.trim(),
+        textEmbeddingModel = if (selectedEmbeddingProvider == EmbeddingProviderType.OFFLINE) selectedOfflineBrainModelId.ifBlank { embeddingModel.trim() } else embeddingModel.trim(),
+        multimodalEmbeddingModel = if (selectedEmbeddingProvider == EmbeddingProviderType.OFFLINE) "" else multimodalEmbeddingModel.trim(),
         isEnabled = isEnabled,
         autoSync = autoSync,
         vectorDatabaseType = selectedVectorDatabase.name,
@@ -279,7 +279,7 @@ fun AiSettingsScreen(
                             Text("Brain uses one on-device text embedding engine. File AI and Gallery AI own enrichment.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    Text("Download the local embedding model here. Cloud embedding providers are not used.", style = MaterialTheme.typography.bodySmall)
+                    Text("Use this only when the embedding provider is On-device Brain. Cloud/LAN embedding providers are configured separately below; changing the LLM or VLM does not rewrite existing vectors.", style = MaterialTheme.typography.bodySmall)
                     when (onDeviceBrainModel.status) {
                         OnDeviceBrainModelStatus.NOT_INSTALLED -> {
                             Button(onClick = onDownloadOnDeviceBrainModel, modifier = Modifier.fillMaxWidth().testTag("on_device_brain_download_btn"), shape = RoundedCornerShape(12.dp)) {
@@ -293,7 +293,7 @@ fun AiSettingsScreen(
                             Text("Downloading ${(onDeviceBrainModel.progress * 100).toInt()}%…", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         }
                         OnDeviceBrainModelStatus.READY -> {
-                            Text("Ready — File AI and Gallery AI can finish with local embeddings.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                            Text("Ready — File AI and Gallery AI can finish with on-device embeddings when this provider is selected.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                             OutlinedButton(onClick = onDeleteOnDeviceBrainModel, modifier = Modifier.fillMaxWidth().testTag("on_device_brain_delete_btn"), shape = RoundedCornerShape(12.dp)) {
                                 Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
@@ -336,10 +336,95 @@ fun AiSettingsScreen(
                     }
                 }
 
+            SectionTitle("EMBEDDING ENGINE")
+            OutlinedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("Embeddings belong to File AI and Gallery AI — never to Brain.", fontWeight = FontWeight.SemiBold)
+                    Text("File AI generates document/text vectors. Gallery AI can also generate an image vector with a multimodal embedding model. Brain only retrieves saved vectors/data.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedCard(
+                        modifier = Modifier.fillMaxWidth().clickable { showEmbeddingProviderPicker = true },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Embedding provider", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(selectedEmbeddingProvider.displayName, fontWeight = FontWeight.SemiBold)
+                                Text(selectedEmbeddingProvider.description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text("Change", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                    if (selectedEmbeddingProvider != EmbeddingProviderType.OFFLINE) {
+                        if (selectedEmbeddingProvider != EmbeddingProviderType.OLLAMA && selectedEmbeddingProvider != EmbeddingProviderType.CUSTOM) {
+                            OutlinedTextField(
+                                value = embeddingApiKey,
+                                onValueChange = { embeddingApiKey = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Embedding API key") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                visualTransformation = PasswordVisualTransformation()
+                            )
+                        } else if (selectedEmbeddingProvider == EmbeddingProviderType.CUSTOM) {
+                            OutlinedTextField(
+                                value = embeddingApiKey,
+                                onValueChange = { embeddingApiKey = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Embedding API key (optional for local endpoints)") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                visualTransformation = PasswordVisualTransformation()
+                            )
+                        }
+                        OutlinedTextField(
+                            value = embeddingBaseUrl,
+                            onValueChange = { embeddingBaseUrl = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Embedding endpoint") },
+                            singleLine = true,
+                            placeholder = { Text(selectedEmbeddingProvider.defaultBaseUrl) }
+                        )
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Embedding model catalog", fontWeight = FontWeight.SemiBold)
+                                Text("Fetch models from the embedding endpoint.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconButton(onClick = { onFetchEmbeddingModels(draftConfig()) }, enabled = !isFetchingModels) {
+                                if (isFetchingModels) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                else Icon(Icons.Default.Refresh, contentDescription = "Fetch embedding models")
+                            }
+                        }
+                        ModelPicker("Text embedding model", firstUsable(embeddings, embeddingModel), { showEmbeddingPicker = true }, "ai_text_embedding_model_field", embeddings)
+                        val imageEmbeddingChoices = multimodalEmbeddings.filter { it.supportsMultimodalEmbedding }
+                        ModelPicker("Image embedding model — Gallery AI", firstUsable(imageEmbeddingChoices, multimodalEmbeddingModel), { showMultimodalEmbeddingPicker = true }, "ai_image_embedding_model_field", imageEmbeddingChoices)
+                        Text("The image embedding model is called by Gallery AI only. Brain never creates an image vector.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        Text("On-device text embedding is selected. Download/select the local model above. Gallery image embeddings are unavailable with this provider.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Button(
+                        onClick = { onTestEmbeddingConnection(draftConfig()) },
+                        enabled = !isTestingConnection && selectedEmbeddingProvider != EmbeddingProviderType.OFFLINE,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Test embedding connection")
+                    }
+                    embeddingTestResult?.let { result ->
+                        Text(
+                            result.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (result.success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+
             SectionTitle("IMAGE INTELLIGENCE PIPELINE")
             OutlinedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Gallery AI: Local OCR → ExifTool metadata → VLM profile → saved AI data → offline text embedding", fontWeight = FontWeight.SemiBold)
+                    Text("Gallery AI: Local OCR → ExifTool metadata → VLM profile → image embedding → saved AI data → text embedding", fontWeight = FontWeight.SemiBold)
                     ModelPicker("Gallery AI VLM", firstUsable(visions, visionModel), { showVisionPicker = true }, "ai_vision_model_field", visions)
                     Text("Caption and tags are saved to the file profile before embedding.", style = MaterialTheme.typography.bodySmall)
                     Text("Gallery AI owns VLM selection. Brain only consumes the saved profile.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -496,7 +581,7 @@ fun AiSettingsScreen(
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
-                        Text("Used for semantic indexing and retrieval.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Used by File AI/Gallery AI to create searchable vectors. Brain only consumes the saved vectors.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
