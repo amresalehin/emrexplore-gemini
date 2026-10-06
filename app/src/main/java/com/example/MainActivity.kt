@@ -540,36 +540,9 @@ private fun PersistentTabHost(
         }
         TabHostPage(uiState.currentTab == MainTab.BRAIN) {
             BrainScreen(
-                nodes = uiState.brainNodes,
-                edges = uiState.brainEdges,
-                nodeCount = uiState.brainNodeCount,
-                edgeCount = uiState.brainEdgeCount,
                 aiConfig = uiState.aiConfig,
-                apiConfigured = uiState.aiConfigLoaded && uiState.aiConfig.isEnabled &&
-                    (isKeylessAiConfig(uiState.aiConfig) || uiState.aiConfig.apiKey.isNotBlank()),
-                isIndexing = uiState.isBrainIndexing,
-                embeddingReady = run {
-                    val embeddingProvider = com.example.data.ai.EmbeddingProviderType.fromString(uiState.aiConfig.embeddingProviderType)
-                    if (embeddingProvider == com.example.data.ai.EmbeddingProviderType.OFFLINE) {
-                        uiState.onDeviceBrainModel.status == com.example.data.brain.OnDeviceBrainModelStatus.READY
-                    } else {
-                        uiState.aiConfig.textEmbeddingModel.ifBlank { uiState.aiConfig.embeddingModel }.isNotBlank() &&
-                            uiState.aiConfig.embeddingBaseUrl.isNotBlank() &&
-                            (
-                                embeddingProvider == com.example.data.ai.EmbeddingProviderType.OLLAMA ||
-                                uiState.aiConfig.embeddingBaseUrl.trim().lowercase().let {
-                                    it.contains("localhost") || it.contains("127.0.0.1") || it.contains("10.0.2.2")
-                                } ||
-                                uiState.aiConfig.embeddingApiKey.isNotBlank()
-                            )
-                    }
-                },
-                indexingProgress = uiState.brainIndexingProgress,
-                indexingStatus = uiState.brainIndexingStatus,
                 ragAnswer = uiState.ragAnswer,
                 isRagQuerying = uiState.isRagQuerying,
-                onDeviceBrainModel = uiState.onDeviceBrainModel,
-                smartSuggestions = uiState.brainSmartSuggestions,
                 askAiMessages = uiState.askAiMessages,
                 attachedAiFile = uiState.attachedAiFile,
                 onAttachFile = viewModel::attachAiFile,
@@ -577,25 +550,7 @@ private fun PersistentTabHost(
                 onClearChat = viewModel::clearAskAiChat,
                 onQueryRag = viewModel::queryRag,
                 onCancelRag = viewModel::cancelRagQuery,
-                onIndexAllFiles = viewModel::indexAllFilesForBrain,
-                onPauseIndexing = viewModel::pauseBrainIndexing,
-                onResumeIndexing = viewModel::resumeBrainIndexing,
-                onAskAiForFile = { node ->
-                    node.sourceFilePath?.let { path ->
-                        viewModel.askAiAboutFile(File(path))
-                    }
-                },
-                brainTopics = uiState.brainTopics,
-                selectedBrainTopic = uiState.brainTopics.firstOrNull { it.id == uiState.selectedBrainTopicId },
-                brainTopicRelevantFiles = uiState.brainTopicRelevantFiles,
-                isBrainTopicLoading = uiState.isBrainTopicLoading,
-                brainTopicStatus = uiState.brainTopicStatus,
-                onSelectBrainTopic = viewModel::selectBrainTopic,
-                onSaveBrainTopic = viewModel::saveBrainTopic,
-                onDeleteBrainTopic = viewModel::deleteBrainTopic,
-                onOpenAiSettings = { viewModel.setShowAiSettings(true) },
-                onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false)) },
-                onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false, mimeType = "image/jpeg")) }
+                onOpenAiSettings = { viewModel.setShowAiSettings(true) }
             )
         }
     }
