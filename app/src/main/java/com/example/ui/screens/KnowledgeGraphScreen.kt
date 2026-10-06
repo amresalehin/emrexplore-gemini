@@ -346,6 +346,8 @@ fun BrainScreen(
                     onPauseIndexing = onPauseIndexing,
                     onResumeIndexing = onResumeIndexing,
                     isIndexing = isIndexing,
+                    indexingProgress = indexingProgress,
+                    indexingStatus = indexingStatus,
                     onAskAiForFile = { node ->
                         selectedTab = BrainScreenTab.ASK_AI
                         onAskAiForFile(node)
