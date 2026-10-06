@@ -83,11 +83,7 @@ class AiProviderClient {
             if (!listedModels.isNullOrEmpty()) {
                 val selectedModels = listOf(
                     "chat" to config.chatModel,
-                    "vision" to config.visionModel,
-                    "text embedding" to config.textEmbeddingModel.ifBlank { config.embeddingModel },
-                    "multimodal embedding" to config.multimodalEmbeddingModel.ifBlank {
-                        config.textEmbeddingModel.ifBlank { config.embeddingModel }
-                    }
+                    "vision" to config.visionModel
                 )
                 for ((role, modelIdRaw) in selectedModels) {
                     val modelId = modelIdRaw.trim()
@@ -165,32 +161,60 @@ class AiProviderClient {
     suspend fun embedTextPassages(
         texts: List<String>,
         config: AiProviderConfigEntity
-    ): List<FloatArray> = embedText(
-        texts,
-        config,
-        config.textEmbeddingModel.ifBlank { config.embeddingModel },
-        "passage"
-    )
+    ): List<FloatArray> {
+        val model = config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
+        if (EmbeddingProviderType.fromString(config.embeddingProviderType) == EmbeddingProviderType.OFFLINE) return emptyList()
+        return embedText(texts, config, model, "passage")
+    }
+
+    suspend fun listEmbeddingModels(config: AiProviderConfigEntity): List<AvailableAiModel> {
+        if (EmbeddingProviderType.fromString(config.embeddingProviderType) == EmbeddingProviderType.OFFLINE) return emptyList()
+        return listModels(embeddingConfig(config)).filter { it.supportsEmbedding || it.supportsMultimodalEmbedding }
+    }
+    suspend fun testEmbeddingConnection(config: AiProviderConfigEntity): ConnectionTestResult = withContext(Dispatchers.IO) {
+        val started = System.currentTimeMillis()
+        if (EmbeddingProviderType.fromString(config.embeddingProviderType) == EmbeddingProviderType.OFFLINE) {
+            return@withContext ConnectionTestResult(true, "On-device embedding · private", System.currentTimeMillis() - started)
+        }
+        val providerConfig = embeddingConfig(config)
+        try {
+            val provider = EmbeddingProviderType.fromString(config.embeddingProviderType)
+            if (!isKeylessAiConfig(providerConfig) && config.embeddingApiKey.isBlank()) {
+                return@withContext ConnectionTestResult(false, "Enter an embedding API key first.", System.currentTimeMillis() - started)
+            }
+            val model = config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
+            if (model.isBlank()) {
+                return@withContext ConnectionTestResult(false, "Choose an embedding model first.", System.currentTimeMillis() - started)
+            }
+            val vector = embedText(listOf("embedding connection test"), config, model, "query").firstOrNull()
+            if (vector.isNullOrEmpty()) {
+                ConnectionTestResult(false, "Embedding provider returned no vector.", System.currentTimeMillis() - started)
+            } else {
+                ConnectionTestResult(true, "Embedding connected · " + provider.displayName, System.currentTimeMillis() - started)
+            }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            ConnectionTestResult(false, error.message?.take(180) ?: "Could not connect to embedding provider.", System.currentTimeMillis() - started)
+        }
+    }
 
     suspend fun embedTextQuery(
         text: String,
         config: AiProviderConfigEntity
-    ): FloatArray? = embedText(
-        listOf(text),
-        config,
-        config.textEmbeddingModel.ifBlank { config.embeddingModel },
-        "query"
-    ).firstOrNull()
+    ): FloatArray? {
+        if (EmbeddingProviderType.fromString(config.embeddingProviderType) == EmbeddingProviderType.OFFLINE) return null
+        val model = config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
+        return embedText(listOf(text), config, model, "query").firstOrNull()
+    }
 
     suspend fun embedMultimodalQuery(
         text: String,
         config: AiProviderConfigEntity
-    ): FloatArray? = embedText(
-        listOf(text),
-        config,
-        config.multimodalEmbeddingModel.ifBlank { config.textEmbeddingModel.ifBlank { config.embeddingModel } },
-        "query"
-    ).firstOrNull()
+    ): FloatArray? {
+        if (EmbeddingProviderType.fromString(config.embeddingProviderType) == EmbeddingProviderType.OFFLINE) return null
+        val model = config.multimodalEmbeddingModel.ifBlank { config.textEmbeddingModel.ifBlank { config.embeddingModel } }.trim()
+        return embedText(listOf(text), config, model, "query").firstOrNull()
+    }
 
     suspend fun embedMultimodalDocument(
         base64Jpeg: String?,
@@ -200,8 +224,9 @@ class AiProviderClient {
         val model = config.multimodalEmbeddingModel.trim()
             .ifBlank { config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() } }
         if (model.isBlank() || base64Jpeg.isNullOrBlank()) return@withContext null
-        when (ProviderType.fromString(config.providerType)) {
-            ProviderType.GEMINI, ProviderType.OLLAMA -> embedText(
+        if (EmbeddingProviderType.fromString(config.embeddingProviderType) == EmbeddingProviderType.OFFLINE) return@withContext null
+        when (EmbeddingProviderType.fromString(config.embeddingProviderType)) {
+            EmbeddingProviderType.GEMINI, EmbeddingProviderType.OLLAMA -> embedText(
                 listOf(text),
                 config,
                 config.textEmbeddingModel.ifBlank { config.embeddingModel },
@@ -224,21 +249,47 @@ class AiProviderClient {
         inputType: String
     ): List<FloatArray> = withContext(Dispatchers.IO) {
         if (texts.isEmpty() || model.isBlank()) return@withContext emptyList()
-        val effectiveConfig = config.copy(embeddingModel = model)
+        val effectiveConfig = embeddingConfig(config).copy(embeddingModel = model, textEmbeddingModel = model)
         texts.chunked(16).flatMap { batch ->
-            when (ProviderType.fromString(config.providerType)) {
-                ProviderType.GEMINI -> embedGemini(batch, effectiveConfig)
-                ProviderType.OLLAMA -> embedOllama(batch, effectiveConfig)
-                else -> embedOpenAi(
+            when (EmbeddingProviderType.fromString(config.embeddingProviderType)) {
+                EmbeddingProviderType.GEMINI -> embedGemini(batch, effectiveConfig)
+                EmbeddingProviderType.OLLAMA -> embedOllama(batch, effectiveConfig)
+                EmbeddingProviderType.OPENAI_COMPATIBLE,
+                EmbeddingProviderType.OPENROUTER,
+                EmbeddingProviderType.CUSTOM -> embedOpenAi(
                     inputs = batch,
                     config = effectiveConfig,
                     model = model,
                     inputType = inputType,
                     modality = "text"
                 )
+                EmbeddingProviderType.OFFLINE -> emptyList()
             }
         }
     }
+
+    private fun embeddingConfig(config: AiProviderConfigEntity): AiProviderConfigEntity =
+        config.copy(
+            providerType = when (EmbeddingProviderType.fromString(config.embeddingProviderType)) {
+                EmbeddingProviderType.GEMINI -> ProviderType.GEMINI.name
+                EmbeddingProviderType.OLLAMA -> ProviderType.OLLAMA.name
+                EmbeddingProviderType.OPENROUTER -> ProviderType.OPENROUTER.name
+                EmbeddingProviderType.OPENAI_COMPATIBLE -> ProviderType.OPENAI_COMPATIBLE.name
+                EmbeddingProviderType.CUSTOM -> ProviderType.CUSTOM.name
+                EmbeddingProviderType.OFFLINE -> ProviderType.OLLAMA.name
+            },
+            apiKey = config.embeddingApiKey,
+            baseUrl = config.embeddingBaseUrl.ifBlank {
+                when (EmbeddingProviderType.fromString(config.embeddingProviderType)) {
+                    EmbeddingProviderType.GEMINI -> EmbeddingProviderType.GEMINI.defaultBaseUrl
+                    EmbeddingProviderType.OLLAMA -> EmbeddingProviderType.OLLAMA.defaultBaseUrl
+                    EmbeddingProviderType.OPENROUTER -> EmbeddingProviderType.OPENROUTER.defaultBaseUrl
+                    EmbeddingProviderType.OPENAI_COMPATIBLE -> EmbeddingProviderType.OPENAI_COMPATIBLE.defaultBaseUrl
+                    EmbeddingProviderType.CUSTOM,
+                    EmbeddingProviderType.OFFLINE -> ""
+                }
+            }
+        )
 
     private fun requiresNvidiaEmbeddingParams(model: String): Boolean {
         val id = model.lowercase()
