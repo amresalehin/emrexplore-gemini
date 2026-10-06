@@ -236,7 +236,7 @@ class BrainRepository(context: Context) {
         force: Boolean = false,
         precomputedImageEmbedding: FloatArray? = null
     ): Boolean = withContext(Dispatchers.IO) {
-        indexer.index(file, normalizeAiConfig(config), force, precomputedImageEmbedding).success
+        indexer.index(file, normalizeAiConfig(config), force, precomputedImageEmbedding = precomputedImageEmbedding).success
     }
 
     suspend fun reconcileMutation(
@@ -487,7 +487,7 @@ class BrainRepository(context: Context) {
             force = force,
             precomputedTextEmbeddings = textEmbeddings,
             precomputedTextEmbeddingModel = textEmbeddingModel,
-            precomputedImageEmbedding = imageVector
+            precomputedImageEmbedding = precomputedImageEmbedding
         )
         val indexed = brainDocumentDao.get(file.absolutePath)?.state == BrainIndexStates.READY
         if (indexed) BrainIndexOutcome(true) else BrainIndexOutcome(false, error = "Embedding failed")
