@@ -1473,7 +1473,7 @@ private fun GallerySelectionBar(
             Text("$count selected", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             IconButton(onClick = onFavorite) { Icon(Icons.Default.Star, contentDescription = "Favorite selected") }
             IconButton(onClick = onAiProcess, enabled = aiReady) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = if (aiReady) "AI process selected" else "Set up Brain to process selected")
+                Icon(Icons.Default.AutoAwesome, contentDescription = if (aiReady) "Run Gallery AI" else "Set up Gallery AI")
             }
             IconButton(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = "Share selected") }
             IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Delete selected") }
