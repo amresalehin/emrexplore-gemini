@@ -544,7 +544,16 @@ private fun PersistentTabHost(
                     } else {
                         uiState.aiConfig.textEmbeddingModel.ifBlank { uiState.aiConfig.embeddingModel }.isNotBlank() &&
                             uiState.aiConfig.embeddingBaseUrl.isNotBlank() &&
-                            (isKeylessAiConfig(uiState.aiConfig.copy(providerType = uiState.aiConfig.providerType)) || uiState.aiConfig.embeddingApiKey.isNotBlank())
+                            (
+                                embeddingProvider == com.example.data.ai.EmbeddingProviderType.OLLAMA ||
+                                (
+                                    embeddingProvider == com.example.data.ai.EmbeddingProviderType.CUSTOM &&
+                                    uiState.aiConfig.embeddingBaseUrl.trim().lowercase().let {
+                                        it.contains("localhost") || it.contains("127.0.0.1") || it.contains("10.0.2.2")
+                                    }
+                                ) ||
+                                uiState.aiConfig.embeddingApiKey.isNotBlank()
+                            )
                     }
                 },
                 indexingProgress = uiState.brainIndexingProgress,
