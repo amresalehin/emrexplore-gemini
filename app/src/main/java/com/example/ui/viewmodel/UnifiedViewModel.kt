@@ -32,6 +32,7 @@ import com.example.data.media.MediaMetadataRepository
 import com.example.data.ai.BrainTargetedOperationStore
 import com.example.data.brain.BrainRepository
 import com.example.data.ai.AvailableAiModel
+import com.example.data.ai.EmbeddingProviderType
 import com.example.data.brain.ConnectedDotsItem
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.brain.RagAnswer
@@ -279,6 +280,7 @@ data class UiState(
     val offlineBrainModels: List<OnDeviceBrainModelSpec> = emptyList(),
     val isFetchingAiModels: Boolean = false,
     val aiModelFetchError: String? = null,
+    val embeddingTestResult: ConnectionTestResult? = null,
     val onDeviceBrainModel: OnDeviceBrainModelUiState = OnDeviceBrainModelUiState(),
 
     // User Feedback
@@ -2435,11 +2437,15 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val saved = config.copy(
                 apiKey = config.apiKey.trim(),
-                baseUrl = config.baseUrl.trim()
+                baseUrl = config.baseUrl.trim(),
+                embeddingApiKey = config.embeddingApiKey.trim(),
+                embeddingBaseUrl = config.embeddingBaseUrl.trim(),
+                embeddingProviderType = EmbeddingProviderType.fromString(config.embeddingProviderType).name
             )
             brainRepository.saveAiConfig(saved)
             _uiState.update { it.copy(aiConfig = saved, aiConfigLoaded = true) }
-            showMessage("AI settings saved")
+            showMessage("AI settings saved · Brain will re-index if the embedder changed")
+            runCatching { brainRepository.syncAll(force = false) }
         }
     }
 
@@ -2461,6 +2467,33 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 if (e is CancellationException) throw e
                 _uiState.update { it.copy(isFetchingAiModels = false, aiModelFetchError = e.message ?: "Could not fetch models") }
             }
+        }
+    }
+
+    fun fetchEmbeddingModels(config: AiProviderConfigEntity) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isFetchingAiModels = true, aiModelFetchError = null) }
+            try {
+                val all = brainRepository.listEmbeddingModels(config)
+                _uiState.update {
+                    it.copy(
+                        aiEmbeddingModels = all.filter { model -> model.supportsEmbedding && !model.supportsMultimodalEmbedding },
+                        aiMultimodalEmbeddingModels = all.filter { model -> model.supportsMultimodalEmbedding },
+                        isFetchingAiModels = false
+                    )
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isFetchingAiModels = false, aiModelFetchError = e.message ?: "Could not fetch embedding models") }
+            }
+        }
+    }
+
+    fun testEmbeddingConnection(config: AiProviderConfigEntity) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(embeddingTestResult = null) }
+            val result = brainRepository.testEmbeddingConnection(config)
+            _uiState.update { it.copy(embeddingTestResult = result) }
         }
     }
 
@@ -2705,7 +2738,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 brainRepository.getOnDeviceBrainModelState()
             }.onSuccess { state ->
                 _uiState.update { it.copy(onDeviceBrainModel = state) }
-                showMessage("Offline Brain model selected")
+                showMessage("Offline Brain model selected · Brain will re-index")
+                runCatching { brainRepository.syncAll(force = false) }
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(error.message))
