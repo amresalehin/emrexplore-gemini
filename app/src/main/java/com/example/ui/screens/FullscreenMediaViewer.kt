@@ -233,6 +233,7 @@ fun FullscreenMediaViewer(
                 AndroidView(
                     factory = { context ->
                         VideoView(context).apply {
+                            tag = currentItem.uri.toString()
                             setVideoURI(currentItem.uri)
                             setMediaController(MediaController(context))
                             setOnPreparedListener { player ->
