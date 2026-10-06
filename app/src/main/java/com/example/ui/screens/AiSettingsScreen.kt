@@ -71,6 +71,7 @@ import com.example.data.ai.AvailableAiModel
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.ai.ProviderType
 import com.example.data.ai.EmbeddingProviderType
+import com.example.data.ai.VectorDatabaseType
 import com.example.data.ai.isKeylessAiConfig
 import com.example.data.brain.OnDeviceBrainModelSpec
 import com.example.data.brain.OnDeviceBrainModelStatus
@@ -130,6 +131,10 @@ fun AiSettingsScreen(
     var showMultimodalEmbeddingPicker by remember { mutableStateOf(false) }
     var showOfflineBrainPicker by remember { mutableStateOf(false) }
     var showAdvanced by remember { mutableStateOf(false) }
+    var selectedVectorDatabase by remember { mutableStateOf(VectorDatabaseType.fromString(currentConfig.vectorDatabaseType)) }
+    var vectorDatabaseBaseUrl by remember { mutableStateOf(currentConfig.vectorDatabaseBaseUrl) }
+    var vectorDatabaseApiKey by remember { mutableStateOf(currentConfig.vectorDatabaseApiKey) }
+    var vectorDatabaseCollection by remember { mutableStateOf(currentConfig.vectorDatabaseCollection.ifBlank { "emrexplore_brain" }) }
 
     fun draftConfig(): AiProviderConfigEntity = currentConfig.copy(
         providerType = selectedProvider.name,
@@ -144,7 +149,12 @@ fun AiSettingsScreen(
         textEmbeddingModel = embeddingModel.trim(),
         multimodalEmbeddingModel = multimodalEmbeddingModel.trim(),
         isEnabled = isEnabled,
-        autoSync = autoSync
+        autoSync = autoSync,
+        vectorDatabaseType = selectedVectorDatabase.name,
+        vectorDatabaseBaseUrl = vectorDatabaseBaseUrl.trim(),
+        vectorDatabaseApiKey = vectorDatabaseApiKey.trim(),
+        vectorDatabaseCollection = vectorDatabaseCollection.trim().ifBlank { "emrexplore_brain" },
+        brainSetupCompleted = true
     )
 
     fun selectProvider(provider: ProviderType) {
@@ -500,6 +510,34 @@ fun AiSettingsScreen(
 
                 val cloudReady = isEnabled && (isKeylessAiConfig(draftConfig()) || apiKey.trim().isNotBlank())
                 CompactInfo(if (cloudReady) "Cloud AI is configured. It is used only for generated answers and optional enrichment." else "Cloud AI is not configured. You can still use the local Brain for semantic search; generated answers require a configured provider.")
+
+                SectionTitle("VECTOR DATABASE")
+                OutlinedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Independent from Chat and Embeddings", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            VectorDatabaseType.entries.forEach { type ->
+                                OutlinedButton(
+                                    onClick = {
+                                        selectedVectorDatabase = type
+                                        if (type == VectorDatabaseType.ROOM) {
+                                            vectorDatabaseBaseUrl = ""
+                                            vectorDatabaseApiKey = ""
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) { Text(type.displayName) }
+                            }
+                        }
+                        Text(selectedVectorDatabase.description, style = MaterialTheme.typography.bodySmall)
+                        if (selectedVectorDatabase == VectorDatabaseType.QDRANT) {
+                            OutlinedTextField(value = vectorDatabaseBaseUrl, onValueChange = { vectorDatabaseBaseUrl = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Qdrant URL") }, singleLine = true)
+                            OutlinedTextField(value = vectorDatabaseApiKey, onValueChange = { vectorDatabaseApiKey = it }, modifier = Modifier.fillMaxWidth(), label = { Text("API key") }, singleLine = true)
+                            OutlinedTextField(value = vectorDatabaseCollection, onValueChange = { vectorDatabaseCollection = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Collection") }, singleLine = true)
+                        }
+                    }
+                }
 
                 SectionTitle("ACTIVE MODELS")
                 Card(
