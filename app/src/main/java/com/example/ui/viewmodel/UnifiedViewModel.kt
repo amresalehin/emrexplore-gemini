@@ -2897,30 +2897,6 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun pauseBrainIndexing() {
-        if (!_uiState.value.isBrainIndexing) return
-        WorkManager.getInstance(getApplication<Application>())
-            .cancelUniqueWork(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
-        _uiState.update {
-            it.copy(
-                isBrainIndexing = false,
-                isBrainIndexPaused = true,
-                brainIndexingStatus = "Indexing paused — resume to continue"
-            )
-        }
-    }
-
-    fun resumeBrainIndexing() {
-        if (!_uiState.value.isBrainIndexPaused) return
-        _uiState.update {
-            it.copy(
-                isBrainIndexPaused = false,
-                brainIndexingStatus = "Resuming Brain indexing…"
-            )
-        }
-        indexAllFilesForBrain()
-    }
-
     fun indexAllFilesForBrain(force: Boolean = false) {
         if (_uiState.value.isBrainIndexing) return
         val brainConfig = _uiState.value.aiConfig
