@@ -7,9 +7,7 @@ import com.example.data.ai.AnalysisResult
 import com.example.data.ai.ExtractedEntity
 import com.example.data.ai.ExtractedRelation
 import com.example.data.ai.ProviderType
-import com.example.data.ai.EmbeddingProviderType
 import com.example.data.ai.VectorDatabaseType
-import com.example.data.ai.isKeylessAiConfig
 import com.example.data.local.AiProviderConfigEntity
 import java.io.File
 import java.util.Locale
@@ -29,10 +27,7 @@ class BrainIndexer(
     private val edgeEvidenceDao: BrainEdgeEvidenceDao,
     private val runDao: BrainRunDao,
     private val imageProfileDao: BrainImageProfileDao,
-    private val client: BrainAiGateway,
-    private val embeddingClient: com.example.data.ai.AiProviderClient,
     private val db: AppDatabase,
-    private val onDeviceEmbedding: OnDeviceEmbeddingEngine,
     private val vectorSyncDao: BrainVectorSyncDao
 ) {
     private fun vectorStore(config: AiProviderConfigEntity): BrainVectorStore =
