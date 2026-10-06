@@ -395,21 +395,21 @@ fun AiSettingsScreen(
                     )
                 }
 
-                if (selectedProvider != ProviderType.OLLAMA && selectedProvider != ProviderType.GEMINI) {
-                    OutlinedTextField(
-                        value = baseUrl,
-                        onValueChange = { baseUrl = it },
-                        modifier = Modifier.fillMaxWidth().testTag("ai_endpoint_url_field"),
-                        label = { Text("Base URL") },
-                        placeholder = { Text("https://your-server/v1") },
-                        singleLine = true
-                    )
-                    CompactInfo("Works with OpenAI-compatible endpoints such as OpenAI, NVIDIA NIM, Groq, or your own server. Fetch models after changing it.")
-                } else if (selectedProvider == ProviderType.OLLAMA) {
-                    CompactInfo("Ollama is local-first. Same device → 127.0.0.1:11434. Android Emulator → 10.0.2.2:11434. Another computer on your LAN → use its private IP, e.g. 192.168.1.20:11434.")
-                } else {
-                    CompactInfo("Server: ${baseUrl.removeSuffix("/")}")
-                }
+                OutlinedTextField(
+                    value = baseUrl,
+                    onValueChange = { baseUrl = it },
+                    modifier = Modifier.fillMaxWidth().testTag("ai_endpoint_url_field"),
+                    label = { Text("Model API endpoint") },
+                    placeholder = { Text(selectedProvider.defaultBaseUrl.ifBlank { "https://your-server/v1" }) },
+                    singleLine = true
+                )
+                CompactInfo(
+                    when (selectedProvider) {
+                        ProviderType.OLLAMA -> "Ollama: use 127.0.0.1:11434 on-device, 10.0.2.2:11434 on Android Emulator, or a LAN address."
+                        ProviderType.GEMINI -> "Gemini REST endpoint. You can override it for a compatible proxy or gateway."
+                        else -> "This exact endpoint is queried for its live /models catalog. Change it, then Fetch models."
+                    }
+                )
 
                 SectionTitle("EMBEDDING PROVIDER — INDEPENDENT FROM CHAT")
 
