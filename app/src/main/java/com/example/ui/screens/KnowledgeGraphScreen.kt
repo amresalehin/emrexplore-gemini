@@ -737,7 +737,7 @@ fun DeclutteredCanvasView(
                         Text("Resume")
                     }
                 } else {
-                    Button(onClick = onIndexFiles, enabled = embeddingReady, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
+                    Button(onClick = onIndexFiles, enabled = localBrainReady, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
                         Text("Start indexing")
                     }
                 }
@@ -1002,18 +1002,18 @@ fun DeclutteredCanvasView(
                             modifier = Modifier.size(32.dp)
                         )
                         Text(
-                             if (!embeddingReady) "Configure an embedding model" else "No indexed entities found",
+                             if (!localBrainReady) "Configure an embedding model" else "No indexed entities found",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                             if (!embeddingReady) "Choose an embedding provider and model in Brain Settings before indexing." else "Brain is ready. Start indexing to build the semantic graph.",
+                             if (!localBrainReady) "Choose an embedding provider and model in Brain Settings before indexing." else "Brain is ready. Start indexing to build the semantic graph.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Button(
                             onClick = onIndexFiles,
-                             enabled = !isIndexing && embeddingReady
+                             enabled = !isIndexing && localBrainReady
                         ) {
                              Text(if (isIndexing) "Indexing…" else if (localBrainReady) "Start indexing" else "Open Brain Settings")
                         }
