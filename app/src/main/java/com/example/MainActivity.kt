@@ -530,7 +530,7 @@ private fun PersistentTabHost(
             GalleryScreen(
                 uiState = uiState,
                 viewModel = viewModel,
-                onOpenBrainSettings = { viewModel.setTab(MainTab.BRAIN); viewModel.setShowAiSettings(true) },
+                onOpenBrainSettings = { viewModel.setShowAiSettings(true) },
                 onRequestMediaLocationPermission = {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !mediaLocationGranted) {
                         mediaLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
