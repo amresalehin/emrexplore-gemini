@@ -80,6 +80,11 @@ fun BrainSetupScreen(
     var endpoint by rememberSaveable { mutableStateOf(currentConfig.baseUrl.ifBlank { provider.defaultBaseUrl }) }
     var chatModel by rememberSaveable { mutableStateOf(currentConfig.chatModel) }
     var visionModel by rememberSaveable { mutableStateOf(currentConfig.visionModel) }
+    var embeddingProvider by rememberSaveable { mutableStateOf(EmbeddingProviderType.fromString(currentConfig.embeddingProviderType)) }
+    var embeddingApiKey by rememberSaveable { mutableStateOf(currentConfig.embeddingApiKey) }
+    var embeddingEndpoint by rememberSaveable { mutableStateOf(currentConfig.embeddingBaseUrl) }
+    var textEmbeddingModel by rememberSaveable { mutableStateOf(currentConfig.textEmbeddingModel.ifBlank { currentConfig.embeddingModel }) }
+    var imageEmbeddingModel by rememberSaveable { mutableStateOf(currentConfig.multimodalEmbeddingModel) }
     var selectedEmbeddingModel by rememberSaveable {
         mutableStateOf(
             offlineModels.firstOrNull { it.id == currentConfig.textEmbeddingModel }?.id
@@ -98,12 +103,12 @@ fun BrainSetupScreen(
         baseUrl = endpoint.trim().ifBlank { provider.defaultBaseUrl },
         chatModel = chatModel.trim(),
         visionModel = visionModel.trim(),
-        embeddingProviderType = EmbeddingProviderType.OFFLINE.name,
-        embeddingApiKey = "",
-        embeddingBaseUrl = "",
-        embeddingModel = selectedEmbeddingModel,
-        textEmbeddingModel = selectedEmbeddingModel,
-        multimodalEmbeddingModel = "",
+        embeddingProviderType = embeddingProvider.name,
+        embeddingApiKey = if (embeddingProvider == EmbeddingProviderType.OFFLINE) "" else embeddingApiKey.trim(),
+        embeddingBaseUrl = if (embeddingProvider == EmbeddingProviderType.OFFLINE) "" else embeddingEndpoint.trim(),
+        embeddingModel = if (embeddingProvider == EmbeddingProviderType.OFFLINE) selectedEmbeddingModel else textEmbeddingModel.trim(),
+        textEmbeddingModel = if (embeddingProvider == EmbeddingProviderType.OFFLINE) selectedEmbeddingModel else textEmbeddingModel.trim(),
+        multimodalEmbeddingModel = if (embeddingProvider == EmbeddingProviderType.OFFLINE) "" else imageEmbeddingModel.trim(),
         brainSetupCompleted = true
     )
 
@@ -117,7 +122,7 @@ fun BrainSetupScreen(
             title = {
                 Column {
                     Text("AI setup", fontWeight = FontWeight.Bold)
-                    Text("LLM + Gallery VLM + offline embeddings", style = MaterialTheme.typography.labelSmall)
+                    Text("LLM + Gallery VLM + configurable embeddings", style = MaterialTheme.typography.labelSmall)
                 }
             },
             navigationIcon = {
@@ -252,12 +257,94 @@ fun BrainSetupScreen(
                 }
             }
 
-            item { SectionHeading("3. Offline text embedding", Icons.Default.Download) }
+            item { SectionHeading("3. Embedding engine", Icons.Default.Download) }
             item {
                 OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("This is the only embedding engine.", fontWeight = FontWeight.SemiBold)
-                        Text("Download/select an on-device text model. File AI and Gallery AI always run enrichment first and embedding last.", style = MaterialTheme.typography.bodySmall)
+                        Text("Embeddings belong to File AI and Gallery AI — Brain only consumes them.", fontWeight = FontWeight.SemiBold)
+                        EmbeddingProviderType.entries.forEach { candidate ->
+                            SetupChoice(
+                                title = candidate.displayName,
+                                subtitle = candidate.description,
+                                selected = embeddingProvider == candidate,
+                                icon = if (candidate == EmbeddingProviderType.OFFLINE) Icons.Default.PhoneAndroid else Icons.Default.Cloud,
+                                onClick = {
+                                    embeddingProvider = candidate
+                                    if (candidate == EmbeddingProviderType.OFFLINE) {
+                                        embeddingEndpoint = ""
+                                        embeddingApiKey = ""
+                                    } else {
+                                        embeddingEndpoint = candidate.defaultBaseUrl
+                                        textEmbeddingModel = candidate.defaultModel
+                                        imageEmbeddingModel = candidate.defaultMultimodalEmbeddingModel
+                                        if (candidate == EmbeddingProviderType.OLLAMA) embeddingApiKey = ""
+                                    }
+                                }
+                            )
+                        }
+                        if (embeddingProvider != EmbeddingProviderType.OFFLINE) {
+                            if (embeddingProvider != EmbeddingProviderType.OLLAMA) {
+                                OutlinedTextField(
+                                    value = embeddingApiKey,
+                                    onValueChange = { embeddingApiKey = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Embedding API key (optional for local endpoints)") },
+                                    singleLine = true
+                                )
+                            }
+                            OutlinedTextField(
+                                value = embeddingEndpoint,
+                                onValueChange = { embeddingEndpoint = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Embedding endpoint") },
+                                singleLine = true
+                            )
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Fetch embedding models", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                                OutlinedButton(
+                                    onClick = { onFetchEmbeddingModels(draft()) },
+                                    enabled = !isFetchingModels
+                                ) {
+                                    if (isFetchingModels) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
+                                    else Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(17.dp))
+                                    Spacer(Modifier.size(5.dp))
+                                    Text("Fetch")
+                                }
+                            }
+                            val remoteEmbeddings = availableEmbeddingModels.filter { !showFreeOnly || it.isFree }
+                            val remoteImageEmbeddings = availableMultimodalEmbeddingModels.filter { it.supportsMultimodalEmbedding && (!showFreeOnly || it.isFree) }
+                            remoteEmbeddings.take(30).forEach { model ->
+                                SetupModel(model, model.id == textEmbeddingModel) { textEmbeddingModel = model.id }
+                            }
+                            OutlinedTextField(
+                                value = textEmbeddingModel,
+                                onValueChange = { textEmbeddingModel = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Text embedding model ID") },
+                                singleLine = true
+                            )
+                            remoteImageEmbeddings.take(30).forEach { model ->
+                                SetupModel(model, model.id == imageEmbeddingModel) { imageEmbeddingModel = model.id }
+                            }
+                            OutlinedTextField(
+                                value = imageEmbeddingModel,
+                                onValueChange = { imageEmbeddingModel = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Image embedding model ID — Gallery AI only") },
+                                singleLine = true
+                            )
+                            Text("The image embedding model is called by Gallery AI. Brain never generates image embeddings.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+
+            item { SectionHeading("4. Offline text embedding", Icons.Default.Download) }
+            item {
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("On-device text embedding is one available embedding engine.", fontWeight = FontWeight.SemiBold)
+                        Text("Download/select an on-device text model when you want private local text embeddings. File AI and Gallery AI always run enrichment first and embedding last.", style = MaterialTheme.typography.bodySmall)
                         offlineModels.forEach { spec ->
                             SetupChoice(
                                 title = spec.displayName,
@@ -292,8 +379,8 @@ fun BrainSetupScreen(
                     Column(Modifier.padding(14.dp)) {
                         Text("What happens after setup", fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(6.dp))
-                        Text("• Documents: File AI → save summary/tags/entities → offline embedding → Brain consumes it.", style = MaterialTheme.typography.bodySmall)
-                        Text("• Images: Gallery AI VLM → save caption/tags/entities → offline embedding → Brain consumes it.", style = MaterialTheme.typography.bodySmall)
+                        Text("• Documents: File AI → save summary/tags/entities → text embedding → Brain consumes it.", style = MaterialTheme.typography.bodySmall)
+                        Text("• Images: Gallery AI VLM → image embedding → save caption/tags/entities/vectors → Brain consumes the saved data.", style = MaterialTheme.typography.bodySmall)
                         Text("• Changing the LLM or VLM does not re-embed existing files.", style = MaterialTheme.typography.bodySmall)
                     }
                 }
