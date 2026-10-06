@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import com.example.data.ai.AvailableAiModel
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.ai.ProviderType
+import com.example.data.ai.EmbeddingProviderType
 import com.example.data.ai.isKeylessAiConfig
 import com.example.data.brain.OnDeviceBrainModelSpec
 import com.example.data.brain.OnDeviceBrainModelStatus
@@ -94,6 +95,9 @@ fun AiSettingsScreen(
     isFetchingModels: Boolean = false,
     modelFetchError: String? = null,
     onFetchModels: (AiProviderConfigEntity) -> Unit = {},
+    onFetchEmbeddingModels: (AiProviderConfigEntity) -> Unit = {},
+    onTestEmbeddingConnection: (AiProviderConfigEntity) -> Unit = {},
+    embeddingTestResult: ConnectionTestResult? = null,
     onDeviceBrainModel: OnDeviceBrainModelUiState = OnDeviceBrainModelUiState(),
     onDownloadOnDeviceBrainModel: () -> Unit = {},
     onDeleteOnDeviceBrainModel: () -> Unit = {},
@@ -105,8 +109,11 @@ fun AiSettingsScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     var selectedProvider by remember { mutableStateOf(normalizeProvider(currentConfig.providerType)) }
+    var selectedEmbeddingProvider by remember { mutableStateOf(EmbeddingProviderType.fromString(currentConfig.embeddingProviderType)) }
     var apiKey by remember { mutableStateOf(currentConfig.apiKey) }
     var baseUrl by remember { mutableStateOf(currentConfig.baseUrl) }
+    var embeddingApiKey by remember { mutableStateOf(currentConfig.embeddingApiKey) }
+    var embeddingBaseUrl by remember { mutableStateOf(currentConfig.embeddingBaseUrl) }
     var chatModel by remember { mutableStateOf(currentConfig.chatModel) }
     var visionModel by remember { mutableStateOf(currentConfig.visionModel) }
     var embeddingModel by remember { mutableStateOf(currentConfig.textEmbeddingModel.ifBlank { currentConfig.embeddingModel }) }
@@ -116,6 +123,7 @@ fun AiSettingsScreen(
     var freeOnly by remember { mutableStateOf(false) }
     var showApiKey by remember { mutableStateOf(false) }
     var showProviderPicker by remember { mutableStateOf(false) }
+    var showEmbeddingProviderPicker by remember { mutableStateOf(false) }
     var showChatPicker by remember { mutableStateOf(false) }
     var showVisionPicker by remember { mutableStateOf(false) }
     var showEmbeddingPicker by remember { mutableStateOf(false) }
@@ -127,6 +135,9 @@ fun AiSettingsScreen(
         providerType = selectedProvider.name,
         apiKey = apiKey.trim(),
         baseUrl = baseUrl.trim(),
+        embeddingProviderType = selectedEmbeddingProvider.name,
+        embeddingApiKey = embeddingApiKey.trim(),
+        embeddingBaseUrl = embeddingBaseUrl.trim(),
         chatModel = chatModel.trim(),
         visionModel = visionModel.trim(),
         embeddingModel = embeddingModel.trim(),
@@ -154,6 +165,24 @@ fun AiSettingsScreen(
             apiKey = ""
         }
         showProviderPicker = false
+    }
+
+    fun selectEmbeddingProvider(provider: EmbeddingProviderType) {
+        selectedEmbeddingProvider = provider
+        if (EmbeddingProviderType.fromString(currentConfig.embeddingProviderType) == provider) {
+            embeddingApiKey = currentConfig.embeddingApiKey
+            embeddingBaseUrl = currentConfig.embeddingBaseUrl
+        } else {
+            embeddingApiKey = ""
+            embeddingBaseUrl = provider.defaultBaseUrl
+            embeddingModel = provider.defaultModel
+            multimodalEmbeddingModel = ""
+            if (provider == EmbeddingProviderType.OFFLINE) {
+                embeddingApiKey = ""
+                embeddingBaseUrl = ""
+            }
+        }
+        showEmbeddingProviderPicker = false
     }
 
     fun usableModels(models: List<AvailableAiModel>): List<AvailableAiModel> =
@@ -353,93 +382,120 @@ fun AiSettingsScreen(
                     CompactInfo("Server: ${baseUrl.removeSuffix("/")}")
                 }
 
-                SectionTitle("LOCAL BRAIN MODEL — REQUIRED FOR SEMANTIC SEARCH")
+                SectionTitle("EMBEDDING PROVIDER — INDEPENDENT FROM CHAT")
+
                 OutlinedCard(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().clickable { showEmbeddingProviderPicker = true },
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(onDeviceBrainModel.displayName, fontWeight = FontWeight.Bold)
-                                Text(
-                                    "${onDeviceBrainModel.sizeLabel} · runs entirely on this device",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(selectedEmbeddingProvider.displayName, fontWeight = FontWeight.Bold)
+                            Text(selectedEmbeddingProvider.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        Text("Change", color = MaterialTheme.colorScheme.primary)
+                    }
+                }
 
-                        Text(
-                            "This neural embedding model is the canonical Brain search/index model. Download it once; semantic search and indexing work without a cloud provider.",
-                            style = MaterialTheme.typography.bodySmall
+                if (selectedEmbeddingProvider != EmbeddingProviderType.OFFLINE) {
+                    if (selectedEmbeddingProvider != EmbeddingProviderType.OLLAMA) {
+                        OutlinedTextField(
+                            value = embeddingApiKey,
+                            onValueChange = { embeddingApiKey = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Embedding API key") },
+                            placeholder = { Text(selectedEmbeddingProvider.keyHint) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            visualTransformation = PasswordVisualTransformation()
                         )
+                    }
+                    OutlinedTextField(
+                        value = embeddingBaseUrl,
+                        onValueChange = { embeddingBaseUrl = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Embedding base URL") },
+                        placeholder = { Text(selectedEmbeddingProvider.defaultBaseUrl.ifBlank { "https://your-server/v1" }) },
+                        singleLine = true
+                    )
+                    CompactInfo("This provider is used only for Brain embeddings. Chat/vision can use a different provider. Nothing about the LLM choice changes this setting.")
+                } else {
+                    CompactInfo("Embeddings stay on this device. Chat can still use Gemini, OpenAI-compatible, Ollama, or another provider at the same time.")
+                }
 
-                        when (onDeviceBrainModel.status) {
-                            OnDeviceBrainModelStatus.NOT_INSTALLED -> {
-                                Button(
-                                    onClick = onDownloadOnDeviceBrainModel,
-                                    modifier = Modifier.fillMaxWidth().testTag("on_device_brain_download_btn"),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Download model")
-                                }
-                            }
-                            OnDeviceBrainModelStatus.DOWNLOADING -> {
-                                LinearProgressIndicator(
-                                    progress = { onDeviceBrainModel.progress },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Text(
-                                    "Downloading ${(onDeviceBrainModel.progress * 100).toInt()}%…",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            OnDeviceBrainModelStatus.READY -> {
-                                Text(
-                                    "Ready — semantic search and Brain indexing are available locally.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                OutlinedButton(
-                                    onClick = onDeleteOnDeviceBrainModel,
-                                    modifier = Modifier.fillMaxWidth().testTag("on_device_brain_delete_btn"),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Remove local model")
-                                }
-                            }
-                            OnDeviceBrainModelStatus.ERROR -> {
-                                Text(
-                                    onDeviceBrainModel.error ?: "The model could not be downloaded.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                                Button(
-                                    onClick = onDownloadOnDeviceBrainModel,
-                                    modifier = Modifier.fillMaxWidth().testTag("on_device_brain_retry_btn"),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Retry download")
-                                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Embedding models", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (selectedEmbeddingProvider == EmbeddingProviderType.OFFLINE) "Use the downloaded local model below."
+                            else "Discover models from the embedding provider.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (selectedEmbeddingProvider != EmbeddingProviderType.OFFLINE) {
+                        IconButton(
+                            onClick = { onFetchEmbeddingModels(draftConfig()) },
+                            enabled = !isFetchingModels
+                        ) {
+                            if (isFetchingModels) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            else Icon(Icons.Default.Refresh, contentDescription = "Fetch embedding models")
+                        }
+                    }
+                }
+
+                if (selectedEmbeddingProvider != EmbeddingProviderType.OFFLINE) {
+                    ModelPicker("Text embedding / semantic search", firstUsable(embeddings, embeddingModel), { showEmbeddingPicker = true }, "ai_embedding_model_field", embeddings)
+                    ModelPicker("Multimodal embedding / image retrieval", firstUsable(multimodalEmbeddings, multimodalEmbeddingModel), { showMultimodalEmbeddingPicker = true }, "ai_multimodal_embedding_model_field", multimodalEmbeddings)
+                    Button(
+                        onClick = { onTestEmbeddingConnection(draftConfig()) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Test embedding connection")
+                    }
+                    embeddingTestResult?.let { result ->
+                        Surface(
+                            color = if (result.success) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(if (result.success) "Embedding connected" else "Embedding unavailable", fontWeight = FontWeight.Bold)
+                                Text(result.message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 3.dp))
                             }
                         }
                     }
+                }
+
+                SectionTitle("OFFLINE EMBEDDING MODEL")
+                if (selectedEmbeddingProvider == EmbeddingProviderType.OFFLINE) {
+                    OutlinedCard(
+                        modifier = Modifier.fillMaxWidth().clickable { showOfflineBrainPicker = true },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("On-device embedding model", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                val selectedOffline = offlineBrainModels.firstOrNull { it.id == selectedOfflineBrainModelId }
+                                Text(
+                                    selectedOffline?.displayName ?: onDeviceBrainModel.displayName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                if (selectedOffline != null) {
+                                    Text(selectedOffline.sizeLabel + " · " + selectedOffline.embeddingDimension + "-D", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            Text("Choose", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                } else {
+                    CompactInfo("Offline models remain available as a separate choice. Switch Embedding Provider to On-device Brain whenever you want fully local embeddings.")
                 }
 
                 val cloudReady = isEnabled && (isKeylessAiConfig(draftConfig()) || apiKey.trim().isNotBlank())
@@ -482,32 +538,7 @@ fun AiSettingsScreen(
 
                 ModelPicker("General files / chat", firstUsable(chats, chatModel), { showChatPicker = true }, "ai_chat_model_field", chats)
                 ModelPicker("Vision / image understanding + caption", firstUsable(visions, visionModel), { showVisionPicker = true }, "ai_vision_model_field", visions)
-                ModelPicker("Text embedding / semantic search", firstUsable(embeddings, embeddingModel), { showEmbeddingPicker = true }, "ai_embedding_model_field", embeddings)
-                ModelPicker("Multimodal embedding / image retrieval", firstUsable(multimodalEmbeddings, multimodalEmbeddingModel), { showMultimodalEmbeddingPicker = true }, "ai_multimodal_embedding_model_field", multimodalEmbeddings)
-
-                SectionTitle("OFFLINE BRAIN MODEL")
-                OutlinedCard(
-                    modifier = Modifier.fillMaxWidth().clickable { showOfflineBrainPicker = true },
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("On-device embedding model", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            val selectedOffline = offlineBrainModels.firstOrNull { it.id == selectedOfflineBrainModelId }
-                            Text(
-                                selectedOffline?.displayName ?: onDeviceBrainModel.displayName,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            if (selectedOffline != null) {
-                                Text(selectedOffline.sizeLabel + " · " + selectedOffline.embeddingDimension + "-D", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                        Text("Choose", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-                    }
-                }
-
-                SectionTitle("CHECK")
+undefined                SectionTitle("CHECK")
                 Button(
                     onClick = { onTestConnection(draftConfig()) },
                     enabled = !isTestingConnection,
@@ -574,6 +605,7 @@ fun AiSettingsScreen(
     }
 
     if (showProviderPicker) ProviderPickerDialog(selectedProvider, ::selectProvider) { showProviderPicker = false }
+    if (showEmbeddingProviderPicker) EmbeddingProviderPickerDialog(selectedEmbeddingProvider, ::selectEmbeddingProvider) { showEmbeddingProviderPicker = false }
     if (showChatPicker) ModelPickerDialog("Choose chat model", chats, chatModel, { chatModel = it; showChatPicker = false }) { showChatPicker = false }
     if (showVisionPicker) ModelPickerDialog("Choose vision model", visions, visionModel, { visionModel = it; showVisionPicker = false }) { showVisionPicker = false }
     if (showEmbeddingPicker) ModelPickerDialog("Choose text embedding model", embeddings, embeddingModel, { embeddingModel = it; showEmbeddingPicker = false }) { showEmbeddingPicker = false }
@@ -636,6 +668,35 @@ private fun ModelPicker(
             Text("Choose", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
         }
     }
+}
+
+@Composable
+private fun EmbeddingProviderPickerDialog(
+    selected: EmbeddingProviderType,
+    onSelect: (EmbeddingProviderType) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose embedding provider") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                EmbeddingProviderType.entries.forEach { provider ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelect(provider) },
+                        color = if (provider == selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(Modifier.padding(11.dp)) {
+                            Text(provider.displayName, fontWeight = FontWeight.SemiBold)
+                            Text(provider.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
 }
 
 @Composable
