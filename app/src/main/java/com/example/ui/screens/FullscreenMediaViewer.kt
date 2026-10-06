@@ -181,7 +181,7 @@ fun FullscreenMediaViewer(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(currentItem.path) {
+                .pointerInput(currentItem.path, currentIndex) {
                     var horizontalSwipe = 0f
                     var verticalSwipe = 0f
                     var swipeTriggered = false
@@ -403,22 +403,6 @@ fun FullscreenMediaViewer(
                 }
             }
 
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = Color.Black.copy(alpha = 0.68f),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 88.dp)
-            ) {
-                Text(
-                    text = "Swipe left or right to browse",
-                    color = Color.White.copy(alpha = 0.9f),
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                )
-            }
-
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -492,16 +476,6 @@ fun FullscreenMediaViewer(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                    }
-                    TextButton(
-                        onClick = {
-                            showSummarySheet = false
-                            onInspectMetadata(currentItem)
-                        }
-                    ) {
-                        Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Metadata")
                     }
                 }
 
