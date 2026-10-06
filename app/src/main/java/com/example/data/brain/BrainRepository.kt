@@ -337,6 +337,32 @@ class BrainRepository(context: Context) {
         )
     }
 
+    private suspend fun embedTextForAi(texts: List<String>, config: AiProviderConfigEntity): Pair<List<FloatArray>, String> {
+        if (texts.isEmpty()) return emptyList<FloatArray>() to ""
+        return when (EmbeddingProviderType.fromString(config.embeddingProviderType)) {
+            EmbeddingProviderType.OFFLINE -> {
+                if (!onDeviceEmbedding.isReady()) {
+                    throw IllegalStateException("Download the selected on-device embedding model before running AI")
+                }
+                val vectors = onDeviceEmbedding.embedTextPassages(texts)
+                    ?: throw IllegalStateException("On-device embedding failed")
+                val model = onDeviceEmbedding.modelIdIfReady()
+                    ?: throw IllegalStateException("Selected on-device embedding model is unavailable")
+                vectors to model
+            }
+            else -> {
+                val model = config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
+                if (model.isBlank()) throw IllegalStateException("Choose a text embedding model before running AI")
+                val vectors = client.embedTextPassages(texts, config)
+                vectors to model
+            }
+        }.also { (vectors, _) ->
+            if (vectors.size != texts.size || vectors.any { it.isEmpty() }) {
+                throw IllegalStateException("Embedding provider returned an incomplete embedding batch")
+            }
+        }
+    }
+
     suspend fun runFileAi(file: File, force: Boolean = true): BrainIndexOutcome = withContext(Dispatchers.IO) {
         if (!file.exists() || !file.isFile || !file.canRead()) {
             return@withContext BrainIndexOutcome(false, error = "File is not readable")
@@ -359,8 +385,25 @@ class BrainRepository(context: Context) {
             return@withContext BrainIndexOutcome(false, error = error.message ?: "File AI analysis failed")
         }
         saveDocumentAi(file, analysis, config.chatModel.ifBlank { config.providerType })
-        // Embedding is deliberately the final stage.
-        indexFile(file, config, force = force)
+        // File AI owns the embedding stage. Brain receives only the completed vectors for persistence.
+        val embeddingTexts = try {
+            indexer.buildEmbeddingTexts(file, config)
+        } catch (error: Exception) {
+            return@withContext BrainIndexOutcome(false, error = error.message ?: "Could not prepare embedding input")
+        }
+        val (textEmbeddings, textEmbeddingModel) = try {
+            embedTextForAi(embeddingTexts, config)
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            return@withContext BrainIndexOutcome(false, error = error.message ?: "Text embedding failed")
+        }
+        indexer.index(
+            file,
+            normalizeAiConfig(config),
+            force = force,
+            precomputedTextEmbeddings = textEmbeddings,
+            precomputedTextEmbeddingModel = textEmbeddingModel
+        )
         val indexed = brainDocumentDao.get(file.absolutePath)?.state == BrainIndexStates.READY
         if (indexed) BrainIndexOutcome(true) else BrainIndexOutcome(false, error = "Embedding failed")
     }
@@ -431,8 +474,26 @@ class BrainRepository(context: Context) {
                 imageEmbeddingModel = if (imageVector != null) config.multimodalEmbeddingModel.trim() else ""
             ) ?: return@withContext BrainIndexOutcome(false, error = "Gallery AI profile could not be saved")
         )
-        // VLM + image embedding are complete and persisted before the final text embedding/storage stage.
-        indexFile(file, config, force = force, precomputedImageEmbedding = imageVector)
+        // Gallery AI owns both image and text embedding stages. Brain receives only completed vectors.
+        val embeddingTexts = try {
+            indexer.buildEmbeddingTexts(file, config)
+        } catch (error) {
+            return@withContext BrainIndexOutcome(false, error = error.message ?: "Could not prepare embedding input")
+        }
+        val (textEmbeddings, textEmbeddingModel) = try {
+            embedTextForAi(embeddingTexts, config)
+        } catch (error) {
+            if (error is CancellationException) throw error
+            return@withContext BrainIndexOutcome(false, error = error.message ?: "Text embedding failed")
+        }
+        indexer.index(
+            file,
+            normalizeAiConfig(config),
+            force = force,
+            precomputedTextEmbeddings = textEmbeddings,
+            precomputedTextEmbeddingModel = textEmbeddingModel,
+            precomputedImageEmbedding = imageVector
+        )
         val indexed = brainDocumentDao.get(file.absolutePath)?.state == BrainIndexStates.READY
         if (indexed) BrainIndexOutcome(true) else BrainIndexOutcome(false, error = "Embedding failed")
     }
