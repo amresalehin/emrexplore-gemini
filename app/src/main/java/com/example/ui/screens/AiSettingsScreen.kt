@@ -141,10 +141,6 @@ fun AiSettingsScreen(
     var vectorDatabaseApiKey by remember { mutableStateOf(currentConfig.vectorDatabaseApiKey) }
     var vectorDatabaseCollection by remember { mutableStateOf(currentConfig.vectorDatabaseCollection.ifBlank { "emrexplore_brain" }) }
 
-    fun persistDraft() {
-        onSaveConfig(draftConfig())
-    }
-
     fun draftConfig(): AiProviderConfigEntity = currentConfig.copy(
         providerType = selectedProvider.name,
         apiKey = apiKey.trim(),
@@ -165,6 +161,10 @@ fun AiSettingsScreen(
         vectorDatabaseCollection = vectorDatabaseCollection.trim().ifBlank { "emrexplore_brain" },
         brainSetupCompleted = true
     )
+
+    fun persistDraft() {
+        onSaveConfig(draftConfig())
+    }
 
     fun selectProvider(provider: ProviderType) {
         selectedProvider = provider
