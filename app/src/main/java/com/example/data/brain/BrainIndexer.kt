@@ -34,6 +34,18 @@ class BrainIndexer(
         vectorStoreFor(config, chunkDao)
     private val reader = BrainContentReader(context)
 
+    suspend fun buildEmbeddingTexts(file: File, config: AiProviderConfigEntity): List<String> {
+        val input = reader.read(file, config)
+        val analysis = if (input.isImage) {
+            imageProfileDao.get(file.absolutePath)?.let(::analysisFromImageProfile)
+                ?: throw IllegalStateException("Gallery AI profile is missing")
+        } else {
+            documentDao.get(file.absolutePath)?.let(::analysisFromDocument)
+                ?: throw IllegalStateException("File AI profile is missing")
+        }
+        return buildChunkTexts(input, analysis)
+    }
+
     suspend fun index(
         file: File,
         config: AiProviderConfigEntity,
