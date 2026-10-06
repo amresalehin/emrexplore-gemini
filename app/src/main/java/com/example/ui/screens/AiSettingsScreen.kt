@@ -175,6 +175,8 @@ fun AiSettingsScreen(
         } else {
             embeddingApiKey = ""
             embeddingBaseUrl = provider.defaultBaseUrl
+            embeddingModel = provider.defaultModel
+            multimodalEmbeddingModel = ""
             if (provider == EmbeddingProviderType.OFFLINE) {
                 embeddingApiKey = ""
                 embeddingBaseUrl = ""
