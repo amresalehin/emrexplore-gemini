@@ -136,14 +136,21 @@ fun BrainSetupScreen(
     }
 
     LaunchedEffect(selectedChatProvider) {
-        if (selectedChatProvider == ProviderType.OLLAMA || apiKey.isNotBlank()) {
+        val localEndpoint = endpoint.trim().lowercase().let {
+            it.contains("localhost") || it.contains("127.0.0.1") || it.contains("10.0.2.2")
+        }
+        if (endpoint.isNotBlank() && (selectedChatProvider == ProviderType.OLLAMA || apiKey.isNotBlank() || localEndpoint)) {
             onFetchModels(chatDraft())
         }
     }
 
     LaunchedEffect(selectedEmbedding) {
+        val localEndpoint = embeddingEndpoint.trim().lowercase().let {
+            it.contains("localhost") || it.contains("127.0.0.1") || it.contains("10.0.2.2")
+        }
         if (selectedEmbedding != EmbeddingProviderType.OFFLINE &&
-            (selectedEmbedding == EmbeddingProviderType.OLLAMA || embeddingApiKey.isNotBlank())
+            embeddingEndpoint.isNotBlank() &&
+            (selectedEmbedding == EmbeddingProviderType.OLLAMA || embeddingApiKey.isNotBlank() || localEndpoint)
         ) {
             onFetchEmbeddingModels(embeddingDraft())
         }
