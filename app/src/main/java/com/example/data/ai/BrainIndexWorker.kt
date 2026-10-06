@@ -20,9 +20,10 @@ class BrainIndexWorker(appContext: Context, params: WorkerParameters) : Coroutin
         currentCoroutineContext().ensureActive()
 
         val brainRepository = BrainRepository(applicationContext)
-        if (!brainRepository.isOnDeviceBrainModelReady()) {
+        val config = brainRepository.getAiConfig()
+        if (EmbeddingProviderType.fromString(config.embeddingProviderType) == EmbeddingProviderType.OFFLINE && !brainRepository.isOnDeviceBrainModelReady()) {
             return Result.failure(
-                workDataOf("error" to "Download the on-device Brain model before indexing")
+                workDataOf("error" to "Download the selected on-device text embedding model before indexing")
             )
         }
 
@@ -36,7 +37,6 @@ class BrainIndexWorker(appContext: Context, params: WorkerParameters) : Coroutin
             if (paths.isNotEmpty()) {
                 val fileRepository = FileRepository(applicationContext)
                 val targetedStore = BrainTargetedOperationStore(applicationContext)
-                val config = brainRepository.getAiConfig()
                 var indexed = 0
                 var failed = 0
 
