@@ -742,8 +742,8 @@ fun AiSettingsScreen(
         models = offlineBrainModels,
         selectedId = selectedOfflineBrainModelId,
         onSelect = {
-            onSelectOfflineBrainModel(it)
             embeddingModel = it
+            onSelectOfflineBrainModel(it)
             onSaveConfig(draftConfig())
             showOfflineBrainPicker = false
         },
