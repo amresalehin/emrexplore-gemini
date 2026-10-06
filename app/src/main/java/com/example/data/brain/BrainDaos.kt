@@ -266,3 +266,63 @@ interface BrainRunDao {
     @Query("DELETE FROM brain_runs")
     suspend fun clearAll()
 }
+
+
+@Dao
+interface BrainVectorSyncDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<BrainVectorSyncOperationEntity>)
+
+    @Query("""
+        SELECT * FROM brain_vector_sync_operations
+        WHERE state != 'COMPLETED'
+        ORDER BY createdAt ASC
+        LIMIT :limit
+    """)
+    suspend fun getPending(limit: Int): List<BrainVectorSyncOperationEntity>
+
+    @Query("""
+        UPDATE brain_vector_sync_operations
+        SET state = 'IN_FLIGHT', attempts = attempts + 1, updatedAt = :updatedAt
+        WHERE id = :id
+    """)
+    suspend fun markInFlight(id: String, updatedAt: Long)
+
+    @Query("""
+        UPDATE brain_vector_sync_operations
+        SET state = 'COMPLETED', lastError = NULL, updatedAt = :updatedAt
+        WHERE id = :id
+    """)
+    suspend fun markCompleted(id: String, updatedAt: Long)
+
+    @Query("""
+        UPDATE brain_vector_sync_operations
+        SET state = 'FAILED', lastError = :error, updatedAt = :updatedAt
+        WHERE id = :id
+    """)
+    suspend fun markFailed(id: String, error: String, updatedAt: Long)
+
+    @Query("""
+        UPDATE brain_vector_sync_operations
+        SET state = 'PENDING', updatedAt = :updatedAt
+        WHERE state = 'IN_FLIGHT'
+    """)
+    suspend fun resetInFlight(updatedAt: Long)
+
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1
+            FROM brain_vector_sync_operations
+            WHERE chunkId = :chunkId
+              AND operation = 'UPSERT'
+              AND createdAt > :createdAt
+        )
+    """)
+    suspend fun hasNewerUpsert(chunkId: String, createdAt: Long): Boolean
+
+    @Query("DELETE FROM brain_vector_sync_operations WHERE state = 'COMPLETED'")
+    suspend fun deleteCompleted()
+
+    @Query("DELETE FROM brain_vector_sync_operations")
+    suspend fun clearAll()
+}
