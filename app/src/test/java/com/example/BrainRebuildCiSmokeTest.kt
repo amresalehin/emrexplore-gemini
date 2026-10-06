@@ -6,6 +6,6 @@ import org.junit.Test
 class BrainRebuildCiSmokeTest {
     @Test
     fun branchBuildSmokeTest() {
-        assertTrue(1 + 1 == 2)
+        assertTrue(2 + 2 == 4)
     }
 }
