@@ -63,13 +63,83 @@ enum class ProviderType(
     ),
     GROQ(
         displayName = "Groq Cloud",
-        description = "Ultra-fast LPUs for instant document extraction & indexing",
-        defaultBaseUrl = "https://api.groq.com/openai/v1/",
-        defaultModel = "qwen/qwen3.8-27b",
-        defaultVisionModel = "qwen/qwen3.8-27b",
+        description = "Ultra-fast inference through an OpenAI-compatible endpoint",
+        defaultBaseUrl = "https://api.groq.com/openai/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
         defaultTextEmbeddingModel = "",
         defaultMultimodalEmbeddingModel = "",
         keyHint = "gsk_..."
+    ),
+    TOGETHER(
+        displayName = "Together AI",
+        description = "Large catalog of open-weight LLMs and VLMs",
+        defaultBaseUrl = "https://api.together.ai/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "API key"
+    ),
+    MISTRAL(
+        displayName = "Mistral AI",
+        description = "Mistral's OpenAI-compatible API with live model metadata",
+        defaultBaseUrl = "https://api.mistral.ai/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "API key"
+    ),
+    DEEPSEEK(
+        displayName = "DeepSeek",
+        description = "OpenAI-compatible DeepSeek API",
+        defaultBaseUrl = "https://api.deepseek.com/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "API key"
+    ),
+    XAI(
+        displayName = "xAI",
+        description = "Grok models through an OpenAI-compatible API",
+        defaultBaseUrl = "https://api.x.ai/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "xai-..."
+    ),
+    FIREWORKS(
+        displayName = "Fireworks AI",
+        description = "Open-weight models through an OpenAI-compatible endpoint",
+        defaultBaseUrl = "https://api.fireworks.ai/inference/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "API key"
+    ),
+    CEREBRAS(
+        displayName = "Cerebras",
+        description = "Fast inference for supported open models",
+        defaultBaseUrl = "https://api.cerebras.ai/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "API key"
+    ),
+    SAMBANOVA(
+        displayName = "SambaNova",
+        description = "Enterprise open-model inference through an OpenAI-compatible API",
+        defaultBaseUrl = "https://api.sambanova.ai/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "API key"
     );
 
     companion object {
@@ -176,14 +246,29 @@ fun isKeylessAiConfig(config: com.example.data.local.AiProviderConfigEntity): Bo
     return url.contains("localhost") || url.contains("127.0.0.1") || url.contains("10.0.2.2")
 }
 
+enum class ModelAvailability {
+    AVAILABLE,
+    UNAVAILABLE,
+    UNKNOWN
+}
+
 data class AvailableAiModel(
     val id: String,
+    val displayName: String = id,
+    val owner: String = "",
     val supportsChat: Boolean = true,
     val supportsVision: Boolean = false,
     val supportsEmbedding: Boolean = false,
     val supportsMultimodalEmbedding: Boolean = false,
+    val supportsTools: Boolean = false,
+    val supportsStreaming: Boolean = true,
+    val contextWindow: Long? = null,
+    val inputPricePerMillion: Double? = null,
+    val outputPricePerMillion: Double? = null,
     val isFree: Boolean = false,
-    val priceKnown: Boolean = false
+    val priceKnown: Boolean = false,
+    val availability: ModelAvailability = ModelAvailability.AVAILABLE,
+    val availabilityMessage: String = "Available from this endpoint"
 )
 
 enum class VectorDatabaseType(
