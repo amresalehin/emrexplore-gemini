@@ -8,6 +8,7 @@ import com.example.data.ai.ExtractedEntity
 import com.example.data.ai.ExtractedRelation
 import com.example.data.ai.ProviderType
 import com.example.data.ai.EmbeddingProviderType
+import com.example.data.ai.VectorDatabaseType
 import com.example.data.ai.isKeylessAiConfig
 import com.example.data.local.AiProviderConfigEntity
 import java.io.File
@@ -31,7 +32,8 @@ class BrainIndexer(
     private val client: BrainAiGateway,
     private val embeddingClient: com.example.data.ai.AiProviderClient,
     private val db: AppDatabase,
-    private val onDeviceEmbedding: OnDeviceEmbeddingEngine
+    private val onDeviceEmbedding: OnDeviceEmbeddingEngine,
+    private val vectorSyncDao: BrainVectorSyncDao
 ) {
     private fun vectorStore(config: AiProviderConfigEntity): BrainVectorStore =
         vectorStoreFor(config, chunkDao)
@@ -256,6 +258,32 @@ class BrainIndexer(
             )
 
             val previousChunks = chunkDao.getForFile(path)
+            val newIds = chunks.map { it.id }.toSet()
+            val removedIds = previousChunks.map { it.id }.filterNot { it in newIds }
+            val vectorSyncOperations = if (VectorDatabaseType.fromString(config.vectorDatabaseType) == VectorDatabaseType.QDRANT) {
+                buildList {
+                    chunks.filter { it.embeddingJson.isNotBlank() || it.imageEmbeddingJson.isNotBlank() }.forEach { chunk ->
+                        add(
+                            BrainVectorSyncOperationEntity(
+                                id = java.util.UUID.randomUUID().toString(),
+                                operation = BrainVectorSyncOperations.UPSERT,
+                                chunkId = chunk.id
+                            )
+                        )
+                    }
+                    removedIds.forEach { id ->
+                        add(
+                            BrainVectorSyncOperationEntity(
+                                id = java.util.UUID.randomUUID().toString(),
+                                operation = BrainVectorSyncOperations.DELETE,
+                                chunkId = id
+                            )
+                        )
+                    }
+                }
+            } else {
+                emptyList()
+            }
             withTransaction {
                 edgeEvidenceDao.deleteForFile(path)
                 edgeEvidenceDao.refreshRepresentatives()
@@ -269,14 +297,14 @@ class BrainIndexer(
                 if (edges.isNotEmpty()) edgeDao.insertAll(edges.values.toList())
                 if (edgeEvidence.isNotEmpty()) edgeEvidenceDao.insertAll(edgeEvidence.values.toList())
                 if (chunks.isNotEmpty()) chunkDao.insertAll(chunks)
+                if (vectorSyncOperations.isNotEmpty()) vectorSyncDao.insertAll(vectorSyncOperations)
                 documentDao.insert(document)
                 if (input.isImage) imageProfileDao.insert(buildImageProfile(input, analysis, config, imageEmbedding != null))
             }
 
-            vectorStore(config).upsert(chunks, config)
-            val newIds = chunks.map { it.id }.toSet()
-            val removedIds = previousChunks.map { it.id }.filterNot { it in newIds }
-            vectorStore(config).delete(removedIds, config)
+            if (vectorSyncOperations.isNotEmpty()) {
+                BrainVectorSyncWorker.enqueue(context)
+            }
 
             runDao.insert(
                 BrainRunEntity(
