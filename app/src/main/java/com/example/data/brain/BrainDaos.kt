@@ -45,12 +45,19 @@ interface BrainChunkDao {
         WHERE embeddingModel = :embeddingModel
           AND embeddingJson != ''
         ORDER BY indexedAt DESC
-        LIMIT :limit OFFSET :offset
+        AND (
+            :afterIndexedAt IS NULL
+            OR indexedAt < :afterIndexedAt
+            OR (indexedAt = :afterIndexedAt AND id < :afterId)
+        )
+        ORDER BY indexedAt DESC, id DESC
+        LIMIT :limit
     """)
     suspend fun getEmbeddedPage(
         embeddingModel: String,
         limit: Int,
-        offset: Int
+        afterIndexedAt: Long?,
+        afterId: String?
     ): List<BrainChunkEntity>
 
     @Query("""
@@ -58,9 +65,20 @@ interface BrainChunkDao {
         WHERE imageEmbeddingModel = :imageEmbeddingModel
           AND imageEmbeddingJson != ''
         ORDER BY indexedAt DESC
-        LIMIT :limit OFFSET :offset
+        AND (
+            :afterIndexedAt IS NULL
+            OR indexedAt < :afterIndexedAt
+            OR (indexedAt = :afterIndexedAt AND id < :afterId)
+        )
+        ORDER BY indexedAt DESC, id DESC
+        LIMIT :limit
     """)
-    suspend fun getImageEmbeddedPage(imageEmbeddingModel: String, limit: Int, offset: Int): List<BrainChunkEntity>
+    suspend fun getImageEmbeddedPage(
+        imageEmbeddingModel: String,
+        limit: Int,
+        afterIndexedAt: Long?,
+        afterId: String?
+    ): List<BrainChunkEntity>
 
     @Query("SELECT * FROM brain_chunks WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<String>): List<BrainChunkEntity>
