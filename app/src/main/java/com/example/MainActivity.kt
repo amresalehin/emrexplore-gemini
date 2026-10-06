@@ -59,6 +59,7 @@ import com.example.ui.components.getRequiredStoragePermissions
 import com.example.ui.components.isAllFilesAccessGranted
 import com.example.ui.components.launchAllFilesAccessSettings
 import com.example.ui.screens.AiSettingsScreen
+import com.example.ui.screens.BrainSetupScreen
 import com.example.ui.screens.BrainScreen
 import com.example.ui.screens.FileExplorerScreen
 import com.example.ui.screens.FilePropertiesDialog
@@ -421,30 +422,41 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
 
     // 6. Dedicated AI & BYOK Provider Settings Screen
     if (uiState.isAiSettingsScreenOpen) {
-        AiSettingsScreen(
-            currentConfig = uiState.aiConfig,
-            isTestingConnection = uiState.isTestingAiConnection,
-            testResult = uiState.aiTestResult,
-            onSaveConfig = { viewModel.saveAiConfig(it) },
-            onTestConnection = { viewModel.testAiConnection(it) },
-            availableModels = uiState.aiModels,
-            availableVisionModels = uiState.aiVisionModels,
-            availableEmbeddingModels = uiState.aiEmbeddingModels,
-            availableMultimodalEmbeddingModels = uiState.aiMultimodalEmbeddingModels,
-            offlineBrainModels = uiState.offlineBrainModels,
-            selectedOfflineBrainModelId = uiState.onDeviceBrainModel.modelId,
-            onSelectOfflineBrainModel = { viewModel.selectOnDeviceBrainModel(it) },
-            isFetchingModels = uiState.isFetchingAiModels,
-            modelFetchError = uiState.aiModelFetchError,
-            onFetchModels = { viewModel.fetchAiModels(it) },
-            onFetchEmbeddingModels = { viewModel.fetchEmbeddingModels(it) },
-            onTestEmbeddingConnection = { viewModel.testEmbeddingConnection(it) },
-            embeddingTestResult = uiState.embeddingTestResult,
-            onDeviceBrainModel = uiState.onDeviceBrainModel,
-            onDownloadOnDeviceBrainModel = { viewModel.downloadOnDeviceBrainModel() },
-            onDeleteOnDeviceBrainModel = { viewModel.deleteOnDeviceBrainModel() },
-            onNavigateBack = { viewModel.setShowAiSettings(false) }
-        )
+        if (!uiState.aiConfig.brainSetupCompleted) {
+            BrainSetupScreen(
+                currentConfig = uiState.aiConfig,
+                offlineModels = uiState.offlineBrainModels,
+                onSelectOfflineModel = { viewModel.selectOnDeviceBrainModel(it) },
+                onSaveConfig = { viewModel.saveAiConfig(it) },
+                onOpenAdvancedSettings = { viewModel.setShowAiSettings(false); viewModel.setShowAiSettings(true) },
+                onNavigateBack = { viewModel.setShowAiSettings(false) }
+            )
+        } else {
+            AiSettingsScreen(
+                currentConfig = uiState.aiConfig,
+                isTestingConnection = uiState.isTestingAiConnection,
+                testResult = uiState.aiTestResult,
+                onSaveConfig = { viewModel.saveAiConfig(it) },
+                onTestConnection = { viewModel.testAiConnection(it) },
+                availableModels = uiState.aiModels,
+                availableVisionModels = uiState.aiVisionModels,
+                availableEmbeddingModels = uiState.aiEmbeddingModels,
+                availableMultimodalEmbeddingModels = uiState.aiMultimodalEmbeddingModels,
+                offlineBrainModels = uiState.offlineBrainModels,
+                selectedOfflineBrainModelId = uiState.onDeviceBrainModel.modelId,
+                onSelectOfflineBrainModel = { viewModel.selectOnDeviceBrainModel(it) },
+                isFetchingModels = uiState.isFetchingAiModels,
+                modelFetchError = uiState.aiModelFetchError,
+                onFetchModels = { viewModel.fetchAiModels(it) },
+                onFetchEmbeddingModels = { viewModel.fetchEmbeddingModels(it) },
+                onTestEmbeddingConnection = { viewModel.testEmbeddingConnection(it) },
+                embeddingTestResult = uiState.embeddingTestResult,
+                onDeviceBrainModel = uiState.onDeviceBrainModel,
+                onDownloadOnDeviceBrainModel = { viewModel.downloadOnDeviceBrainModel() },
+                onDeleteOnDeviceBrainModel = { viewModel.deleteOnDeviceBrainModel() },
+                onNavigateBack = { viewModel.setShowAiSettings(false) }
+            )
+        }
     }
 }
 
