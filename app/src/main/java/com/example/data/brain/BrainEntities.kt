@@ -155,3 +155,35 @@ data class BrainRunEntity(
     val startedAt: Long,
     val finishedAt: Long = System.currentTimeMillis()
 )
+
+
+object BrainVectorSyncStates {
+    const val PENDING = "PENDING"
+    const val IN_FLIGHT = "IN_FLIGHT"
+    const val FAILED = "FAILED"
+    const val COMPLETED = "COMPLETED"
+}
+
+object BrainVectorSyncOperations {
+    const val UPSERT = "UPSERT"
+    const val DELETE = "DELETE"
+    const val CLEAR = "CLEAR"
+}
+
+@Entity(
+    tableName = "brain_vector_sync_operations",
+    indices = [
+        Index(value = ["state", "createdAt"]),
+        Index(value = ["chunkId", "createdAt"])
+    ]
+)
+data class BrainVectorSyncOperationEntity(
+    @PrimaryKey val id: String,
+    val operation: String,
+    val chunkId: String? = null,
+    val state: String = BrainVectorSyncStates.PENDING,
+    val attempts: Int = 0,
+    val lastError: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
