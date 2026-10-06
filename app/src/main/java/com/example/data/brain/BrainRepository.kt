@@ -244,62 +244,15 @@ class BrainRepository(context: Context) {
         for (oldPath in removedPaths.distinct()) {
             removeIndexedSource(oldPath)
         }
-
-        for ((oldPath, newPath) in relocatedPaths) {
-            if (!File(oldPath).exists()) {
-                removeIndexedSource(oldPath)
-            }
-            if (EmbeddingProviderType.fromString(getAiConfig().embeddingProviderType) == EmbeddingProviderType.OFFLINE &&
-                !isOnDeviceBrainModelReady()
-            ) continue
-
-            val file = File(newPath)
-            if (!file.exists() || !file.canRead()) continue
-            val config = getAiConfig()
-            if (file.isDirectory) {
-                val descendants = fileIndexDao.getFilesUnderPath(newPath, newPath)
-                for (child in descendants) {
-                    currentCoroutineContext().ensureActive()
-                    if (!child.isDirectory &&
-                        child.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS
-                    ) {
-                        val childFile = File(child.path)
-                        if (childFile.isFile && childFile.canRead()) {
-                            indexFile(childFile, config, force = true)
-                        }
-                    }
-                }
-            } else if (file.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS) {
-                indexFile(file, config, force = true)
-            }
+        // File moves/renames do not start AI work. Existing enrichment remains
+        // owned by the old file identity until File AI/Gallery AI explicitly reruns.
+        for ((oldPath, _) in relocatedPaths.distinctBy { it.first to it.second }) {
+            removeIndexedSource(oldPath)
         }
     }
 
     suspend fun onFileRenamed(oldPath: String, newPath: String) = withContext(Dispatchers.IO) {
-        removeIndexedSource(oldPath)
-        val indexed = fileIndexDao.getByPath(newPath) ?: return@withContext
-        val config = getAiConfig()
-        if (!indexed.isDirectory) {
-            if (indexed.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS) {
-                indexFile(File(indexed.path), config, force = true)
-            }
-        } else {
-            // Directory rename: the FileRepository has already rebuilt the canonical
-            // subtree. Brain must consume that index and rehydrate every supported child.
-            val descendants = fileIndexDao.getFilesUnderPath(newPath, newPath)
-            for (child in descendants) {
-                currentCoroutineContext().ensureActive()
-                if (!child.isDirectory &&
-                    child.extension.lowercase(Locale.US) in BrainContentReader.SUPPORTED_EXTENSIONS
-                ) {
-                    val file = File(child.path)
-                    if (file.isFile && file.canRead()) {
-                        indexFile(file, config, force = true)
-                    }
-                }
-            }
-        }
-        brainNodeDao.recomputeDegrees()
+        if (oldPath != newPath) removeIndexedSource(oldPath)
     }
 
     suspend fun removeIndexedSource(filePath: String) = withContext(Dispatchers.IO) {
