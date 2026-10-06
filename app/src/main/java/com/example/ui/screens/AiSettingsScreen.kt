@@ -245,7 +245,7 @@ fun AiSettingsScreen(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            SectionTitle("LOCAL BRAIN — REQUIRED")
+            SectionTitle("BRAIN EMBEDDINGS — PROVIDER AGNOSTIC")
             OutlinedCard(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp)
@@ -255,11 +255,11 @@ fun AiSettingsScreen(
                         Icon(Icons.Default.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Enable Brain locally", fontWeight = FontWeight.Bold)
-                            Text("The local model powers semantic search, indexing, Topics and Graph.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Local embedding engine", fontWeight = FontWeight.Bold)
+                            Text("Optional private embedder. Chat, vision, and embeddings can each use different providers.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    Text("Brain retrieval is local-first. Download the model below; cloud AI is optional and only supplies generated answers or optional enrichment.", style = MaterialTheme.typography.bodySmall)
+                    Text("Download a local model only if you choose On-device Brain as the embedding provider. Cloud or LAN embeddings remain independent.", style = MaterialTheme.typography.bodySmall)
                     when (onDeviceBrainModel.status) {
                         OnDeviceBrainModelStatus.NOT_INSTALLED -> {
                             Button(onClick = onDownloadOnDeviceBrainModel, modifier = Modifier.fillMaxWidth().testTag("on_device_brain_download_btn"), shape = RoundedCornerShape(12.dp)) {
@@ -538,7 +538,7 @@ fun AiSettingsScreen(
 
                 ModelPicker("General files / chat", firstUsable(chats, chatModel), { showChatPicker = true }, "ai_chat_model_field", chats)
                 ModelPicker("Vision / image understanding + caption", firstUsable(visions, visionModel), { showVisionPicker = true }, "ai_vision_model_field", visions)
-undefined                SectionTitle("CHECK")
+                SectionTitle("CHECK")
                 Button(
                     onClick = { onTestConnection(draftConfig()) },
                     enabled = !isTestingConnection,
