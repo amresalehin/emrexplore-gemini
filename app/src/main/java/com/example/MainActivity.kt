@@ -561,17 +561,6 @@ private fun PersistentTabHost(
                 ragAnswer = uiState.ragAnswer,
                 isRagQuerying = uiState.isRagQuerying,
                 onDeviceBrainModel = uiState.onDeviceBrainModel,
-                embeddingReady = run {
-                    val embeddingProvider = com.example.data.ai.EmbeddingProviderType.fromString(uiState.aiConfig.embeddingProviderType)
-                    val model = uiState.aiConfig.textEmbeddingModel.ifBlank { uiState.aiConfig.embeddingModel }.isNotBlank()
-                    when (embeddingProvider) {
-                        com.example.data.ai.EmbeddingProviderType.OFFLINE -> uiState.onDeviceBrainModel.status == com.example.data.brain.OnDeviceBrainModelStatus.READY
-                        com.example.data.ai.EmbeddingProviderType.OLLAMA -> model && uiState.aiConfig.embeddingBaseUrl.isNotBlank()
-                        else -> model && uiState.aiConfig.embeddingBaseUrl.isNotBlank() &&
-                            (uiState.aiConfig.embeddingApiKey.isNotBlank() ||
-                                uiState.aiConfig.embeddingBaseUrl.lowercase().let { it.contains("localhost") || it.contains("127.0.0.1") || it.contains("10.0.2.2") })
-                    }
-                },
                 smartSuggestions = uiState.brainSmartSuggestions,
                 askAiMessages = uiState.askAiMessages,
                 attachedAiFile = uiState.attachedAiFile,
