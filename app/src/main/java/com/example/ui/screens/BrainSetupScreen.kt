@@ -45,6 +45,10 @@ fun BrainSetupScreen(
     modelFetchError: String? = null,
     onFetchModels: (AiProviderConfigEntity) -> Unit = {},
     onFetchEmbeddingModels: (AiProviderConfigEntity) -> Unit = {},
+    onDownloadOllamaModel: (AiProviderConfigEntity, String) -> Unit = { _, _ -> },
+    isDownloadingOllamaModel: Boolean = false,
+    ollamaDownloadProgress: Float = 0f,
+    ollamaDownloadStatus: String = "",
     onSaveConfig: (AiProviderConfigEntity) -> Unit,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
@@ -67,6 +71,7 @@ fun BrainSetupScreen(
     var collection by remember { mutableStateOf(currentConfig.vectorDatabaseCollection.ifBlank { "emrexplore_brain" }) }
     var search by remember { mutableStateOf("") }
     var embeddingSearch by remember { mutableStateOf("") }
+    var ollamaDownloadModel by remember { mutableStateOf("") }
 
     val selectedChatProvider = selectedProvider
     val selectedEmbedding = selectedEmbeddingProvider
@@ -203,6 +208,27 @@ fun BrainSetupScreen(
                                         Column(Modifier.padding(12.dp)) {
                                             Text("Model discovery failed", fontWeight = FontWeight.Bold)
                                             Text(error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 3.dp))
+                                        }
+                                    }
+                                }
+                            }
+                            if (selectedChatProvider == ProviderType.OLLAMA) {
+                                item {
+                                    OutlinedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("Download an LLM or VLM", fontWeight = FontWeight.SemiBold)
+                                            Text("Downloads the model into the connected Ollama server. Enter any Ollama model ID.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            OutlinedTextField(value = ollamaDownloadModel, onValueChange = { ollamaDownloadModel = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Ollama model ID") }, placeholder = { Text("gemma3:latest") }, singleLine = true)
+                                            Button(onClick = { onDownloadOllamaModel(chatDraft(), ollamaDownloadModel) }, enabled = !isDownloadingOllamaModel && ollamaDownloadModel.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+                                                if (isDownloadingOllamaModel) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                                else Icon(Icons.Default.Cloud, contentDescription = null, modifier = Modifier.size(18.dp))
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(if (isDownloadingOllamaModel) "Downloading…" else "Download model")
+                                            }
+                                            if (isDownloadingOllamaModel || ollamaDownloadProgress > 0f) {
+                                                LinearProgressIndicator(progress = { ollamaDownloadProgress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                                            }
+                                            if (ollamaDownloadStatus.isNotBlank()) Text(ollamaDownloadStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
                                 }
