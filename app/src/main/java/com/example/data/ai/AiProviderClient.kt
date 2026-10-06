@@ -380,7 +380,7 @@ class AiProviderClient {
     ): List<FloatArray> {
         val rawBase = config.baseUrl.trimEnd('/').ifBlank { "https://api.openai.com/v1" }
         val validatedBase = validateEndpoint(rawBase, ProviderType.fromString(config.providerType)).toString()
-        val url = if (validatedBase.endsWith("/embeddings")) validatedBase else "\${validatedBase}/embeddings"
+        val url = if (validatedBase.endsWith("/embeddings")) validatedBase else "$validatedBase/embeddings"
         val root = JSONObject()
             .put("model", model)
             .put("input", JSONArray().apply { inputs.forEach { put(it.take(120000)) } })
