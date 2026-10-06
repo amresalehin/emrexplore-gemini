@@ -2962,7 +2962,13 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                             state.copy(
                                 isBrainIndexing = true,
                                 brainIndexingProgress = if (total > 0) current.toFloat() / total else 0f,
-                                brainIndexingStatus = if (path.isBlank()) "Indexing Brain..." else "Indexing: " + File(path).name + " (" + current + "/" + total + ")"
+                                brainIndexingStatus = if (path.isBlank()) {
+                                    "Indexing Brain · " + brainConfig.textEmbeddingModel.ifBlank { brainConfig.embeddingModel.ifBlank { "On-device model" } }
+                                } else {
+                                    "Indexing " + File(path).name + " · " +
+                                        brainConfig.textEmbeddingModel.ifBlank { brainConfig.embeddingModel.ifBlank { "On-device model" } } +
+                                        " (" + current + "/" + total + ")"
+                                }
                             )
                         }
                         androidx.work.WorkInfo.State.SUCCEEDED -> {
