@@ -543,7 +543,8 @@ class AiProviderClient {
         val visited = mutableSetOf<String>()
 
         while (!nextUrl.isNullOrBlank() && visited.add(nextUrl!!)) {
-            val builder = Request.Builder().url(nextUrl!!).get()
+            val requestUrl = nextUrl!!
+            val builder = Request.Builder().url(requestUrl).get()
             config.apiKey.trim().takeIf { it.isNotBlank() }?.let {
                 builder.addHeader("Authorization", "Bearer $it")
             }
@@ -639,7 +640,7 @@ class AiProviderClient {
                 if (nextUrl == null && body.optBoolean("has_more", false)) {
                     val lastId = body.optString("last_id").takeIf { it.isNotBlank() && it != "null" }
                     if (lastId != null) {
-                        nextUrl = nextUrlOrNull(nextUrl, lastId)
+                        nextUrl = nextUrlOrNull(requestUrl, lastId)
                     }
                 }
             }
