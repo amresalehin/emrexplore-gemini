@@ -18,12 +18,13 @@ class GalleryAiWorker(appContext: Context, params: WorkerParameters) : Coroutine
         if (paths.isEmpty()) return Result.success()
 
         val repository = BrainRepository(applicationContext)
+        val store = BrainTargetedOperationStore(applicationContext)
         var failed = 0
         paths.forEachIndexed { index, path ->
             currentCoroutineContext().ensureActive()
             val file = File(path)
             val outcome = repository.runGalleryAi(file, force = true)
-            if (!outcome.success) failed++
+            if (outcome.success) store.markCompleted(path) else failed++
             setProgress(workDataOf(
                 "current" to index + 1,
                 "total" to paths.size,
