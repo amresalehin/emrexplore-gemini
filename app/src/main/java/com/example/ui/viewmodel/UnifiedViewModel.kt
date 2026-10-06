@@ -2440,7 +2440,11 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 baseUrl = config.baseUrl.trim(),
                 embeddingApiKey = config.embeddingApiKey.trim(),
                 embeddingBaseUrl = config.embeddingBaseUrl.trim(),
-                embeddingProviderType = EmbeddingProviderType.fromString(config.embeddingProviderType).name
+                embeddingProviderType = EmbeddingProviderType.fromString(config.embeddingProviderType).name,
+                vectorDatabaseType = com.example.data.ai.VectorDatabaseType.fromString(config.vectorDatabaseType).name,
+                vectorDatabaseBaseUrl = config.vectorDatabaseBaseUrl.trim(),
+                vectorDatabaseApiKey = config.vectorDatabaseApiKey.trim(),
+                vectorDatabaseCollection = config.vectorDatabaseCollection.trim().ifBlank { "emrexplore_brain" }
             )
             brainRepository.saveAiConfig(saved)
             _uiState.update { it.copy(aiConfig = saved, aiConfigLoaded = true) }
