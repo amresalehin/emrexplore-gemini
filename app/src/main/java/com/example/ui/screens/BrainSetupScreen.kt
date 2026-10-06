@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.data.ai.AvailableAiModel
 import com.example.data.ai.EmbeddingProviderType
 import com.example.data.ai.ProviderType
 import com.example.data.ai.VectorDatabaseType
@@ -36,76 +37,78 @@ fun BrainSetupScreen(
     currentConfig: AiProviderConfigEntity,
     offlineModels: List<OnDeviceBrainModelSpec>,
     onSelectOfflineModel: (String) -> Unit,
+    availableModels: List<AvailableAiModel> = emptyList(),
+    availableVisionModels: List<AvailableAiModel> = emptyList(),
+    availableEmbeddingModels: List<AvailableAiModel> = emptyList(),
+    availableMultimodalEmbeddingModels: List<AvailableAiModel> = emptyList(),
+    isFetchingModels: Boolean = false,
+    modelFetchError: String? = null,
+    onFetchModels: (AiProviderConfigEntity) -> Unit = {},
+    onFetchEmbeddingModels: (AiProviderConfigEntity) -> Unit = {},
     onSaveConfig: (AiProviderConfigEntity) -> Unit,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     BackHandler { onNavigateBack() }
     var step by remember { mutableIntStateOf(0) }
-    var chatChoice by remember {
-        mutableStateOf(
-            SetupChatChoice(
-                ProviderType.fromString(currentConfig.providerType),
-                currentConfig.chatModel.ifBlank { "gemini-3.8-flash" },
-                currentConfig.chatModel.ifBlank { "Gemini" },
-                ProviderType.fromString(currentConfig.providerType).displayName,
-                ProviderType.fromString(currentConfig.providerType) == ProviderType.OLLAMA
-            )
-        )
-    }
-    var embeddingChoice by remember {
-        mutableStateOf(
-            SetupEmbeddingChoice(
-                EmbeddingProviderType.fromString(currentConfig.embeddingProviderType),
-                currentConfig.textEmbeddingModel.ifBlank { currentConfig.embeddingModel.ifBlank { "all-MiniLM-L6-v2-int8" } },
-                currentConfig.textEmbeddingModel.ifBlank { "Embedding model" },
-                EmbeddingProviderType.fromString(currentConfig.embeddingProviderType).displayName,
-                EmbeddingProviderType.fromString(currentConfig.embeddingProviderType) == EmbeddingProviderType.OFFLINE
-            )
-        )
-    }
-    var visionModel by remember { mutableStateOf(currentConfig.visionModel.ifBlank { ProviderType.fromString(currentConfig.providerType).defaultVisionModel }) }
+    var selectedProvider by remember { mutableStateOf(ProviderType.fromString(currentConfig.providerType)) }
+    var selectedEmbeddingProvider by remember { mutableStateOf(EmbeddingProviderType.fromString(currentConfig.embeddingProviderType)) }
+    var endpoint by remember { mutableStateOf(currentConfig.baseUrl) }
+    var apiKey by remember { mutableStateOf(currentConfig.apiKey) }
+    var embeddingEndpoint by remember { mutableStateOf(currentConfig.embeddingBaseUrl) }
+    var embeddingApiKey by remember { mutableStateOf(currentConfig.embeddingApiKey) }
+    var chatModel by remember { mutableStateOf(currentConfig.chatModel) }
+    var visionModel by remember { mutableStateOf(currentConfig.visionModel) }
+    var embeddingModel by remember { mutableStateOf(currentConfig.textEmbeddingModel.ifBlank { currentConfig.embeddingModel }) }
     var imageEmbeddingModel by remember { mutableStateOf(currentConfig.multimodalEmbeddingModel) }
     var vectorChoice by remember { mutableStateOf(VectorDatabaseType.fromString(currentConfig.vectorDatabaseType)) }
-    var chatCustom by remember { mutableStateOf("") }
-    var embeddingCustom by remember { mutableStateOf("") }
     var vectorUrl by remember { mutableStateOf(currentConfig.vectorDatabaseBaseUrl) }
     var vectorKey by remember { mutableStateOf(currentConfig.vectorDatabaseApiKey) }
     var collection by remember { mutableStateOf(currentConfig.vectorDatabaseCollection.ifBlank { "emrexplore_brain" }) }
     var search by remember { mutableStateOf("") }
+    var embeddingSearch by remember { mutableStateOf("") }
 
-    val chatChoices = listOf(
-        SetupChatChoice(ProviderType.GEMINI, "gemini-3.8-flash", "Gemini 3.8 Flash", "Cloud · Google", false),
-        SetupChatChoice(ProviderType.OPENAI_COMPATIBLE, "gpt-5", "GPT-5", "Cloud · OpenAI-compatible", false),
-        SetupChatChoice(ProviderType.OPENROUTER, "openai/gpt-5", "OpenRouter model", "Cloud · OpenRouter", false),
-        SetupChatChoice(ProviderType.GROQ, "llama-3.3-70b-versatile", "Llama 3.3 70B", "Cloud · Groq", false),
-        SetupChatChoice(ProviderType.OLLAMA, "qwen3:8b", "Qwen 3 8B", "Local · Ollama", true),
-        SetupChatChoice(ProviderType.OLLAMA, "llama3.2:latest", "Llama 3.2", "Local · Ollama", true)
-    ).filter { search.isBlank() || it.title.contains(search, true) || it.subtitle.contains(search, true) }
+    val selectedChatProvider = selectedProvider
+    val selectedEmbedding = selectedEmbeddingProvider
+    val filteredChatModels = availableModels.filter { search.isBlank() || it.id.contains(search, true) || it.displayName.contains(search, true) }
+    val filteredVisionModels = availableVisionModels.filter { search.isBlank() || it.id.contains(search, true) || it.displayName.contains(search, true) }
+    val filteredEmbeddingModels = availableEmbeddingModels.filter { embeddingSearch.isBlank() || it.id.contains(embeddingSearch, true) || it.displayName.contains(embeddingSearch, true) }
+    val filteredMultimodalEmbeddingModels = availableMultimodalEmbeddingModels.filter { embeddingSearch.isBlank() || it.id.contains(embeddingSearch, true) || it.displayName.contains(embeddingSearch, true) }
 
-    val embeddingChoices = buildList {
-        offlineModels.forEach { spec ->
-            add(SetupEmbeddingChoice(EmbeddingProviderType.OFFLINE, spec.id, spec.displayName, "Local · On-device · ${spec.sizeLabel}", true))
-        }
-        add(SetupEmbeddingChoice(EmbeddingProviderType.OLLAMA, "nomic-embed-text:latest", "Nomic Embed Text", "Local · Ollama", true))
-        add(SetupEmbeddingChoice(EmbeddingProviderType.OPENAI_COMPATIBLE, "text-embedding-3-small", "text-embedding-3-small", "Cloud · OpenAI", false))
-        add(SetupEmbeddingChoice(EmbeddingProviderType.GEMINI, "gemini-embedding-2", "Gemini Embedding 2", "Cloud · Google", false))
-        add(SetupEmbeddingChoice(EmbeddingProviderType.OPENROUTER, "openai/text-embedding-3-small", "OpenRouter embedding", "Cloud · OpenRouter", false))
-    }
+    fun chatDraft(): AiProviderConfigEntity = currentConfig.copy(
+        providerType = selectedChatProvider.name,
+        baseUrl = endpoint.trim(),
+        apiKey = apiKey.trim(),
+        chatModel = chatModel.trim(),
+        visionModel = visionModel.trim()
+    )
+
+    fun embeddingDraft(): AiProviderConfigEntity = currentConfig.copy(
+        providerType = selectedChatProvider.name,
+        baseUrl = endpoint.trim(),
+        apiKey = apiKey.trim(),
+        embeddingProviderType = selectedEmbedding.name,
+        embeddingBaseUrl = embeddingEndpoint.trim(),
+        embeddingApiKey = embeddingApiKey.trim(),
+        textEmbeddingModel = embeddingModel.trim(),
+        embeddingModel = embeddingModel.trim(),
+        multimodalEmbeddingModel = imageEmbeddingModel.trim()
+    )
 
     fun finish() {
-        val chatProvider = chatChoice.provider
-        val embeddingProvider = embeddingChoice.provider
-        val selectedChatModel = chatCustom.trim().ifBlank { chatChoice.model }
-        val selectedEmbeddingModel = embeddingCustom.trim().ifBlank { embeddingChoice.model }
+        val selectedChatModel = chatModel.trim()
+        val selectedEmbeddingModel = embeddingModel.trim()
+        if (selectedChatModel.isBlank()) return
         val config = currentConfig.copy(
-            providerType = chatProvider.name,
-            baseUrl = chatProvider.defaultBaseUrl,
+            providerType = selectedChatProvider.name,
+            baseUrl = endpoint.trim().ifBlank { selectedChatProvider.defaultBaseUrl },
+            apiKey = apiKey.trim(),
             chatModel = selectedChatModel,
             visionModel = visionModel.trim(),
             multimodalEmbeddingModel = imageEmbeddingModel.trim(),
-            embeddingProviderType = embeddingProvider.name,
-            embeddingBaseUrl = embeddingProvider.defaultBaseUrl,
+            embeddingProviderType = selectedEmbedding.name,
+            embeddingBaseUrl = if (selectedEmbedding == EmbeddingProviderType.OFFLINE) "" else embeddingEndpoint.trim().ifBlank { selectedEmbedding.defaultBaseUrl },
+            embeddingApiKey = embeddingApiKey.trim(),
             embeddingModel = selectedEmbeddingModel,
             textEmbeddingModel = selectedEmbeddingModel,
             vectorDatabaseType = vectorChoice.name,
@@ -115,7 +118,9 @@ fun BrainSetupScreen(
             brainSetupCompleted = true,
             isEnabled = true
         )
-        if (embeddingProvider == EmbeddingProviderType.OFFLINE) onSelectOfflineModel(selectedEmbeddingModel)
+        if (selectedEmbedding == EmbeddingProviderType.OFFLINE && selectedEmbeddingModel.isNotBlank()) {
+            onSelectOfflineModel(selectedEmbeddingModel)
+        }
         onSaveConfig(config)
         onNavigateBack()
     }
@@ -147,14 +152,70 @@ fun BrainSetupScreen(
             when (step) {
                 0 -> {
                     Column(Modifier.fillMaxSize()) {
-                        SetupHeading("Chat model", "Choose the model that answers your questions. Local and cloud models are shown together.")
-                        OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text("Search models") })
-                        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(chatChoices) { choice ->
-                                SetupChoiceCard(choice.title, choice.subtitle, choice.provider == chatChoice.provider && choice.model == chatChoice.model, if (choice.local) Icons.Default.PhoneAndroid else Icons.Default.Cloud) { chatChoice = choice; chatCustom = "" }
+                        SetupHeading("Chat & vision models", "Choose the provider and endpoint first. Then fetch the live model catalog from that endpoint.")
+                        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            item {
+                                Text("Provider", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(6.dp))
+                                ProviderType.entries.forEach { provider ->
+                                    SetupChoiceCard(provider.displayName, provider.description, provider == selectedChatProvider, if (provider == ProviderType.OLLAMA) Icons.Default.PhoneAndroid else Icons.Default.Cloud) {
+                                        selectedProvider = provider
+                                        endpoint = provider.defaultBaseUrl
+                                        if (provider == ProviderType.OLLAMA) apiKey = ""
+                                        chatModel = ""
+                                        visionModel = ""
+                                        search = ""
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                }
                             }
                             item {
-                                OutlinedTextField(value = chatCustom, onValueChange = { chatCustom = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Use another model ID") }, placeholder = { Text("Any model supported by the selected endpoint") }, singleLine = true)
+                                OutlinedTextField(value = endpoint, onValueChange = { endpoint = it }, modifier = Modifier.fillMaxWidth(), label = { Text("API endpoint") }, placeholder = { Text("https://your-server.example.com/v1") }, singleLine = true)
+                            }
+                            item {
+                                OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, modifier = Modifier.fillMaxWidth(), label = { Text("API key") }, placeholder = { Text(selectedChatProvider.keyHint) }, singleLine = true)
+                            }
+                            item {
+                                Button(onClick = { onFetchModels(chatDraft()) }, enabled = !isFetchingModels && endpoint.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+                                    if (isFetchingModels) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                    else Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(if (isFetchingModels) "Fetching all models…" else "Fetch all models from endpoint")
+                                }
+                            }
+                            modelFetchError?.let { error ->
+                                item {
+                                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                                        Column(Modifier.padding(12.dp)) {
+                                            Text("Model discovery failed", fontWeight = FontWeight.Bold)
+                                            Text(error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 3.dp))
+                                        }
+                                    }
+                                }
+                            }
+                            item {
+                                OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text("Search fetched models") })
+                            }
+                            item {
+                                Text(
+                                    if (filteredChatModels.isEmpty()) "No live chat models fetched yet. Fetch the endpoint above, or enter a model ID manually below."
+                                    else filteredChatModels.size.toString() + " chat-capable models available",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            items(filteredChatModels, key = { "chat:" + it.id }) { model ->
+                                SetupModelCard(model, model.id == chatModel) { chatModel = model.id }
+                            }
+                            item {
+                                OutlinedTextField(value = chatModel, onValueChange = { chatModel = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Chat model ID") }, placeholder = { Text("Pick one above or enter any supported model ID") }, singleLine = true)
+                            }
+                            item { Text("Vision model", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                            items(filteredVisionModels, key = { "vision:" + it.id }) { model ->
+                                SetupModelCard(model, model.id == visionModel) { visionModel = model.id }
+                            }
+                            item {
+                                OutlinedTextField(value = visionModel, onValueChange = { visionModel = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Vision model ID (optional)") }, placeholder = { Text("Leave blank if your chat model also accepts images") }, singleLine = true)
                             }
                         }
                         SetupButtons(onBack = {}, onNext = { step = 1 }, backEnabled = false)
@@ -162,13 +223,50 @@ fun BrainSetupScreen(
                 }
                 1 -> {
                     Column(Modifier.fillMaxSize()) {
-                        SetupHeading("Embedding model", "This model turns your files into vectors. It is completely independent from Chat.")
+                        SetupHeading("Text & image embeddings", "Embedding is independent from Chat. Use on-device, Ollama, or any compatible endpoint.")
                         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(embeddingChoices) { choice ->
-                                SetupChoiceCard(choice.title, choice.subtitle, choice.provider == embeddingChoice.provider && choice.model == embeddingChoice.model, if (choice.local) Icons.Default.PhoneAndroid else Icons.Default.Cloud) { embeddingChoice = choice; embeddingCustom = "" }
+                            item {
+                                Text("Embedding provider", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(6.dp))
+                                EmbeddingProviderType.entries.forEach { provider ->
+                                    SetupChoiceCard(provider.displayName, provider.description, provider == selectedEmbedding, if (provider == EmbeddingProviderType.OFFLINE) Icons.Default.PhoneAndroid else Icons.Default.Cloud) {
+                                        selectedEmbeddingProvider = provider
+                                        embeddingEndpoint = if (provider == EmbeddingProviderType.OFFLINE) "" else provider.defaultBaseUrl
+                                        if (provider == EmbeddingProviderType.OFFLINE) embeddingApiKey = ""
+                                        embeddingModel = if (provider == EmbeddingProviderType.OFFLINE) offlineModels.firstOrNull()?.id.orEmpty() else provider.defaultModel
+                                        imageEmbeddingModel = provider.defaultMultimodalEmbeddingModel
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                }
+                            }
+                            if (selectedEmbedding != EmbeddingProviderType.OFFLINE) {
+                                item { OutlinedTextField(value = embeddingEndpoint, onValueChange = { embeddingEndpoint = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Embedding API endpoint") }, singleLine = true) }
+                                item { OutlinedTextField(value = embeddingApiKey, onValueChange = { embeddingApiKey = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Embedding API key") }, singleLine = true) }
+                                item {
+                                    Button(onClick = { onFetchEmbeddingModels(embeddingDraft()) }, enabled = !isFetchingModels && embeddingEndpoint.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+                                        if (isFetchingModels) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                        else Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Fetch embedding models")
+                                    }
+                                }
+                                modelFetchError?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) } }
+                                item { OutlinedTextField(value = embeddingSearch, onValueChange = { embeddingSearch = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text("Search embedding models") }) }
+                                items(filteredEmbeddingModels, key = { "embed:" + it.id }) { model -> SetupModelCard(model, model.id == embeddingModel) { embeddingModel = model.id } }
+                                items(filteredMultimodalEmbeddingModels, key = { "mmembed:" + it.id }) { model -> SetupModelCard(model, model.id == imageEmbeddingModel) { imageEmbeddingModel = model.id } }
+                            } else {
+                                offlineModels.forEach { spec ->
+                                    SetupChoiceCard(spec.displayName, spec.sizeLabel + " · " + spec.embeddingDimension + "-D", spec.id == embeddingModel, Icons.Default.PhoneAndroid) {
+                                        embeddingModel = spec.id
+                                        onSelectOfflineModel(spec.id)
+                                    }
+                                }
                             }
                             item {
-                                OutlinedTextField(value = embeddingCustom, onValueChange = { embeddingCustom = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Use another embedding model ID") }, placeholder = { Text("Any embedding model supported by the selected endpoint") }, singleLine = true)
+                                OutlinedTextField(value = embeddingModel, onValueChange = { embeddingModel = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Text embedding model ID") }, placeholder = { Text("Pick a fetched model or enter a model ID") }, singleLine = true)
+                            }
+                            item {
+                                OutlinedTextField(value = imageEmbeddingModel, onValueChange = { imageEmbeddingModel = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Image/multimodal embedding model ID (optional)") }, singleLine = true)
                             }
                         }
                         SetupButtons(onBack = { step = 0 }, onNext = { step = 2 })
@@ -207,6 +305,29 @@ fun BrainSetupScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SetupModelCard(model: AvailableAiModel, selected: Boolean, onClick: () -> Unit) {
+    val badges = buildList {
+        if (model.supportsChat) add("Chat")
+        if (model.supportsVision) add("Vision")
+        if (model.supportsEmbedding) add("Embed")
+        if (model.supportsMultimodalEmbedding) add("Image embed")
+        if (model.supportsTools) add("Tools")
+        if (model.isFree) add("Free")
+    }
+    SetupChoiceCard(
+        model.displayName.ifBlank { model.id },
+        buildString {
+            append(model.id)
+            model.contextWindow?.let { append(" · ").append(it / 1000).append("K ctx") }
+            if (badges.isNotEmpty()) append(" · ").append(badges.joinToString(" · "))
+            append(" · ").append(model.availabilityMessage)
+        },
+        selected,
+        if (model.supportsVision) Icons.Default.Cloud else Icons.Default.Check
+    ) { onClick() }
 }
 
 @Composable
