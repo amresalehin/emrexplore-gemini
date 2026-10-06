@@ -92,11 +92,31 @@ class QdrantBrainVectorStore : BrainVectorStore {
     private fun ensureCollection(sampleEmbeddingJson: String, config: AiProviderConfigEntity) {
         val vector = BrainVectorCodec.fromJson(sampleEmbeddingJson)
         if (vector.isEmpty()) return
-        val request = Request.Builder().url(endpoint(config, ""))
+        val url = endpoint(config, "")
+        val request = Request.Builder().url(url)
             .put(JSONObject().put("vectors", JSONObject().put("size", vector.size).put("distance", "Cosine")).toString().toRequestBody(jsonType))
             .applyHeaders(config).build()
         client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful && response.code != 409) throw IllegalStateException("Qdrant collection setup failed (${response.code})")
+            if (response.isSuccessful) return
+            if (response.code != 409) throw IllegalStateException("Qdrant collection setup failed (${response.code})")
+        }
+        val existing = Request.Builder().url(url).get().applyHeaders(config).build()
+        client.newCall(existing).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            val currentSize = runCatching {
+                JSONObject(body).getJSONObject("result").getJSONObject("config")
+                    .getJSONObject("params").getJSONObject("vectors").getInt("size")
+            }.getOrNull()
+            if (currentSize != null && currentSize != vector.size) {
+                client.newCall(Request.Builder().url(url).delete().applyHeaders(config).build()).execute().use { deleted ->
+                    if (!deleted.isSuccessful && deleted.code != 404) throw IllegalStateException("Could not reset Qdrant collection")
+                }
+                client.newCall(Request.Builder().url(url)
+                    .put(JSONObject().put("vectors", JSONObject().put("size", vector.size).put("distance", "Cosine")).toString().toRequestBody(jsonType))
+                    .applyHeaders(config).build()).execute().use { created ->
+                    if (!created.isSuccessful) throw IllegalStateException("Could not recreate Qdrant collection")
+                }
+            }
         }
     }
 
