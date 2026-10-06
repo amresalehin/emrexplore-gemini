@@ -175,6 +175,7 @@ fun BrainScreen(
     ragAnswer: RagAnswer?,
     isRagQuerying: Boolean,
     onDeviceBrainModel: OnDeviceBrainModelUiState = OnDeviceBrainModelUiState(),
+    embeddingReady: Boolean = false,
     smartSuggestions: List<String> = emptyList(),
     askAiMessages: List<AskAiChatMessage> = emptyList(),
     attachedAiFile: AttachedAiFile? = null,
@@ -332,13 +333,13 @@ fun BrainScreen(
                     onCancel = onCancelRag,
                     onOpenFile = onOpenFile,
                     cloudAiReady = apiConfigured,
-                    localBrainReady = onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
+                    localBrainReady = embeddingReady,
                     onOpenImage = onOpenImage
                 )
                 BrainScreenTab.CANVAS -> DeclutteredCanvasView(
                     nodes = nodes,
                     edges = edges,
-                    localBrainReady = onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
+                    localBrainReady = embeddingReady,
                     onNodeClick = { selectedNode = it },
                     onOpenFile = onOpenFile,
                     onOpenImage = onOpenImage,
