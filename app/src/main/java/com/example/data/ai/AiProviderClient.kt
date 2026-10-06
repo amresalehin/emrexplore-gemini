@@ -666,6 +666,49 @@ class AiProviderClient {
         else -> String.format("%.0f KB", bytes / 1_000.0)
     }
 
+    suspend fun pullOllamaModel(
+        config: AiProviderConfigEntity,
+        modelId: String,
+        onProgress: suspend (completed: Long, total: Long, status: String) -> Unit = { _, _, _ -> }
+    ) = withContext(Dispatchers.IO) {
+        if (ProviderType.fromString(config.providerType) != ProviderType.OLLAMA) {
+            throw IllegalArgumentException("Model downloads are currently supported through Ollama.")
+        }
+        val model = modelId.trim()
+        if (model.isBlank()) throw IllegalArgumentException("Enter an Ollama model ID.")
+        val base = validateEndpoint(
+            config.baseUrl.trimEnd('/').removeSuffix("/v1"),
+            ProviderType.OLLAMA
+        ).toString().trimEnd('/')
+        val body = JSONObject()
+            .put("model", model)
+            .put("stream", true)
+            .toString()
+            .toRequestBody(jsonMediaType)
+        val request = Request.Builder()
+            .url("$base/api/pull")
+            .post(body)
+            .build()
+        okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw safeHttpError("Ollama download", response.code)
+            val source = response.body?.charStream()?.buffered()
+                ?: throw IllegalStateException("Ollama returned an empty download stream.")
+            source.useLines { lines ->
+                lines.forEach { line ->
+                    if (line.isBlank()) return@forEach
+                    val item = runCatching { JSONObject(line) }.getOrNull() ?: return@forEach
+                    val status = item.optString("status", "Downloading")
+                    val total = item.optLong("total", 0L)
+                    val completed = item.optLong("completed", 0L)
+                    onProgress(completed, total, status)
+                    if (item.has("error") && item.optString("error").isNotBlank()) {
+                        throw IllegalStateException(item.optString("error"))
+                    }
+                }
+            }
+        }
+    }
+
     private fun applyCustomHeaders(builder: Request.Builder, config: AiProviderConfigEntity) {
         try {
             val headers = JSONObject(config.customHeadersJson.ifBlank { "{}" })
