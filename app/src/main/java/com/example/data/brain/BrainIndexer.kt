@@ -477,7 +477,10 @@ class BrainIndexer(
             config.isEnabled.toString(),
             config.chatModel.trim(),
             config.visionModel.trim(),
-            embeddingSignature(config)
+            embeddingSignature(config),
+            config.vectorDatabaseType.trim(),
+            config.vectorDatabaseBaseUrl.trim(),
+            config.vectorDatabaseCollection.trim()
         ).joinToString("|")
 
     private fun sha256(file: File): String {
