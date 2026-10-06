@@ -13,6 +13,7 @@ interface BrainAiGateway {
 
     suspend fun analyzeImage(
         base64Jpeg: String?,
+        ocrText: String,
         metadataSummary: String,
         fileName: String,
         config: AiProviderConfigEntity
@@ -54,10 +55,11 @@ class DefaultBrainAiGateway(
 
     override suspend fun analyzeImage(
         base64Jpeg: String?,
+        ocrText: String,
         metadataSummary: String,
         fileName: String,
         config: AiProviderConfigEntity
-    ): AnalysisResult = client.analyzeImage(base64Jpeg, metadataSummary, fileName, config)
+    ): AnalysisResult = client.analyzeImage(base64Jpeg, ocrText, metadataSummary, fileName, config)
 
     override suspend fun generateRagAnswer(
         question: String,
