@@ -105,3 +105,4 @@ class FileRepositoryDeleteTest {
         assertTrue(db.trashDao().getAllTrash().first().none { it.originalPath == source.absolutePath })
     }
 }
+
