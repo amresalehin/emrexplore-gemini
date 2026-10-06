@@ -57,83 +57,86 @@ class QdrantBrainVectorStore : BrainVectorStore {
     private val jsonType = "application/json".toMediaType()
 
     override suspend fun upsert(chunks: List<BrainChunkEntity>, config: AiProviderConfigEntity) {
+        upsertKind(chunks.filter { it.embeddingJson.isNotBlank() }, config, BrainVectorKind.TEXT)
+        upsertKind(chunks.filter { it.imageEmbeddingJson.isNotBlank() }, config, BrainVectorKind.IMAGE)
+    }
+
+    private fun upsertKind(chunks: List<BrainChunkEntity>, config: AiProviderConfigEntity, kind: BrainVectorKind) {
         if (chunks.isEmpty()) return
-        ensureCollection(chunks.first().embeddingJson, config)
-        val points = JSONArray()
-        chunks.forEach { chunk ->
-            val vector = BrainVectorCodec.fromJson(chunk.embeddingJson)
-            if (vector.isEmpty()) return@forEach
-            points.put(JSONObject().put("id", stablePointId(chunk.id)).put("vector", JSONArray(vector.toList()))
-                .put("payload", JSONObject().put("chunkId", chunk.id).put("filePath", chunk.filePath).put("embeddingModel", chunk.embeddingModel)))
+        val vectors = chunks.mapNotNull { chunk ->
+            val raw = if (kind == BrainVectorKind.TEXT) chunk.embeddingJson else chunk.imageEmbeddingJson
+            BrainVectorCodec.fromJson(raw).takeIf { it.isNotEmpty() }?.let { chunk to it }
         }
-        request("PUT", endpoint(config, "/points?wait=true"), JSONObject().put("points", points), config)
+        if (vectors.isEmpty()) return
+        ensureCollection(vectors.first().second, config, kind)
+        val points = JSONArray()
+        vectors.forEach { (chunk, vector) ->
+            points.put(
+                JSONObject().put("id", stablePointId(chunk.id, kind)).put("vector", JSONArray(vector.toList()))
+                    .put("payload", JSONObject().put("chunkId", chunk.id).put("filePath", chunk.filePath)
+                        .put("embeddingModel", if (kind == BrainVectorKind.TEXT) chunk.embeddingModel else chunk.imageEmbeddingModel)
+                        .put("kind", kind.name))
+            )
+        }
+        request("PUT", endpoint(config, "/points?wait=true", kind), JSONObject().put("points", points), config)
     }
 
     override suspend fun delete(ids: List<String>, config: AiProviderConfigEntity) {
         if (ids.isEmpty()) return
-        val points = JSONArray()
-        ids.forEach { points.put(stablePointId(it)) }
-        request("POST", endpoint(config, "/points/delete?wait=true"), JSONObject().put("points", points), config)
+        BrainVectorKind.entries.forEach { kind ->
+            val points = JSONArray()
+            ids.forEach { points.put(stablePointId(it, kind)) }
+            request("POST", endpoint(config, "/points/delete?wait=true", kind), JSONObject().put("points", points), config, allowMissing = true)
+        }
     }
 
     override suspend fun search(vector: FloatArray, model: String, limit: Int, config: AiProviderConfigEntity, kind: BrainVectorKind): List<VectorSearchResult> {
         if (vector.isEmpty() || limit <= 0) return emptyList()
-        val json = request("POST", endpoint(config, "/points/search"),
-            JSONObject().put("vector", JSONArray(vector.toList())).put("limit", limit).put("with_payload", true), config)
+        val json = request("POST", endpoint(config, "/points/search", kind),
+            JSONObject().put("vector", JSONArray(vector.toList())).put("limit", limit).put("with_payload", true), config, allowMissing = true)
         val result = json.optJSONArray("result") ?: return emptyList()
         return buildList {
             for (i in 0 until result.length()) {
                 val item = result.optJSONObject(i) ?: continue
                 val payload = item.optJSONObject("payload") ?: continue
-                if (payload.optString("embeddingModel") != model) continue
+                if (payload.optString("embeddingModel") != model || payload.optString("kind") != kind.name) continue
                 val id = payload.optString("chunkId")
                 if (id.isNotBlank()) add(VectorSearchResult(id, item.optDouble("score", 0.0).toFloat()))
             }
         }
     }
 
-    override suspend fun clear(config: AiProviderConfigEntity) = Unit
-
-    private fun ensureCollection(sampleEmbeddingJson: String, config: AiProviderConfigEntity) {
-        val vector = BrainVectorCodec.fromJson(sampleEmbeddingJson)
-        if (vector.isEmpty()) return
-        val url = endpoint(config, "")
-        val request = Request.Builder().url(url)
-            .put(JSONObject().put("vectors", JSONObject().put("size", vector.size).put("distance", "Cosine")).toString().toRequestBody(jsonType))
-            .applyHeaders(config).build()
-        client.newCall(request).execute().use { response ->
-            if (response.isSuccessful) return
-            if (response.code != 409) throw IllegalStateException("Qdrant collection setup failed (${response.code})")
-        }
-        val existing = Request.Builder().url(url).get().applyHeaders(config).build()
-        client.newCall(existing).execute().use { response ->
-            val body = response.body?.string().orEmpty()
-            val currentSize = runCatching {
-                JSONObject(body).getJSONObject("result").getJSONObject("config")
-                    .getJSONObject("params").getJSONObject("vectors").getInt("size")
-            }.getOrNull()
-            if (currentSize != null && currentSize != vector.size) {
-                client.newCall(Request.Builder().url(url).delete().applyHeaders(config).build()).execute().use { deleted ->
-                    if (!deleted.isSuccessful && deleted.code != 404) throw IllegalStateException("Could not reset Qdrant collection")
-                }
-                client.newCall(Request.Builder().url(url)
-                    .put(JSONObject().put("vectors", JSONObject().put("size", vector.size).put("distance", "Cosine")).toString().toRequestBody(jsonType))
-                    .applyHeaders(config).build()).execute().use { created ->
-                    if (!created.isSuccessful) throw IllegalStateException("Could not recreate Qdrant collection")
+    override suspend fun clear(config: AiProviderConfigEntity) {
+        BrainVectorKind.entries.forEach { kind ->
+            runCatching {
+                val req = Request.Builder().url(endpoint(config, "", kind)).delete().applyHeaders(config).build()
+                client.newCall(req).execute().use { response ->
+                    if (!response.isSuccessful && response.code != 404) throw IllegalStateException("Could not clear vector collection")
                 }
             }
         }
     }
 
-    private fun request(method: String, url: String, body: JSONObject, config: AiProviderConfigEntity): JSONObject {
-        val requestBuilder = Request.Builder().url(url).applyHeaders(config)
-        val request = when (method) {
-            "PUT" -> requestBuilder.put(body.toString().toRequestBody(jsonType)).build()
-            else -> requestBuilder.post(body.toString().toRequestBody(jsonType)).build()
+    private fun ensureCollection(vector: FloatArray, config: AiProviderConfigEntity, kind: BrainVectorKind) {
+        val url = endpoint(config, "", kind)
+        val req = Request.Builder().url(url)
+            .put(JSONObject().put("vectors", JSONObject().put("size", vector.size).put("distance", "Cosine")).toString().toRequestBody(jsonType))
+            .applyHeaders(config).build()
+        client.newCall(req).execute().use { response ->
+            if (response.isSuccessful) return
+            if (response.code != 409) throw IllegalStateException("Qdrant collection setup failed")
         }
+    }
+
+    private fun request(method: String, url: String, body: JSONObject, config: AiProviderConfigEntity, allowMissing: Boolean = false): JSONObject {
+        val requestBuilder = Request.Builder().url(url).applyHeaders(config)
+        val request = if (method == "PUT") requestBuilder.put(body.toString().toRequestBody(jsonType)).build() else requestBuilder.post(body.toString().toRequestBody(jsonType)).build()
         client.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
-            if (!response.isSuccessful) throw IllegalStateException("Vector database request failed (${response.code}): ${text.take(300)}")
+            if (!response.isSuccessful) {
+                if (allowMissing && response.code == 404) return JSONObject()
+                throw IllegalStateException("Vector database request failed (" + response.code + ")")
+            }
             return if (text.isBlank()) JSONObject() else JSONObject(text)
         }
     }
@@ -143,16 +146,17 @@ class QdrantBrainVectorStore : BrainVectorStore {
         return header("Accept", "application/json")
     }
 
-    private fun endpoint(config: AiProviderConfigEntity, suffix: String): String {
+    private fun endpoint(config: AiProviderConfigEntity, suffix: String, kind: BrainVectorKind): String {
         val base = config.vectorDatabaseBaseUrl.trim().trimEnd('/')
         require(base.isNotBlank()) { "Qdrant URL is required" }
-        val collection = config.vectorDatabaseCollection.trim().ifBlank { "emrexplore_brain" }
-        return "$base/collections/$collection$suffix"
+        val root = config.vectorDatabaseCollection.trim().ifBlank { "emrexplore_brain" }
+        val collection = root + if (kind == BrainVectorKind.IMAGE) "_image" else ""
+        return base + "/collections/" + collection + suffix
     }
 
-    private fun stablePointId(id: String): String = java.util.UUID.nameUUIDFromBytes(id.toByteArray(Charsets.UTF_8)).toString()
+    private fun stablePointId(id: String, kind: BrainVectorKind): String =
+        java.util.UUID.nameUUIDFromBytes((id + ":" + kind.name).toByteArray(Charsets.UTF_8)).toString()
 }
-
 fun vectorStoreFor(config: AiProviderConfigEntity, chunkDao: BrainChunkDao): BrainVectorStore =
     when (VectorDatabaseType.fromString(config.vectorDatabaseType)) {
         VectorDatabaseType.QDRANT -> QdrantBrainVectorStore()
