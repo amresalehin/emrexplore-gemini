@@ -501,6 +501,39 @@ fun AiSettingsScreen(
                 val cloudReady = isEnabled && (isKeylessAiConfig(draftConfig()) || apiKey.trim().isNotBlank())
                 CompactInfo(if (cloudReady) "Cloud AI is configured. It is used only for generated answers and optional enrichment." else "Cloud AI is not configured. You can still use the local Brain for semantic search; generated answers require a configured provider.")
 
+                SectionTitle("ACTIVE MODELS")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
+                    )
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Chat model", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "${selectedProvider.displayName}  •  ${chatModel.ifBlank { "No model selected" }}",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text("Used for generated answers.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        HorizontalDivider()
+                        Text("Embedding model", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val activeEmbeddingName = if (selectedEmbeddingProvider == EmbeddingProviderType.OFFLINE) {
+                            offlineBrainModels.firstOrNull { it.id == selectedOfflineBrainModelId }?.displayName
+                                ?: onDeviceBrainModel.displayName
+                        } else {
+                            embeddingModel.ifBlank { "No model selected" }
+                        }
+                        Text(
+                            "${selectedEmbeddingProvider.displayName}  •  $activeEmbeddingName",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text("Used for semantic indexing and retrieval.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
                 SectionTitle("PROVIDER MODELS")
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -621,10 +654,7 @@ fun AiSettingsScreen(
     )
 }
 
-private fun normalizeProvider(value: String): ProviderType = when (ProviderType.fromString(value)) {
-    ProviderType.GROQ, ProviderType.CUSTOM -> ProviderType.OPENAI_COMPATIBLE
-    else -> ProviderType.fromString(value)
-}
+private fun normalizeProvider(value: String): ProviderType = ProviderType.fromString(value)
 
 @Composable
 private fun SectionTitle(text: String) {
@@ -736,11 +766,7 @@ private fun ProviderPickerDialog(selected: ProviderType, onSelect: (ProviderType
         title = { Text("Choose provider") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(
-                    ProviderType.GEMINI,
-                    ProviderType.OPENAI_COMPATIBLE,
-                    ProviderType.OLLAMA
-                ).forEach { provider ->
+                ProviderType.entries.forEach { provider ->
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable { onSelect(provider) },
                         color = if (provider == selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
