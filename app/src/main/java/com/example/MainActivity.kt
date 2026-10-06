@@ -1,6 +1,7 @@
 package com.example
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -339,7 +340,35 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             onToggleFavorite = { fileItem -> viewModel.toggleFavorite(fileItem) },
             onInspectMetadata = { mediaItem -> viewModel.inspectMetadata(mediaItem) },
             onLoadBrainNode = { mediaItem -> viewModel.getBrainNode(mediaItem) },
-            onReindexWithBrain = { mediaItem -> viewModel.reAnalyzeGalleryImage(mediaItem) }
+            onReindexWithBrain = { mediaItem -> viewModel.reAnalyzeGalleryImage(mediaItem) },
+            onAskAiAboutFile = { mediaItem ->
+                viewModel.closeFullscreenMedia()
+                if (mediaItem.path.isNotBlank()) {
+                    viewModel.askAiAboutFile(File(mediaItem.path))
+                }
+            },
+            onEdit = { mediaItem ->
+                val editIntent = Intent(Intent.ACTION_EDIT).apply {
+                    setDataAndType(
+                        mediaItem.uri,
+                        mediaItem.mimeType.ifBlank { if (mediaItem.isVideo) "video/*" else "image/*" }
+                    )
+                    addFlags(
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                    clipData = android.content.ClipData.newRawUri("media", mediaItem.uri)
+                }
+                runCatching {
+                    context.startActivity(Intent.createChooser(editIntent, "Edit " + mediaItem.name))
+                }.onFailure {
+                    viewModel.showMessage("No compatible editor is installed for this file")
+                }
+            },
+            onDelete = { mediaItem ->
+                viewModel.deleteFile(mediaItem.path, toTrash = true)
+                viewModel.closeFullscreenMedia()
+            }
         )
     }
 
