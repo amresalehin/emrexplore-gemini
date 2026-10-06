@@ -84,11 +84,6 @@ class BrainIndexer(
             }
 
             val (embeddings, embeddingModel) = embed(chunkTexts, config)
-            val imageEmbedding = if (input.isImage && config.multimodalEmbeddingModel.trim().isNotBlank()) {
-                embeddingClient.embedMultimodalDocument(input.imageBase64, config)
-                    ?: throw IllegalStateException("Configured image embedding model returned no image vector")
-            } else null
-
             val now = System.currentTimeMillis()
             val fileNode = BrainNodeEntity(
                 id = BrainIdentity.fileNodeId(path),
@@ -236,8 +231,8 @@ class BrainIndexer(
                     content = text,
                     embeddingJson = BrainVectorCodec.toJson(embeddings[index]),
                     embeddingModel = embeddingModel,
-                    imageEmbeddingJson = if (input.isImage && index == 0) imageEmbedding?.let(BrainVectorCodec::toJson).orEmpty() else "",
-                    imageEmbeddingModel = if (input.isImage && index == 0) config.multimodalEmbeddingModel.trim() else "",
+                    imageEmbeddingJson = "",
+                    imageEmbeddingModel = "",
                     locator = if (input.isImage) file.name else "chunk-" + index,
                     pageNumber = null,
                     indexedAt = now
