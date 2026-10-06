@@ -256,7 +256,7 @@ data class UiState(
     val isAiSettingsScreenOpen: Boolean = false,
     val aiConfigLoaded: Boolean = false,
     val isBrainIndexing: Boolean = false,
-    val isBrainIndexPaused: Boolean = false,
+    val isBrainIndexingPaused: Boolean = false,
     val isGalleryAiProcessing: Boolean = false,
     val isGalleryAiPaused: Boolean = false,
     val galleryAiProgress: Float = 0f,
@@ -2915,7 +2915,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update {
             it.copy(
                 isBrainIndexing = true,
-                isBrainIndexPaused = false,
+                isBrainIndexingPaused = false,
                 brainIndexingProgress = 0f,
                 brainIndexingStatus = "Brain indexing queued..."
             )
@@ -2964,7 +2964,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                             _uiState.update { state ->
                                 state.copy(
                                     isBrainIndexing = false,
-                                    isBrainIndexPaused = false,
+                                    isBrainIndexingPaused = false,
                                     brainIndexingProgress = 1f,
                                     brainIndexingStatus = "Brain ready — " + indexed + " indexed, " + skipped + " skipped, " + failed + " failed",
                                     brainSmartSuggestions = suggestions
