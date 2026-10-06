@@ -24,6 +24,13 @@ data class BrainDocumentEntity(
     val size: Long = 0L,
     val lastModified: Long = 0L,
     val contentHash: String = "",
+    // File AI owns these persisted semantics. Brain only consumes them.
+    val aiSummary: String = "",
+    val aiTagsJson: String = "[]",
+    val aiEntitiesJson: String = "[]",
+    val aiRelationsJson: String = "[]",
+    val aiModel: String = "",
+    val aiUpdatedAt: Long = 0L,
     val modelSignature: String = "",
     val state: String = BrainIndexStates.READY,
     val error: String? = null,
