@@ -7,6 +7,7 @@ import com.example.data.ai.AnalysisResult
 import com.example.data.ai.ExtractedEntity
 import com.example.data.ai.ExtractedRelation
 import com.example.data.ai.ProviderType
+import com.example.data.ai.EmbeddingProviderType
 import com.example.data.ai.isKeylessAiConfig
 import com.example.data.local.AiProviderConfigEntity
 import java.io.File
@@ -27,6 +28,7 @@ class BrainIndexer(
     private val edgeEvidenceDao: BrainEdgeEvidenceDao,
     private val runDao: BrainRunDao,
     private val client: BrainAiGateway,
+    private val embeddingClient: com.example.data.ai.AiProviderClient,
     private val db: AppDatabase,
     private val onDeviceEmbedding: OnDeviceEmbeddingEngine
 ) {
@@ -70,7 +72,7 @@ class BrainIndexer(
                 return fail(path, "No indexable chunks could be created", startedAt)
             }
 
-            val (embeddings, embeddingModel) = embed(chunkTexts)
+            val (embeddings, embeddingModel) = embed(chunkTexts, config)
 
             val now = System.currentTimeMillis()
             val fileNode = BrainNodeEntity(
@@ -345,31 +347,50 @@ class BrainIndexer(
         }
     }
 
-    private suspend fun embed(texts: List<String>): Pair<List<FloatArray>, String> {
+    private suspend fun embed(texts: List<String>, config: AiProviderConfigEntity): Pair<List<FloatArray>, String> {
         if (texts.isEmpty()) {
-            return emptyList<FloatArray>() to onDeviceEmbedding.modelSignature()
-        }
-        if (!onDeviceEmbedding.isReady()) {
-            throw IllegalStateException("Download the on-device Brain model before indexing")
+            return emptyList<FloatArray>() to embeddingSignature(config)
         }
 
-        val vectors = try {
-            onDeviceEmbedding.embedTextPassages(texts) ?: emptyList()
-        } catch (error: Exception) {
-            if (error is kotlinx.coroutines.CancellationException) throw error
-            throw IllegalStateException(
-                "On-device Brain embedding failed: " + (error.message ?: "inference error"),
-                error
-            )
+        return when (EmbeddingProviderType.fromString(config.embeddingProviderType)) {
+            EmbeddingProviderType.OFFLINE -> {
+                if (!onDeviceEmbedding.isReady()) {
+                    throw IllegalStateException("Download the selected on-device embedding model before indexing")
+                }
+                val vectors = try {
+                    onDeviceEmbedding.embedTextPassages(texts) ?: emptyList()
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    throw IllegalStateException(
+                        "On-device embedding failed: " + (error.message ?: "inference error"),
+                        error
+                    )
+                }
+                val modelId = onDeviceEmbedding.modelIdIfReady()
+                    ?: throw IllegalStateException("Selected on-device embedding model is unavailable")
+                vectors to modelId
+            }
+            else -> {
+                val model = config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
+                if (model.isBlank()) {
+                    throw IllegalStateException("Choose an embedding model before indexing")
+                }
+                val vectors = try {
+                    embeddingClient.embedTextPassages(texts, config)
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    throw IllegalStateException(
+                        "Remote embedding failed: " + (error.message ?: "provider error"),
+                        error
+                    )
+                }
+                vectors to embeddingSignature(config)
+            }
+        }.also { (vectors, _) ->
+            if (vectors.size != texts.size || vectors.any { it.isEmpty() }) {
+                throw IllegalStateException("Embedding provider returned an incomplete embedding batch")
+            }
         }
-
-        if (vectors.size != texts.size || vectors.any { it.isEmpty() }) {
-            throw IllegalStateException("On-device Brain returned an incomplete embedding batch")
-        }
-
-        val modelId = onDeviceEmbedding.modelIdIfReady()
-            ?: throw IllegalStateException("On-device Brain model is unavailable")
-        return vectors to modelId
     }
 
     private fun localAnalysis(input: BrainFileContent): AnalysisResult {
@@ -431,6 +452,16 @@ class BrainIndexer(
             .replace(Regex("[^A-Z0-9_]"), "_")
             .ifBlank { "TOPIC" }
 
+    private fun embeddingSignature(config: AiProviderConfigEntity): String =
+        when (EmbeddingProviderType.fromString(config.embeddingProviderType)) {
+            EmbeddingProviderType.OFFLINE -> "offline:" + onDeviceEmbedding.modelSignature()
+            else -> "remote:" + listOf(
+                EmbeddingProviderType.fromString(config.embeddingProviderType).name,
+                config.embeddingBaseUrl.trim(),
+                config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
+            ).joinToString(":")
+        }
+
     private fun modelSignature(config: AiProviderConfigEntity): String =
         listOf(
             MODEL_VERSION,
@@ -438,7 +469,7 @@ class BrainIndexer(
             config.isEnabled.toString(),
             config.chatModel.trim(),
             config.visionModel.trim(),
-            onDeviceEmbedding.modelSignature()
+            embeddingSignature(config)
         ).joinToString("|")
 
     private fun sha256(file: File): String {
