@@ -38,7 +38,7 @@ import com.example.data.brain.BrainVectorSyncOperationEntity
         BrainImageProfileEntity::class,
         BrainVectorSyncOperationEntity::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -534,6 +534,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE brain_documents ADD COLUMN aiSummary TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE brain_documents ADD COLUMN aiTagsJson TEXT NOT NULL DEFAULT '[]'")
+                db.execSQL("ALTER TABLE brain_documents ADD COLUMN aiEntitiesJson TEXT NOT NULL DEFAULT '[]'")
+                db.execSQL("ALTER TABLE brain_documents ADD COLUMN aiRelationsJson TEXT NOT NULL DEFAULT '[]'")
+                db.execSQL("ALTER TABLE brain_documents ADD COLUMN aiModel TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE brain_documents ADD COLUMN aiUpdatedAt INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -558,7 +570,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_15_16,
                         MIGRATION_16_17,
                         MIGRATION_17_18,
-                        MIGRATION_18_19
+                        MIGRATION_18_19,
+                        MIGRATION_19_20
                     )
                     .fallbackToDestructiveMigrationFrom(1, 2, 3, 5)
                     .fallbackToDestructiveMigrationOnDowngrade()
