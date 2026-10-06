@@ -175,7 +175,6 @@ fun BrainScreen(
     ragAnswer: RagAnswer?,
     isRagQuerying: Boolean,
     onDeviceBrainModel: OnDeviceBrainModelUiState = OnDeviceBrainModelUiState(),
-    embeddingReady: Boolean = false,
     smartSuggestions: List<String> = emptyList(),
     askAiMessages: List<AskAiChatMessage> = emptyList(),
     attachedAiFile: AttachedAiFile? = null,
