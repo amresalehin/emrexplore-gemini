@@ -40,11 +40,13 @@ class BrainRetriever(
         if (clean.isBlank() || limit <= 0) return BrainRetrieval(emptyList(), emptyList(), emptyList())
 
         val embeddingProvider = EmbeddingProviderType.fromString(config.embeddingProviderType)
-        val semanticHits = runCatching {
+        val textSemanticHits = runCatching {
             when (embeddingProvider) {
                 EmbeddingProviderType.OFFLINE -> {
                     onDeviceEmbedding.embedText(clean)?.let {
-                        vectorStoreFactory(config).search(it, onDeviceEmbedding.modelIdIfReady().orEmpty(), limit * 3, config)
+                        vectorStoreFactory(config).search(
+                            it, onDeviceEmbedding.modelIdIfReady().orEmpty(), limit * 3, config, BrainVectorKind.TEXT
+                        )
                     }?.let { results -> results.mapNotNull { result ->
                         chunkDao.getByIds(listOf(result.id)).firstOrNull()?.let { BrainSearchHit(it, result.score) }
                     }}.orEmpty()
@@ -52,7 +54,9 @@ class BrainRetriever(
                 else -> {
                     val model = config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
                     embeddingClient.embedTextQuery(clean, config)?.let {
-                        vectorStoreFactory(config).search(it, remoteEmbeddingSignature(config, model), limit * 3, config)
+                        vectorStoreFactory(config).search(
+                            it, remoteEmbeddingSignature(config, model), limit * 3, config, BrainVectorKind.TEXT
+                        )
                     }?.let { results -> results.mapNotNull { result ->
                         chunkDao.getByIds(listOf(result.id)).firstOrNull()?.let { BrainSearchHit(it, result.score) }
                     }}.orEmpty()
@@ -62,6 +66,30 @@ class BrainRetriever(
             if (error is CancellationException) throw error
             emptyList()
         }
+
+        val imageSemanticHits = if (
+            embeddingProvider != EmbeddingProviderType.OFFLINE &&
+            config.multimodalEmbeddingModel.trim().isNotBlank()
+        ) {
+            runCatching {
+                embeddingClient.embedMultimodalQuery(clean, config)?.let {
+                    vectorStoreFactory(config).search(
+                        it,
+                        config.multimodalEmbeddingModel.trim(),
+                        limit * 3,
+                        config,
+                        BrainVectorKind.IMAGE
+                    )
+                }?.let { results -> results.mapNotNull { result ->
+                    chunkDao.getByIds(listOf(result.id)).firstOrNull()?.let { BrainSearchHit(it, result.score) }
+                }}.orEmpty()
+            }.getOrElse { error ->
+                if (error is CancellationException) throw error
+                emptyList()
+            }
+        } else emptyList()
+
+        val semanticHits = fuseSemanticHits(textSemanticHits, imageSemanticHits, limit * 3)
 
         val bestHits = mergeLexicalFallback(clean, semanticHits, limit)
             .filter { hit ->
@@ -140,6 +168,27 @@ class BrainRetriever(
         }
 
         return context.toString().trim() to retrieval.evidence.joinToString("\n")
+    }
+
+    private fun fuseSemanticHits(
+        textHits: List<BrainSearchHit>,
+        imageHits: List<BrainSearchHit>,
+        limit: Int
+    ): List<BrainSearchHit> {
+        val scores = linkedMapOf<String, Float>()
+        val best = linkedMapOf<String, BrainSearchHit>()
+        textHits.take(limit).forEachIndexed { rank, hit ->
+            scores[hit.chunk.id] = (scores[hit.chunk.id] ?: 0f) + 0.65f / (rank + 1)
+            best[hit.chunk.id] = hit
+        }
+        imageHits.take(limit).forEachIndexed { rank, hit ->
+            scores[hit.chunk.id] = (scores[hit.chunk.id] ?: 0f) + 0.35f / (rank + 1)
+            if (best[hit.chunk.id] == null || hit.score > best.getValue(hit.chunk.id).score) best[hit.chunk.id] = hit
+        }
+        return scores.entries
+            .sortedByDescending { it.value }
+            .mapNotNull { (id, score) -> best[id]?.copy(score = score) }
+            .take(limit)
     }
 
     private fun remoteEmbeddingSignature(config: AiProviderConfigEntity, model: String): String =
