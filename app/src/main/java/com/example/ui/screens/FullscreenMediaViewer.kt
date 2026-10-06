@@ -144,13 +144,6 @@ fun FullscreenMediaViewer(
         rotationDegrees = 0f
     }
 
-    val filmstripState = rememberLazyListState()
-    LaunchedEffect(currentIndex) {
-        if (localIndex in mediaList.indices) {
-            filmstripState.animateScrollToItem(localIndex)
-        }
-    }
-
     if (currentItem == null) {
         Box(
             modifier = Modifier.fillMaxSize().background(Color.Black),
