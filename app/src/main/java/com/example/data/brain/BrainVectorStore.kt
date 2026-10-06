@@ -28,11 +28,12 @@ class RoomBrainVectorStore(private val chunkDao: BrainChunkDao) : BrainVectorSto
 
     override suspend fun search(vector: FloatArray, model: String, limit: Int, config: AiProviderConfigEntity, kind: BrainVectorKind): List<VectorSearchResult> {
         val queue = java.util.PriorityQueue<VectorSearchResult>(limit.coerceAtLeast(1)) { a, b -> a.score.compareTo(b.score) }
-        var offset = 0
+        var afterIndexedAt: Long? = null
+        var afterId: String? = null
         while (true) {
             val page = when (kind) {
-                BrainVectorKind.TEXT -> chunkDao.getEmbeddedPage(model, 128, offset)
-                BrainVectorKind.IMAGE -> chunkDao.getImageEmbeddedPage(model, 128, offset)
+                BrainVectorKind.TEXT -> chunkDao.getEmbeddedPage(model, 128, afterIndexedAt, afterId)
+                BrainVectorKind.IMAGE -> chunkDao.getImageEmbeddedPage(model, 128, afterIndexedAt, afterId)
             }
             if (page.isEmpty()) break
             for (chunk in page) {
@@ -45,8 +46,9 @@ class RoomBrainVectorStore(private val chunkDao: BrainChunkDao) : BrainVectorSto
                 }
             }
             if (page.size < 128) break
-            offset += page.size
-            if (offset >= 20_000) break
+            val last = page.last()
+            afterIndexedAt = last.indexedAt
+            afterId = last.id
         }
         return buildList { while (queue.isNotEmpty()) add(queue.poll()) }.asReversed()
     }
