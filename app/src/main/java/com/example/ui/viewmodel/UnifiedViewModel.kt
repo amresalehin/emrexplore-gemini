@@ -281,6 +281,10 @@ data class UiState(
     val isFetchingAiModels: Boolean = false,
     val aiModelFetchError: String? = null,
     val embeddingTestResult: ConnectionTestResult? = null,
+    val isDownloadingOllamaModel: Boolean = false,
+    val ollamaDownloadModel: String = "",
+    val ollamaDownloadProgress: Float = 0f,
+    val ollamaDownloadStatus: String = "",
     val onDeviceBrainModel: OnDeviceBrainModelUiState = OnDeviceBrainModelUiState(),
 
     // User Feedback
@@ -2494,6 +2498,49 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _uiState.update { it.copy(isFetchingAiModels = false, aiModelFetchError = e.message ?: "Could not fetch embedding models") }
+            }
+        }
+    }
+
+    fun downloadOllamaModel(config: AiProviderConfigEntity, modelId: String) {
+        val model = modelId.trim()
+        if (model.isBlank() || _uiState.value.isDownloadingOllamaModel) return
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isDownloadingOllamaModel = true,
+                    ollamaDownloadModel = model,
+                    ollamaDownloadProgress = 0f,
+                    ollamaDownloadStatus = "Starting download…"
+                )
+            }
+            try {
+                brainRepository.pullOllamaModel(config, model) { completed, total, status ->
+                    _uiState.update {
+                        it.copy(
+                            ollamaDownloadProgress = if (total > 0L) (completed.toFloat() / total.toFloat()).coerceIn(0f, 1f) else it.ollamaDownloadProgress,
+                            ollamaDownloadStatus = status
+                        )
+                    }
+                }
+                _uiState.update {
+                    it.copy(
+                        isDownloadingOllamaModel = false,
+                        ollamaDownloadProgress = 1f,
+                        ollamaDownloadStatus = "Download complete"
+                    )
+                }
+                fetchAiModels(config.copy(chatModel = model))
+                showMessage("Ollama model downloaded: $model")
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                _uiState.update {
+                    it.copy(
+                        isDownloadingOllamaModel = false,
+                        ollamaDownloadStatus = error.message ?: "Ollama download failed"
+                    )
+                }
+                showMessage(error.message ?: "Could not download Ollama model")
             }
         }
     }
