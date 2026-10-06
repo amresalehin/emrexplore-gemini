@@ -537,6 +537,16 @@ private fun PersistentTabHost(
                 apiConfigured = uiState.aiConfigLoaded && uiState.aiConfig.isEnabled &&
                     (isKeylessAiConfig(uiState.aiConfig) || uiState.aiConfig.apiKey.isNotBlank()),
                 isIndexing = uiState.isBrainIndexing,
+                embeddingReady = run {
+                    val embeddingProvider = com.example.data.ai.EmbeddingProviderType.fromString(uiState.aiConfig.embeddingProviderType)
+                    if (embeddingProvider == com.example.data.ai.EmbeddingProviderType.OFFLINE) {
+                        uiState.onDeviceBrainModel.status == com.example.data.brain.OnDeviceBrainModelStatus.READY
+                    } else {
+                        uiState.aiConfig.textEmbeddingModel.ifBlank { uiState.aiConfig.embeddingModel }.isNotBlank() &&
+                            uiState.aiConfig.embeddingBaseUrl.isNotBlank() &&
+                            (isKeylessAiConfig(uiState.aiConfig.copy(providerType = uiState.aiConfig.providerType)) || uiState.aiConfig.embeddingApiKey.isNotBlank())
+                    }
+                },
                 indexingProgress = uiState.brainIndexingProgress,
                 indexingStatus = uiState.brainIndexingStatus,
                 ragAnswer = uiState.ragAnswer,
