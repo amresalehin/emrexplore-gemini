@@ -289,6 +289,8 @@ fun BrainScreen(
                         }
                     }
                 }
+            }
+        }
 
         Box(
             modifier = Modifier
