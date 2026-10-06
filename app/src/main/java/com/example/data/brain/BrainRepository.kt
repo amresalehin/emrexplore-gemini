@@ -343,6 +343,131 @@ class BrainRepository(context: Context) {
         brainImageProfileDao.get(path)
     }
 
+    suspend fun saveDocumentAi(
+        file: File,
+        analysis: com.example.data.ai.AnalysisResult,
+        model: String
+    ) = withContext(Dispatchers.IO) {
+        val existing = brainDocumentDao.get(file.absolutePath)
+        val tagsJson = org.json.JSONArray().apply { analysis.tags.take(50).forEach(::put) }.toString()
+        val entitiesJson = org.json.JSONArray().apply {
+            analysis.entities.take(50).forEach {
+                put(org.json.JSONObject().put("name", it.name).put("type", it.type).put("confidence", it.confidence))
+            }
+        }.toString()
+        val relationsJson = org.json.JSONArray().apply {
+            analysis.relations.take(50).forEach {
+                put(org.json.JSONObject().put("source", it.source).put("relation", it.relation).put("target", it.target).put("evidence", it.evidence))
+            }
+        }.toString()
+        brainDocumentDao.insert(
+            BrainDocumentEntity(
+                path = file.absolutePath,
+                name = file.name,
+                mimeType = existing?.mimeType ?: "",
+                size = file.length(),
+                lastModified = file.lastModified(),
+                contentHash = existing?.contentHash.orEmpty(),
+                aiSummary = analysis.summary.trim().take(1200),
+                aiTagsJson = tagsJson,
+                aiEntitiesJson = entitiesJson,
+                aiRelationsJson = relationsJson,
+                aiModel = model.trim(),
+                aiUpdatedAt = System.currentTimeMillis(),
+                modelSignature = existing?.modelSignature.orEmpty(),
+                state = BrainIndexStates.FAILED,
+                error = null,
+                indexedAt = existing?.indexedAt ?: System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun runFileAi(file: File, force: Boolean = true): BrainIndexOutcome = withContext(Dispatchers.IO) {
+        if (!file.exists() || !file.isFile || !file.canRead()) {
+            return@withContext BrainIndexOutcome(false, error = "File is not readable")
+        }
+        val config = getAiConfig()
+        if (!isAiReady(config)) {
+            return@withContext BrainIndexOutcome(false, error = "Configure an LLM provider for File AI first")
+        }
+        val input = try {
+            contentReader.read(file, config)
+        } catch (error: Exception) {
+            return@withContext BrainIndexOutcome(false, error = error.message ?: "Could not read file")
+        }
+        if (input.isImage) {
+            return@withContext BrainIndexOutcome(false, error = "Images are owned by Gallery AI")
+        }
+        val analysis = try {
+            brainAi.analyzeDocument(input.text.take(12_000), file.name, config)
+        } catch (error: Exception) {
+            return@withContext BrainIndexOutcome(false, error = error.message ?: "File AI analysis failed")
+        }
+        saveDocumentAi(file, analysis, config.chatModel.ifBlank { config.providerType })
+        // Embedding is deliberately the final stage.
+        indexFile(file, config, force = force)
+        val indexed = brainDocumentDao.get(file.absolutePath)?.state == BrainIndexStates.READY
+        if (indexed) BrainIndexOutcome(true) else BrainIndexOutcome(false, error = "Embedding failed")
+    }
+
+    suspend fun runGalleryAi(file: File, force: Boolean = true): BrainIndexOutcome = withContext(Dispatchers.IO) {
+        if (!file.exists() || !file.isFile || !file.canRead()) {
+            return@withContext BrainIndexOutcome(false, error = "File is not readable")
+        }
+        val config = getAiConfig()
+        if (!isAiReady(config)) {
+            return@withContext BrainIndexOutcome(false, error = "Configure a Gallery AI VLM first")
+        }
+        val input = try {
+            contentReader.read(file, config)
+        } catch (error: Exception) {
+            return@withContext BrainIndexOutcome(false, error = error.message ?: "Could not read image")
+        }
+        if (!input.isImage) {
+            return@withContext BrainIndexOutcome(false, error = "Gallery AI only processes images")
+        }
+        val analysis = try {
+            brainAi.analyzeImage(
+                base64Jpeg = input.imageBase64,
+                ocrText = input.ocrText,
+                metadataSummary = input.metadataSummary,
+                fileName = file.name,
+                config = config
+            )
+        } catch (error: Exception) {
+            return@withContext BrainIndexOutcome(false, error = error.message ?: "Gallery VLM analysis failed")
+        }
+        val tagsJson = org.json.JSONArray().apply { analysis.tags.take(50).forEach(::put) }.toString()
+        val entitiesJson = org.json.JSONArray().apply {
+            analysis.entities.take(50).forEach {
+                put(org.json.JSONObject().put("name", it.name).put("type", it.type).put("confidence", it.confidence))
+            }
+        }.toString()
+        val relationsJson = org.json.JSONArray().apply {
+            analysis.relations.take(50).forEach {
+                put(org.json.JSONObject().put("source", it.source).put("relation", it.relation).put("target", it.target).put("evidence", it.evidence))
+            }
+        }.toString()
+        brainImageProfileDao.insert(
+            BrainImageProfileEntity(
+                filePath = file.absolutePath,
+                fileName = file.name,
+                ocrText = input.ocrText,
+                metadataSummary = input.metadataSummary,
+                description = analysis.summary.trim().take(1200),
+                tagsJson = tagsJson,
+                entitiesJson = entitiesJson,
+                relationsJson = relationsJson,
+                visionModel = config.visionModel.trim().ifBlank { config.chatModel },
+                imageEmbeddingModel = ""
+            )
+        )
+        // VLM/caption/tag generation is complete and persisted before embedding starts.
+        indexFile(file, config, force = force)
+        val indexed = brainDocumentDao.get(file.absolutePath)?.state == BrainIndexStates.READY
+        if (indexed) BrainIndexOutcome(true) else BrainIndexOutcome(false, error = "Embedding failed")
+    }
+
     suspend fun getBrainNode(path: String): BrainNodeEntity? = withContext(Dispatchers.IO) {
         if (path.isBlank()) return@withContext null
         brainNodeDao.getByFilePath(path)
