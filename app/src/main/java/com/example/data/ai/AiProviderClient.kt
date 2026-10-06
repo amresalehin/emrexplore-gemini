@@ -461,7 +461,8 @@ class AiProviderClient {
                         val embedding = methods != null && (0 until methods.length()).any {
                             methods.optString(it).contains("embedContent", true)
                         } || name.contains("embedding", true)
-                        if (!generation && !embedding) continue
+                        // Keep every model returned by the endpoint. Role-specific UI filters
+                        // decide whether a model is suitable for chat, vision, or embeddings.
                         val description = item.optString("description").trim()
                         val context = item.optLong("inputTokenLimit", 0L).takeIf { it > 0L }
                         val outputLimit = item.optLong("outputTokenLimit", 0L).takeIf { it > 0L }
