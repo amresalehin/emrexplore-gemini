@@ -35,7 +35,6 @@ fun BrainSetupScreen(
     offlineModels: List<OnDeviceBrainModelSpec>,
     onSelectOfflineModel: (String) -> Unit,
     onSaveConfig: (AiProviderConfigEntity) -> Unit,
-    onOpenAdvancedSettings: () -> Unit,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -121,7 +120,6 @@ fun BrainSetupScreen(
             TopAppBar(
                 title = { Text("Set up Brain", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } },
-                actions = { TextButton(onClick = onOpenAdvancedSettings) { Text("Advanced") } }
             )
         }
     ) { padding ->
