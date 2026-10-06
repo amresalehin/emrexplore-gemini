@@ -206,10 +206,11 @@ class BrainRetriever(
         if (model.isBlank() || queryVector.isEmpty() || limit <= 0) return emptyList()
 
         val queue = PriorityQueue<BrainSearchHit>(limit * 2) { a, b -> a.score.compareTo(b.score) }
-        var offset = 0
+        var afterIndexedAt: Long? = null
+        var afterId: String? = null
 
         while (true) {
-            val page = chunkDao.getEmbeddedPage(model, PAGE_SIZE, offset)
+            val page = chunkDao.getEmbeddedPage(model, PAGE_SIZE, afterIndexedAt, afterId)
             if (page.isEmpty()) break
 
             for (chunk in page) {
@@ -220,8 +221,9 @@ class BrainRetriever(
             }
 
             if (page.size < PAGE_SIZE) break
-            offset += page.size
-            if (offset >= MAX_SCAN_ROWS) break
+            val last = page.last()
+            afterIndexedAt = last.indexedAt
+            afterId = last.id
         }
 
         return drainTop(queue, limit)
@@ -280,7 +282,6 @@ class BrainRetriever(
 
     companion object {
         private const val PAGE_SIZE = 128
-        private const val MAX_SCAN_ROWS = 20_000
         private const val MIN_VECTOR_SCORE = 0.20f
         private const val MAX_QUERY_TERMS = 12
         private const val MAX_FILE_SOURCES = 12
