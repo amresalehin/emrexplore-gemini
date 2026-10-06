@@ -921,7 +921,7 @@ private fun ModelPickerDialog(title: String, models: List<AvailableAiModel>, cur
                         if (model.supportsEmbedding) add("Embed")
                         if (model.supportsMultimodalEmbedding) add("Image embed")
                         if (model.supportsTools) add("Tools")
-                        if (model.isFree) add("Free")
+                        if (model.priceKnown) add(if (model.isFree) "FREE" else "Paid") else add("Price unknown")
                     }
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable { onSelect(model.id) },
@@ -933,7 +933,7 @@ private fun ModelPickerDialog(title: String, models: List<AvailableAiModel>, cur
                             Text(model.id, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 buildString {
-                                    append("Available")
+                                    append(model.availabilityMessage)
                                     if (badges.isNotEmpty()) append(" · ").append(badges.joinToString(" · "))
                                     model.contextWindow?.let { append(" · ").append(it / 1000).append("K ctx") }
                                 },
