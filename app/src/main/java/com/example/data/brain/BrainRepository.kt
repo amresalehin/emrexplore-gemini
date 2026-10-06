@@ -6,6 +6,7 @@ import com.example.data.ai.AiProviderClient
 import com.example.data.ai.AvailableAiModel
 import com.example.data.ai.ConnectionTestResult
 import com.example.data.ai.ProviderType
+import com.example.data.ai.EmbeddingProviderType
 import com.example.data.ai.isKeylessAiConfig
 import com.example.data.local.AiProviderConfigEntity
 import com.example.data.local.AppDatabase
@@ -53,6 +54,7 @@ class BrainRepository(context: Context) {
         edgeEvidenceDao = brainEdgeEvidenceDao,
         runDao = brainRunDao,
         client = brainAi,
+        embeddingClient = client,
         db = db,
         onDeviceEmbedding = onDeviceEmbedding
     )
@@ -60,7 +62,8 @@ class BrainRepository(context: Context) {
         chunkDao = brainChunkDao,
         nodeDao = brainNodeDao,
         edgeDao = brainEdgeDao,
-        onDeviceEmbedding = onDeviceEmbedding
+        onDeviceEmbedding = onDeviceEmbedding,
+        embeddingClient = client
     )
 
     val allNodesFlow: Flow<List<BrainNodeEntity>> = brainNodeDao.observePreview().map { it }
@@ -89,6 +92,12 @@ class BrainRepository(context: Context) {
 
     suspend fun listAiModels(config: AiProviderConfigEntity): List<AvailableAiModel> =
         client.listModels(normalizeAiConfig(config))
+
+    suspend fun listEmbeddingModels(config: AiProviderConfigEntity): List<AvailableAiModel> =
+        client.listEmbeddingModels(normalizeAiConfig(config))
+
+    suspend fun testEmbeddingConnection(config: AiProviderConfigEntity): ConnectionTestResult =
+        client.testEmbeddingConnection(normalizeAiConfig(config))
 
     fun getOnDeviceBrainModelState(error: String? = null): OnDeviceBrainModelUiState =
         onDeviceEmbedding.manager().uiState(error)
@@ -211,7 +220,9 @@ class BrainRepository(context: Context) {
             if (!File(oldPath).exists()) {
                 removeIndexedSource(oldPath)
             }
-            if (!isOnDeviceBrainModelReady()) continue
+            if (EmbeddingProviderType.fromString(getAiConfig().embeddingProviderType) == EmbeddingProviderType.OFFLINE &&
+                !isOnDeviceBrainModelReady()
+            ) continue
 
             val file = File(newPath)
             if (!file.exists() || !file.canRead()) continue
@@ -454,18 +465,29 @@ class BrainRepository(context: Context) {
         val provider = ProviderType.fromString(config.providerType)
         val explicitTextEmbedding = config.textEmbeddingModel.trim()
         val legacyEmbedding = config.embeddingModel.trim()
+        val embeddingProvider = EmbeddingProviderType.fromString(config.embeddingProviderType)
+        val defaultEmbeddingBase = embeddingProvider.defaultBaseUrl
         return config.copy(
             providerType = provider.name,
+            embeddingProviderType = embeddingProvider.name,
+            embeddingApiKey = config.embeddingApiKey.trim(),
+            embeddingBaseUrl = config.embeddingBaseUrl.trim().ifBlank { defaultEmbeddingBase },
             textEmbeddingModel = explicitTextEmbedding.ifBlank { legacyEmbedding },
             embeddingModel = legacyEmbedding
         )
     }
 
     private fun decryptConfig(config: AiProviderConfigEntity): AiProviderConfigEntity =
-        config.copy(apiKey = com.example.data.security.ApiKeyProtector.decrypt(config.apiKey))
+        config.copy(
+            apiKey = com.example.data.security.ApiKeyProtector.decrypt(config.apiKey),
+            embeddingApiKey = com.example.data.security.ApiKeyProtector.decrypt(config.embeddingApiKey)
+        )
 
     private fun encryptConfig(config: AiProviderConfigEntity): AiProviderConfigEntity =
-        config.copy(apiKey = com.example.data.security.ApiKeyProtector.encrypt(config.apiKey))
+        config.copy(
+            apiKey = com.example.data.security.ApiKeyProtector.encrypt(config.apiKey),
+            embeddingApiKey = com.example.data.security.ApiKeyProtector.encrypt(config.embeddingApiKey)
+        )
 
     private fun fileNodeId(path: String): String = BrainIdentity.fileNodeId(path)
     private fun stableKey(value: String): String = BrainIdentity.stableKey(value)
