@@ -47,6 +47,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
@@ -1181,6 +1183,19 @@ fun FileExplorerScreen(
                                 },
                                 onClick = {
                                     viewModel.toggleFavorite(item)
+                                    activeMenuItem = null
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (viewModel.isPinned(item.path)) "Remove from Pinboard" else "Pin to Pinboard") },
+                                leadingIcon = {
+                                    Icon(
+                                        if (viewModel.isPinned(item.path)) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = {
+                                    viewModel.togglePinned(item)
                                     activeMenuItem = null
                                 }
                             )
