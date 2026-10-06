@@ -338,6 +338,17 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             onClose = { viewModel.closeFullscreenMedia() },
             onIndexChange = { newIdx -> viewModel.moveFullscreenMedia(newIdx) },
             onToggleFavorite = { fileItem -> viewModel.toggleFavorite(fileItem) },
+            onTogglePin = { mediaItem ->
+                viewModel.togglePinned(com.example.data.model.FileItem(
+                    name = mediaItem.name,
+                    path = mediaItem.path,
+                    size = mediaItem.size,
+                    lastModified = mediaItem.dateAdded,
+                    isDirectory = false,
+                    mimeType = mediaItem.mimeType
+                ))
+            },
+            isPinned = { mediaItem -> mediaItem.path.isNotBlank() && viewModel.isPinned(mediaItem.path) },
             onInspectMetadata = { mediaItem -> viewModel.inspectMetadata(mediaItem) },
             onLoadBrainNode = { mediaItem -> viewModel.getBrainNode(mediaItem) },
             onReindexWithBrain = { mediaItem -> viewModel.reAnalyzeGalleryImage(mediaItem) },
