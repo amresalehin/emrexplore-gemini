@@ -72,13 +72,17 @@ fun BrainSetupScreen(
     var search by remember { mutableStateOf("") }
     var embeddingSearch by remember { mutableStateOf("") }
     var ollamaDownloadModel by remember { mutableStateOf("") }
+    var freeOnly by remember { mutableStateOf(false) }
 
     val selectedChatProvider = selectedProvider
     val selectedEmbedding = selectedEmbeddingProvider
-    val filteredChatModels = availableModels.filter { search.isBlank() || it.id.contains(search, true) || it.displayName.contains(search, true) }
-    val filteredVisionModels = availableVisionModels.filter { search.isBlank() || it.id.contains(search, true) || it.displayName.contains(search, true) }
-    val filteredEmbeddingModels = availableEmbeddingModels.filter { embeddingSearch.isBlank() || it.id.contains(embeddingSearch, true) || it.displayName.contains(embeddingSearch, true) }
-    val filteredMultimodalEmbeddingModels = availableMultimodalEmbeddingModels.filter { embeddingSearch.isBlank() || it.id.contains(embeddingSearch, true) || it.displayName.contains(embeddingSearch, true) }
+    fun matches(model: AvailableAiModel, query: String): Boolean =
+        query.isBlank() || model.id.contains(query, true) || model.displayName.contains(query, true) || model.owner.contains(query, true)
+    fun visible(model: AvailableAiModel, query: String): Boolean = matches(model, query) && (!freeOnly || model.isFree)
+    val filteredChatModels = availableModels.filter { it.supportsChat && visible(it, search) }
+    val filteredVisionModels = availableVisionModels.filter { it.supportsVision && visible(it, search) }
+    val filteredEmbeddingModels = availableEmbeddingModels.filter { it.supportsEmbedding && !it.supportsMultimodalEmbedding && visible(it, embeddingSearch) }
+    val filteredMultimodalEmbeddingModels = availableMultimodalEmbeddingModels.filter { it.supportsMultimodalEmbedding && visible(it, embeddingSearch) }
 
 
     fun chatDraft(): AiProviderConfigEntity = currentConfig.copy(
@@ -235,12 +239,28 @@ fun BrainSetupScreen(
                                 }
                             }
                             item {
-                                OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text("Search fetched models") })
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    OutlinedTextField(
+                                        value = search,
+                                        onValueChange = { search = it },
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true,
+                                        leadingIcon = { Icon(Icons.Default.Search, null) },
+                                        placeholder = { Text("Search fetched models") }
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    FilterChip(
+                                        selected = freeOnly,
+                                        onClick = { freeOnly = !freeOnly },
+                                        label = { Text("Free") },
+                                        shape = RoundedCornerShape(20.dp)
+                                    )
+                                }
                             }
                             item {
                                 Text(
-                                    if (filteredChatModels.isEmpty()) "No live chat models fetched yet. Fetch the endpoint above, or enter a model ID manually below."
-                                    else filteredChatModels.size.toString() + " chat-capable models available",
+                                    if (filteredChatModels.isEmpty()) "No matching chat-capable models. Fetch the endpoint above, or enter a model ID manually below."
+                                    else filteredChatModels.size.toString() + " chat-capable models available" + if (freeOnly) " · free only" else "",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
