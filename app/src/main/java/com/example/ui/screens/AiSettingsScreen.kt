@@ -538,7 +538,7 @@ fun AiSettingsScreen(
 
                 ModelPicker("General files / chat", firstUsable(chats, chatModel), { showChatPicker = true }, "ai_chat_model_field", chats)
                 ModelPicker("Vision / image understanding + caption", firstUsable(visions, visionModel), { showVisionPicker = true }, "ai_vision_model_field", visions)
-undefined                SectionTitle("CHECK")
+                SectionTitle("CHECK")
                 Button(
                     onClick = { onTestConnection(draftConfig()) },
                     enabled = !isTestingConnection,
