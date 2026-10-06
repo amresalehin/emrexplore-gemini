@@ -132,6 +132,8 @@ class BrainRepository(context: Context) {
     fun isOnDeviceBrainModelReady(): Boolean = onDeviceEmbedding.isReady()
 
     suspend fun clearGraph() = withContext(Dispatchers.IO) {
+        val config = getAiConfig()
+        runCatching { vectorStoreFor(config, brainChunkDao).clear(config) }
         db.withTransaction {
             brainEdgeEvidenceDao.clearAll()
             brainEdgeDao.clearAll()
@@ -274,7 +276,13 @@ class BrainRepository(context: Context) {
     }
 
     suspend fun removeIndexedSource(filePath: String) = withContext(Dispatchers.IO) {
+        val config = getAiConfig()
+        val store = vectorStoreFor(config, brainChunkDao)
         val paths = brainDocumentDao.getPathsUnder(filePath, filePath + File.separator).ifEmpty { listOf(filePath) }
+        for (path in paths) {
+            val ids = brainChunkDao.getForFile(path).map { it.id }
+            runCatching { store.delete(ids, config) }
+        }
         db.withTransaction {
             for (path in paths) {
                 val fileNodeId = BrainIdentity.fileNodeId(path)
@@ -470,6 +478,10 @@ class BrainRepository(context: Context) {
         return config.copy(
             providerType = provider.name,
             embeddingProviderType = embeddingProvider.name,
+            vectorDatabaseType = com.example.data.ai.VectorDatabaseType.fromString(config.vectorDatabaseType).name,
+            vectorDatabaseBaseUrl = config.vectorDatabaseBaseUrl.trim(),
+            vectorDatabaseApiKey = config.vectorDatabaseApiKey.trim(),
+            vectorDatabaseCollection = config.vectorDatabaseCollection.trim().ifBlank { "emrexplore_brain" },
             embeddingApiKey = config.embeddingApiKey.trim(),
             embeddingBaseUrl = config.embeddingBaseUrl.trim().ifBlank { defaultEmbeddingBase },
             textEmbeddingModel = explicitTextEmbedding.ifBlank { legacyEmbedding },
@@ -480,13 +492,15 @@ class BrainRepository(context: Context) {
     private fun decryptConfig(config: AiProviderConfigEntity): AiProviderConfigEntity =
         config.copy(
             apiKey = com.example.data.security.ApiKeyProtector.decrypt(config.apiKey),
-            embeddingApiKey = com.example.data.security.ApiKeyProtector.decrypt(config.embeddingApiKey)
+            embeddingApiKey = com.example.data.security.ApiKeyProtector.decrypt(config.embeddingApiKey),
+            vectorDatabaseApiKey = com.example.data.security.ApiKeyProtector.decrypt(config.vectorDatabaseApiKey)
         )
 
     private fun encryptConfig(config: AiProviderConfigEntity): AiProviderConfigEntity =
         config.copy(
             apiKey = com.example.data.security.ApiKeyProtector.encrypt(config.apiKey),
-            embeddingApiKey = com.example.data.security.ApiKeyProtector.encrypt(config.embeddingApiKey)
+            embeddingApiKey = com.example.data.security.ApiKeyProtector.encrypt(config.embeddingApiKey),
+            vectorDatabaseApiKey = com.example.data.security.ApiKeyProtector.encrypt(config.vectorDatabaseApiKey)
         )
 
     private fun fileNodeId(path: String): String = BrainIdentity.fileNodeId(path)
