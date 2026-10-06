@@ -115,7 +115,7 @@ fun AiSettingsScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     var selectedProvider by remember { mutableStateOf(normalizeProvider(currentConfig.providerType)) }
-    var selectedEmbeddingProvider by remember { mutableStateOf(EmbeddingProviderType.fromString(currentConfig.embeddingProviderType)) }
+    var selectedEmbeddingProvider by remember { mutableStateOf(EmbeddingProviderType.OFFLINE) }
     var apiKey by remember { mutableStateOf(currentConfig.apiKey) }
     var baseUrl by remember { mutableStateOf(currentConfig.baseUrl) }
     var embeddingApiKey by remember { mutableStateOf(currentConfig.embeddingApiKey) }
@@ -146,14 +146,14 @@ fun AiSettingsScreen(
         providerType = selectedProvider.name,
         apiKey = apiKey.trim(),
         baseUrl = baseUrl.trim(),
-        embeddingProviderType = selectedEmbeddingProvider.name,
-        embeddingApiKey = embeddingApiKey.trim(),
-        embeddingBaseUrl = embeddingBaseUrl.trim(),
+        embeddingProviderType = EmbeddingProviderType.OFFLINE.name,
+        embeddingApiKey = "",
+        embeddingBaseUrl = "",
         chatModel = chatModel.trim(),
         visionModel = visionModel.trim(),
-        embeddingModel = embeddingModel.trim(),
-        textEmbeddingModel = embeddingModel.trim(),
-        multimodalEmbeddingModel = multimodalEmbeddingModel.trim(),
+        embeddingModel = selectedOfflineBrainModelId.ifBlank { embeddingModel.trim() },
+        textEmbeddingModel = selectedOfflineBrainModelId.ifBlank { embeddingModel.trim() },
+        multimodalEmbeddingModel = "",
         isEnabled = isEnabled,
         autoSync = autoSync,
         vectorDatabaseType = selectedVectorDatabase.name,
@@ -180,8 +180,8 @@ fun AiSettingsScreen(
             baseUrl = provider.defaultBaseUrl
             chatModel = ""
             visionModel = ""
-            embeddingModel = provider.defaultTextEmbeddingModel
-            multimodalEmbeddingModel = provider.defaultMultimodalEmbeddingModel
+            embeddingModel = selectedOfflineBrainModelId
+            multimodalEmbeddingModel = ""
             apiKey = ""
         }
         showProviderPicker = false
