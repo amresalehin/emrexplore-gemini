@@ -5,6 +5,8 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.brain.BrainChunkEntity
 import com.example.data.brain.BrainVectorKind
+import com.example.data.brain.BrainVectorSyncOperationEntity
+import com.example.data.brain.BrainVectorSyncOperations
 import com.example.data.brain.RoomBrainVectorStore
 import com.example.data.local.AiProviderConfigEntity
 import com.example.data.local.AppDatabase
@@ -22,6 +24,37 @@ class BrainVectorStoreTest {
     @After
     fun closeDatabase() {
         db.close()
+    }
+
+
+    @Test
+    fun vectorSyncOutbox_preservesOrderingAndNewerUpsertProtection() = runBlocking {
+        val dao = db.brainVectorSyncDao()
+        val delete = BrainVectorSyncOperationEntity(
+            id = "delete",
+            operation = BrainVectorSyncOperations.DELETE,
+            chunkId = "chunk-1",
+            createdAt = 10L,
+            updatedAt = 10L
+        )
+        val upsert = BrainVectorSyncOperationEntity(
+            id = "upsert",
+            operation = BrainVectorSyncOperations.UPSERT,
+            chunkId = "chunk-1",
+            createdAt = 20L,
+            updatedAt = 20L
+        )
+        dao.insertAll(listOf(delete, upsert))
+
+        assertTrue(dao.hasNewerUpsert("chunk-1", 10L))
+        assertEquals("delete", dao.getPending(1).single().id)
+
+        dao.markInFlight("delete", 30L)
+        dao.markFailed("delete", "temporary", 31L)
+        assertEquals("delete", dao.getPending(1).single().id)
+
+        dao.markCompleted("delete", 32L)
+        assertEquals("upsert", dao.getPending(1).single().id)
     }
 
     @Test
