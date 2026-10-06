@@ -60,9 +60,7 @@ class BrainRepository(context: Context) {
         runDao = brainRunDao,
         imageProfileDao = brainImageProfileDao,
         client = brainAi,
-        embeddingClient = client,
         db = db,
-        onDeviceEmbedding = onDeviceEmbedding,
         vectorSyncDao = db.brainVectorSyncDao()
     )
     private val retriever = BrainRetriever(
