@@ -210,35 +210,48 @@ class AiProviderClient {
     suspend fun embedMultimodalQuery(
         text: String,
         config: AiProviderConfigEntity
-    ): FloatArray? {
-        if (EmbeddingProviderType.fromString(config.embeddingProviderType) == EmbeddingProviderType.OFFLINE) return null
-        val model = config.multimodalEmbeddingModel.ifBlank { config.textEmbeddingModel.ifBlank { config.embeddingModel } }.trim()
-        return embedText(listOf(text), config, model, "query").firstOrNull()
+    ): FloatArray? = withContext(Dispatchers.IO) {
+        val provider = EmbeddingProviderType.fromString(config.embeddingProviderType)
+        val model = config.multimodalEmbeddingModel.trim()
+        if (provider == EmbeddingProviderType.OFFLINE || model.isBlank()) return@withContext null
+        when (provider) {
+            EmbeddingProviderType.OPENAI_COMPATIBLE, EmbeddingProviderType.CUSTOM -> {
+                embedOpenAi(
+                    inputs = listOf(text),
+                    config = embeddingConfig(config).copy(
+                        embeddingModel = model,
+                        textEmbeddingModel = model
+                    ),
+                    model = model,
+                    inputType = "query",
+                    modality = "text"
+                ).firstOrNull()
+            }
+            else -> null
+        }
     }
 
     suspend fun embedMultimodalDocument(
         base64Jpeg: String?,
-        text: String,
         config: AiProviderConfigEntity
     ): FloatArray? = withContext(Dispatchers.IO) {
+        val provider = EmbeddingProviderType.fromString(config.embeddingProviderType)
         val model = config.multimodalEmbeddingModel.trim()
-            .ifBlank { config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() } }
-        if (model.isBlank() || base64Jpeg.isNullOrBlank()) return@withContext null
-        if (EmbeddingProviderType.fromString(config.embeddingProviderType) == EmbeddingProviderType.OFFLINE) return@withContext null
-        when (EmbeddingProviderType.fromString(config.embeddingProviderType)) {
-            EmbeddingProviderType.GEMINI, EmbeddingProviderType.OLLAMA -> embedText(
-                listOf(text),
-                config,
-                config.textEmbeddingModel.ifBlank { config.embeddingModel },
-                "passage"
-            ).firstOrNull()
-            else -> embedOpenAi(
-                inputs = listOf("$text data:image/jpeg;base64,$base64Jpeg"),
-                config = config,
-                model = model,
-                inputType = "passage",
-                modality = "text_image"
-            ).firstOrNull()
+        if (provider == EmbeddingProviderType.OFFLINE || model.isBlank() || base64Jpeg.isNullOrBlank()) return@withContext null
+        when (provider) {
+            EmbeddingProviderType.OPENAI_COMPATIBLE, EmbeddingProviderType.CUSTOM -> {
+                embedOpenAi(
+                    inputs = listOf("data:image/jpeg;base64,$base64Jpeg"),
+                    config = embeddingConfig(config).copy(
+                        embeddingModel = model,
+                        textEmbeddingModel = model
+                    ),
+                    model = model,
+                    inputType = "passage",
+                    modality = "image"
+                ).firstOrNull()
+            }
+            else -> null
         }
     }
 
