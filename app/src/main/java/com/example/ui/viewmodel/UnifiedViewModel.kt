@@ -9,6 +9,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.ExplorerPreferencesEntity
 import com.example.data.local.FavoriteEntity
+import com.example.data.local.PinboardStore
 import com.example.data.local.IndexStatusEntity
 import com.example.data.local.RecentEntity
 import com.example.data.local.TrashEntity
@@ -233,6 +234,7 @@ data class UiState(
     val isRecycleBinOpen: Boolean = false,
     val favoritesList: List<FavoriteEntity> = emptyList(),
     val recentsList: List<RecentEntity> = emptyList(),
+    val pinnedItems: List<com.example.data.local.PinnedItem> = emptyList(),
 
     // Home Tab Search
     val homeSearchQuery: String = "",
@@ -393,6 +395,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     private var ragRequestId: Long = 0L
     private var permissionRefreshJob: Job? = null
     private var permissionsInitialized = false
+    private val pinboardStore = PinboardStore(getApplication())
 
     init {
         // Collect decoupled file operations progress
@@ -702,6 +705,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.update { it.copy(recentsList = recents) }
             }
         }
+        _uiState.update { it.copy(pinnedItems = pinboardStore.getAll()) }
 
         // Collect Knowledge Graph and AI config flows
         viewModelScope.launch {
@@ -2388,6 +2392,17 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // Favorites & Recents
+    fun togglePinned(fileItem: FileItem) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val pinned = pinboardStore.toggle(fileItem)
+            val items = pinboardStore.getAll()
+            _uiState.update { it.copy(pinnedItems = items) }
+            showMessage(if (pinned) "Pinned to Pinboard" else "Removed from Pinboard")
+        }
+    }
+
+    fun isPinned(path: String): Boolean = pinboardStore.isPinned(path)
+
     fun toggleFavorite(fileItem: FileItem) {
         viewModelScope.launch {
             val isNowFav = repository.toggleFavorite(fileItem)
