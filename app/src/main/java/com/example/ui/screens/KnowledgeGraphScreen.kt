@@ -600,6 +600,7 @@ fun DeclutteredCanvasView(
     onPauseIndexing: () -> Unit,
     onResumeIndexing: () -> Unit,
     isIndexing: Boolean,
+    embeddingReady: Boolean,
     onAskAiForFile: (BrainNodeEntity) -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("ALL") }
