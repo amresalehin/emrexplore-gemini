@@ -28,7 +28,8 @@ class BrainRetriever(
     private val nodeDao: BrainNodeDao,
     private val edgeDao: BrainEdgeDao,
     private val onDeviceEmbedding: OnDeviceEmbeddingEngine,
-    private val embeddingClient: AiProviderClient
+    private val embeddingClient: AiProviderClient,
+    private val vectorStoreFactory: (AiProviderConfigEntity) -> BrainVectorStore = { config -> vectorStoreFor(config, chunkDao) }
 ) {
     suspend fun retrieve(
         question: String,
@@ -43,14 +44,18 @@ class BrainRetriever(
             when (embeddingProvider) {
                 EmbeddingProviderType.OFFLINE -> {
                     onDeviceEmbedding.embedText(clean)?.let {
-                        collectLocalHits(onDeviceEmbedding.modelIdIfReady().orEmpty(), it, limit * 3)
-                    }.orEmpty()
+                        vectorStoreFactory(config).search(it, onDeviceEmbedding.modelIdIfReady().orEmpty(), limit * 3, config)
+                    }?.let { results -> results.mapNotNull { result ->
+                        chunkDao.getByIds(listOf(result.id)).firstOrNull()?.let { BrainSearchHit(it, result.score) }
+                    }}.orEmpty()
                 }
                 else -> {
                     val model = config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
                     embeddingClient.embedTextQuery(clean, config)?.let {
-                        collectLocalHits(remoteEmbeddingSignature(config, model), it, limit * 3)
-                    }.orEmpty()
+                        vectorStoreFactory(config).search(it, remoteEmbeddingSignature(config, model), limit * 3, config)
+                    }?.let { results -> results.mapNotNull { result ->
+                        chunkDao.getByIds(listOf(result.id)).firstOrNull()?.let { BrainSearchHit(it, result.score) }
+                    }}.orEmpty()
                 }
             }
         }.getOrElse { error ->
