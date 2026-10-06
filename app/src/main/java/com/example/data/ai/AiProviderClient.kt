@@ -423,49 +423,111 @@ class AiProviderClient {
     }
 
     private fun listGeminiModels(config: AiProviderConfigEntity): List<AvailableAiModel> {
-        val base = validateEndpoint(config.baseUrl.trimEnd('/').ifBlank { "https://generativelanguage.googleapis.com" }, ProviderType.GEMINI).toString().trimEnd('/')
+        val base = validateEndpoint(
+            config.baseUrl.trimEnd('/').ifBlank { "https://generativelanguage.googleapis.com" },
+            ProviderType.GEMINI
+        ).toString().trimEnd('/')
         val endpoint = if (base.endsWith("/v1beta") || base.endsWith("/v1")) base else "$base/v1beta"
-        val request = Request.Builder().url("$endpoint/models").addHeader("x-goog-api-key", config.apiKey.trim()).get().build()
-        okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw safeHttpError("Gemini models", response.code)
-            val models = JSONObject(response.body?.string().orEmpty()).optJSONArray("models") ?: return emptyList()
-            return (0 until models.length()).mapNotNull { i ->
-                val item = models.optJSONObject(i) ?: return@mapNotNull null
-                val name = item.optString("name").removePrefix("models/")
-                val methods = item.optJSONArray("supportedGenerationMethods")
-                val generation = methods != null && (0 until methods.length()).any { methods.optString(it) == "generateContent" }
-                if (!generation && !name.contains("embedding", true)) return@mapNotNull null
-                AvailableAiModel(
-                    id = name,
-                    supportsChat = generation,
-                    supportsVision = generation && !name.contains("live", true) && !name.contains("tts", true) && !name.contains("transcribe", true),
-                    supportsEmbedding = name.contains("embedding", true)
-                )
-            }.sortedBy { it.id }
+        val result = linkedMapOf<String, AvailableAiModel>()
+        var pageToken: String? = null
+        val visited = mutableSetOf<String>()
+
+        while (true) {
+            val urlBuilder = "$endpoint/models".toHttpUrlOrNull()?.newBuilder()
+                ?: throw IllegalArgumentException("Invalid Gemini models endpoint")
+            urlBuilder.addQueryParameter("pageSize", "1000")
+            pageToken?.takeIf { it.isNotBlank() }?.let { urlBuilder.addQueryParameter("pageToken", it) }
+            val url = urlBuilder.build().toString()
+            if (!visited.add(url)) break
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("x-goog-api-key", config.apiKey.trim())
+                .get()
+                .build()
+            okHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw safeHttpError("Gemini models", response.code)
+                val body = JSONObject(response.body?.string().orEmpty())
+                val models = body.optJSONArray("models")
+                if (models != null) {
+                    for (i in 0 until models.length()) {
+                        val item = models.optJSONObject(i) ?: continue
+                        val name = item.optString("name").removePrefix("models/").trim()
+                        if (name.isBlank()) continue
+                        val methods = item.optJSONArray("supportedGenerationMethods")
+                        val generation = methods != null && (0 until methods.length()).any {
+                            methods.optString(it).equals("generateContent", true)
+                        }
+                        val embedding = methods != null && (0 until methods.length()).any {
+                            methods.optString(it).contains("embedContent", true)
+                        } || name.contains("embedding", true)
+                        if (!generation && !embedding) continue
+                        val description = item.optString("description").trim()
+                        val context = item.optLong("inputTokenLimit", 0L).takeIf { it > 0L }
+                        val outputLimit = item.optLong("outputTokenLimit", 0L).takeIf { it > 0L }
+                        result[name] = AvailableAiModel(
+                            id = name,
+                            displayName = name,
+                            supportsChat = generation,
+                            supportsVision = generation && !name.contains("live", true) &&
+                                !name.contains("tts", true) && !name.contains("transcribe", true) &&
+                                !name.contains("embedding", true),
+                            supportsEmbedding = embedding,
+                            supportsTools = description.contains("tool", true),
+                            supportsStreaming = generation,
+                            contextWindow = context,
+                            owner = "Google",
+                            availabilityMessage = if (outputLimit != null) {
+                                "Available · ${outputLimit} max output tokens"
+                            } else {
+                                "Available from this endpoint"
+                            }
+                        )
+                    }
+                }
+                pageToken = body.optString("nextPageToken").takeIf { it.isNotBlank() }
+            }
+            if (pageToken == null) break
         }
+        return result.values.sortedBy { it.id }
     }
 
     private fun listOllamaModels(config: AiProviderConfigEntity): List<AvailableAiModel> {
-        val base = validateEndpoint(config.baseUrl.trimEnd('/').removeSuffix("/v1"), ProviderType.OLLAMA).toString().trimEnd('/')
+        val base = validateEndpoint(
+            config.baseUrl.trimEnd('/').removeSuffix("/v1"),
+            ProviderType.OLLAMA
+        ).toString().trimEnd('/')
         val request = Request.Builder().url("$base/api/tags").get().build()
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw safeHttpError("Ollama models", response.code)
             val models = JSONObject(response.body?.string().orEmpty()).optJSONArray("models") ?: return emptyList()
             return (0 until models.length()).mapNotNull { i ->
                 val item = models.optJSONObject(i) ?: return@mapNotNull null
-                val name = item.optString("name").ifBlank { item.optString("model") }
+                val name = item.optString("name").ifBlank { item.optString("model") }.trim()
                 if (name.isBlank()) return@mapNotNull null
                 val details = item.optJSONObject("details")
                 val families = details?.optJSONArray("families")
-                val hasClipFamily = families != null && (0 until families.length()).any { families.optString(it).contains("clip", true) }
+                val hasClipFamily = families != null && (0 until families.length()).any {
+                    families.optString(it).contains("clip", true)
+                }
                 val embedding = name.contains("embed", true) || name.contains("bge", true) || name.contains("e5", true)
+                val vision = !embedding && (
+                    hasClipFamily || name.contains("vision", true) ||
+                        name.contains("vl", true) || name.contains("gemma3", true)
+                    )
+                val size = item.optLong("size", 0L).takeIf { it > 0L }
                 AvailableAiModel(
                     id = name,
+                    displayName = name,
+                    owner = "Ollama",
                     supportsChat = !embedding,
-                    supportsVision = !embedding && (hasClipFamily || name.contains("vision", true) || name.contains("gemma3", true)),
+                    supportsVision = vision,
                     supportsEmbedding = embedding,
+                    supportsStreaming = !embedding,
                     isFree = true,
-                    priceKnown = true
+                    priceKnown = true,
+                    contextWindow = details?.optLong("context_length", 0L)?.takeIf { it > 0L },
+                    availabilityMessage = size?.let { "Installed · ${formatModelBytes(it)}" } ?: "Installed locally"
                 )
             }.sortedBy { it.id }
         }
@@ -473,51 +535,136 @@ class AiProviderClient {
 
     private fun listOpenAiModels(config: AiProviderConfigEntity): List<AvailableAiModel> {
         val raw = config.baseUrl.trimEnd('/').ifBlank { "https://api.openai.com/v1" }
-        val normalizedRaw = raw.removeSuffix("/chat/completions")
+        val normalizedRaw = raw.removeSuffix("/chat/completions").removeSuffix("/responses")
         val modelsUrl = normalizedRaw.let { if (it.endsWith("/models")) it else "$it/models" }
-        val base = validateEndpoint(modelsUrl, ProviderType.fromString(config.providerType))
-        val builder = Request.Builder().url(base).get()
-        config.apiKey.trim().takeIf { it.isNotBlank() }?.let { builder.addHeader("Authorization", "Bearer $it") }
-        applyCustomHeaders(builder, config)
-        okHttpClient.newCall(builder.build()).execute().use { response ->
-            if (!response.isSuccessful) throw safeHttpError("Models", response.code)
-            val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data") ?: return emptyList()
-            return (0 until data.length()).mapNotNull { i ->
-                val item = data.optJSONObject(i) ?: return@mapNotNull null
-                val id = item.optString("id").trim()
-                if (id.isBlank()) return@mapNotNull null
-                val architecture = item.optJSONObject("architecture")
-                val inputs = architecture?.optJSONArray("input_modalities")
-                val hasImage = inputs != null && (0 until inputs.length()).any { inputs.optString(it).equals("image", true) }
-                val embedding = id.contains("embedding", true) || id.contains("embed", true)
-                val multimodalEmbedding = embedding && id.contains("embed-vl", true)
-                val lowerId = id.lowercase()
-                val nonChat = listOf("embedding", "embed-", "rerank", "moderation", "transcri", "whisper", "tts", "speech", "image-generation", "text-to-image")
-                    .any { lowerId.contains(it) }
-                val pricing = item.optJSONObject("pricing")
-                val inputPrice = pricing?.optString("prompt")?.toDoubleOrNull()
-                val outputPrice = pricing?.optString("completion")?.toDoubleOrNull()
-                val priceKnown = inputPrice != null && outputPrice != null
-                val nvidiaHostedFree = raw.contains("integrate.api.nvidia.com", ignoreCase = true) &&
-                    id.lowercase() in setOf(
-                        "nvidia/nemotron-3-super-120b-a12b",
-                        "meta/llama-3.2-11b-vision-instruct",
-                        "nvidia/llama-nemotron-embed-vl-1b-v2",
-                        "nvidia/nv-embedqa-e5-v5"
+        val initialUrl = validateEndpoint(modelsUrl, ProviderType.fromString(config.providerType))
+        val result = linkedMapOf<String, AvailableAiModel>()
+        var nextUrl: String? = initialUrl.toString()
+        val visited = mutableSetOf<String>()
+
+        while (!nextUrl.isNullOrBlank() && visited.add(nextUrl!!)) {
+            val builder = Request.Builder().url(nextUrl!!).get()
+            config.apiKey.trim().takeIf { it.isNotBlank() }?.let {
+                builder.addHeader("Authorization", "Bearer $it")
+            }
+            applyCustomHeaders(builder, config)
+            okHttpClient.newCall(builder.build()).execute().use { response ->
+                if (!response.isSuccessful) throw safeHttpError("Models", response.code)
+                val body = JSONObject(response.body?.string().orEmpty())
+                val data = body.optJSONArray("data") ?: body.optJSONArray("models") ?: JSONArray()
+                for (i in 0 until data.length()) {
+                    val item = data.optJSONObject(i) ?: continue
+                    val id = item.optString("id").trim()
+                    if (id.isBlank()) continue
+                    val architecture = item.optJSONObject("architecture")
+                    val inputs = architecture?.optJSONArray("input_modalities")
+                    val hasImage = inputs != null && (0 until inputs.length()).any {
+                        inputs.optString(it).equals("image", true)
+                    }
+                    val capabilities = item.optJSONObject("capabilities")
+                    val capabilityChat = capabilities?.optBoolean("completion_chat", false)
+                    val capabilityVision = capabilities?.optBoolean("vision", false)
+                    val capabilityTools = capabilities?.optBoolean("function_calling", false)
+                    val embedding = id.contains("embedding", true) || id.contains("embed", true)
+                    val multimodalEmbedding = embedding && (
+                        id.contains("embed-vl", true) || id.contains("multimodal", true)
                     )
-                val free = nvidiaHostedFree || (priceKnown && inputPrice <= 0.0 && outputPrice <= 0.0)
-                AvailableAiModel(
-                    id = id,
-                    supportsChat = !embedding && !nonChat,
-                    supportsVision = !embedding && !nonChat && (hasImage || id.contains("vision", true) || id.contains("vl", true)),
-                    supportsEmbedding = embedding,
-                    supportsMultimodalEmbedding = multimodalEmbedding,
-                    isFree = free,
-                    priceKnown = priceKnown
-                )
-            }.sortedBy { it.id }
+                    val lowerId = id.lowercase()
+                    val nonChat = listOf(
+                        "embedding", "embed-", "rerank", "moderation", "transcri",
+                        "whisper", "tts", "speech", "image-generation", "text-to-image",
+                        "realtime"
+                    ).any { lowerId.contains(it) }
+                    val supportsChat = when {
+                        embedding || nonChat -> false
+                        capabilityChat != null -> capabilityChat
+                        else -> true
+                    }
+                    val supportsVision = when {
+                        embedding || nonChat -> false
+                        capabilityVision != null -> capabilityVision
+                        else -> hasImage || id.contains("vision", true) || id.contains("vl", true)
+                    }
+                    val pricing = item.optJSONObject("pricing")
+                    val inputPrice = (
+                        pricing?.optString("prompt")
+                            ?: pricing?.optString("input")
+                            ?: pricing?.optString("input_price")
+                        )?.toDoubleOrNull()?.let { it * 1_000_000.0 }
+                    val outputPrice = (
+                        pricing?.optString("completion")
+                            ?: pricing?.optString("output")
+                            ?: pricing?.optString("output_price")
+                        )?.toDoubleOrNull()?.let { it * 1_000_000.0 }
+                    val priceKnown = inputPrice != null && outputPrice != null
+                    val nvidiaHostedFree = raw.contains("integrate.api.nvidia.com", ignoreCase = true) &&
+                        id.lowercase() in setOf(
+                            "nvidia/nemotron-3-super-120b-a12b",
+                            "meta/llama-3.2-11b-vision-instruct",
+                            "nvidia/llama-nemotron-embed-vl-1b-v2",
+                            "nvidia/nv-embedqa-e5-v5"
+                        )
+                    val free = nvidiaHostedFree || (priceKnown && inputPrice <= 0.0 && outputPrice <= 0.0)
+                    val context = listOf(
+                        item.optLong("context_length", 0L),
+                        item.optLong("max_context_length", 0L),
+                        item.optLong("context_window", 0L)
+                    ).firstOrNull { it > 0L }
+                    val owner = item.optString("owned_by").ifBlank {
+                        item.optString("owner").ifBlank { item.optString("publisher") }
+                    }
+                    result[id] = AvailableAiModel(
+                        id = id,
+                        displayName = item.optString("name").ifBlank { id },
+                        owner = owner,
+                        supportsChat = supportsChat,
+                        supportsVision = supportsVision,
+                        supportsEmbedding = embedding,
+                        supportsMultimodalEmbedding = multimodalEmbedding,
+                        supportsTools = capabilityTools == true ||
+                            item.optBoolean("supports_tools", false) ||
+                            item.optBoolean("tool_calling", false),
+                        supportsStreaming = !nonChat,
+                        contextWindow = context,
+                        inputPricePerMillion = inputPrice,
+                        outputPricePerMillion = outputPrice,
+                        isFree = free,
+                        priceKnown = priceKnown,
+                        availability = ModelAvailability.AVAILABLE,
+                        availabilityMessage = if (free) "Available · free" else "Available from this endpoint"
+                    )
+                }
+
+                nextUrl = nextFromBodyOrNull(body)
+                if (nextUrl == null && body.optBoolean("has_more", false)) {
+                    val lastId = body.optString("last_id").takeIf { it.isNotBlank() && it != "null" }
+                    if (lastId != null) {
+                        nextUrl = nextUrlOrNull(nextUrl, lastId)
+                    }
+                }
+            }
         }
+        return result.values.sortedBy { it.id }
     }
+
+    private fun nextUrlOrNull(current: String?, lastId: String): String? {
+        val seed = current ?: return null
+        return seed.toHttpUrlOrNull()?.newBuilder()
+            ?.addQueryParameter("after", lastId)
+            ?.build()
+            ?.toString()
+    }
+
+    private fun nextFromBodyOrNull(body: JSONObject): String? =
+        body.optString("next").takeIf { it.isNotBlank() && it != "null" }
+            ?: body.optString("next_url").takeIf { it.isNotBlank() && it != "null" }
+
+    private fun formatModelBytes(bytes: Long): String = when {
+        bytes >= 1_000_000_000L -> String.format("%.1f GB", bytes / 1_000_000_000.0)
+        bytes >= 1_000_000L -> String.format("%.0f MB", bytes / 1_000_000.0)
+        else -> String.format("%.0f KB", bytes / 1_000.0)
+    }
+
     private fun applyCustomHeaders(builder: Request.Builder, config: AiProviderConfigEntity) {
         try {
             val headers = JSONObject(config.customHeadersJson.ifBlank { "{}" })
