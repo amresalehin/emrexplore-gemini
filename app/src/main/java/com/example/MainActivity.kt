@@ -426,6 +426,14 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             BrainSetupScreen(
                 currentConfig = uiState.aiConfig,
                 offlineModels = uiState.offlineBrainModels,
+                availableModels = uiState.aiModels,
+                availableVisionModels = uiState.aiVisionModels,
+                availableEmbeddingModels = uiState.aiEmbeddingModels,
+                availableMultimodalEmbeddingModels = uiState.aiMultimodalEmbeddingModels,
+                isFetchingModels = uiState.isFetchingAiModels,
+                modelFetchError = uiState.aiModelFetchError,
+                onFetchModels = { viewModel.fetchAiModels(it) },
+                onFetchEmbeddingModels = { viewModel.fetchEmbeddingModels(it) },
                 onSelectOfflineModel = { viewModel.selectOnDeviceBrainModel(it) },
                 onSaveConfig = { viewModel.saveAiConfig(it) },
                 onNavigateBack = { viewModel.setShowAiSettings(false) }
