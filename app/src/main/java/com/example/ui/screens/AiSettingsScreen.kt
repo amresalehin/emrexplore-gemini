@@ -214,7 +214,7 @@ fun AiSettingsScreen(
             ?: current
 
     val chats = usableModels(availableModels)
-    val visions = usableModels(availableVisionModels)
+    val visions = usableModels(availableVisionModels).filter { it.supportsVision }
     val embeddings = usableModels(availableEmbeddingModels)
     val multimodalEmbeddings = usableModels(availableMultimodalEmbeddingModels)
     LaunchedEffect(chats, visions, embeddings, multimodalEmbeddings) {
