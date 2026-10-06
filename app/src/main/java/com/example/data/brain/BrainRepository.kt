@@ -234,9 +234,18 @@ class BrainRepository(context: Context) {
         file: File,
         config: AiProviderConfigEntity,
         force: Boolean = false,
+        precomputedTextEmbeddings: List<FloatArray> = emptyList(),
+        precomputedTextEmbeddingModel: String = "",
         precomputedImageEmbedding: FloatArray? = null
     ): Boolean = withContext(Dispatchers.IO) {
-        indexer.index(file, normalizeAiConfig(config), force, precomputedImageEmbedding = precomputedImageEmbedding).success
+        indexer.index(
+            file,
+            normalizeAiConfig(config),
+            force,
+            precomputedTextEmbeddings = precomputedTextEmbeddings,
+            precomputedTextEmbeddingModel = precomputedTextEmbeddingModel,
+            precomputedImageEmbedding = precomputedImageEmbedding
+        ).success
     }
 
     suspend fun reconcileMutation(
@@ -293,6 +302,39 @@ class BrainRepository(context: Context) {
         brainNodeDao.recomputeDegrees()
     }
 
+    suspend fun saveGalleryAi(
+        file: File,
+        input: BrainFileContent,
+        analysis: com.example.data.ai.AnalysisResult,
+        imageEmbeddingModel: String
+    ) = withContext(Dispatchers.IO) {
+        val tagsJson = org.json.JSONArray().apply { analysis.tags.take(50).forEach(::put) }.toString()
+        val entitiesJson = org.json.JSONArray().apply {
+            analysis.entities.take(50).forEach {
+                put(org.json.JSONObject().put("name", it.name).put("type", it.type).put("confidence", it.confidence))
+            }
+        }.toString()
+        val relationsJson = org.json.JSONArray().apply {
+            analysis.relations.take(50).forEach {
+                put(org.json.JSONObject().put("source", it.source).put("relation", it.relation).put("target", it.target).put("evidence", it.evidence))
+            }
+        }.toString()
+        brainImageProfileDao.insert(
+            BrainImageProfileEntity(
+                filePath = file.absolutePath,
+                fileName = file.name,
+                ocrText = input.ocrText,
+                metadataSummary = input.metadataSummary,
+                description = analysis.summary.trim().take(1200),
+                tagsJson = tagsJson,
+                entitiesJson = entitiesJson,
+                relationsJson = relationsJson,
+                visionModel = getAiConfig().visionModel.trim().ifBlank { getAiConfig().chatModel },
+                imageEmbeddingModel = imageEmbeddingModel.trim()
+            )
+        )
+    }
+
     suspend fun getImageProfile(path: String): BrainImageProfileEntity? = withContext(Dispatchers.IO) {
         if (path.isBlank()) return@withContext null
         brainImageProfileDao.get(path)
@@ -337,160 +379,11 @@ class BrainRepository(context: Context) {
         )
     }
 
-    private suspend fun embedTextForAi(texts: List<String>, config: AiProviderConfigEntity): Pair<List<FloatArray>, String> {
-        if (texts.isEmpty()) return emptyList<FloatArray>() to ""
-        return when (EmbeddingProviderType.fromString(config.embeddingProviderType)) {
-            EmbeddingProviderType.OFFLINE -> {
-                if (!onDeviceEmbedding.isReady()) {
-                    throw IllegalStateException("Download the selected on-device embedding model before running AI")
-                }
-                val vectors = onDeviceEmbedding.embedTextPassages(texts)
-                    ?: throw IllegalStateException("On-device embedding failed")
-                val model = onDeviceEmbedding.modelIdIfReady()
-                    ?: throw IllegalStateException("Selected on-device embedding model is unavailable")
-                vectors to model
-            }
-            else -> {
-                val model = config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
-                if (model.isBlank()) throw IllegalStateException("Choose a text embedding model before running AI")
-                val vectors = client.embedTextPassages(texts, config)
-                vectors to model
-            }
-        }.also { (vectors, _) ->
-            if (vectors.size != texts.size || vectors.any { it.isEmpty() }) {
-                throw IllegalStateException("Embedding provider returned an incomplete embedding batch")
-            }
-        }
-    }
-
-    suspend fun runFileAi(file: File, force: Boolean = true): BrainIndexOutcome = withContext(Dispatchers.IO) {
-        if (!file.exists() || !file.isFile || !file.canRead()) {
-            return@withContext BrainIndexOutcome(false, error = "File is not readable")
-        }
-        val config = getAiConfig()
-        if (!isAiReady(config)) {
-            return@withContext BrainIndexOutcome(false, error = "Configure an LLM provider for File AI first")
-        }
-        val input = try {
-            contentReader.read(file, config)
-        } catch (error: Exception) {
-            return@withContext BrainIndexOutcome(false, error = error.message ?: "Could not read file")
-        }
-        if (input.isImage) {
-            return@withContext BrainIndexOutcome(false, error = "Images are owned by Gallery AI")
-        }
-        val analysis = try {
-            brainAi.analyzeDocument(input.text.take(12_000), file.name, config)
-        } catch (error: Exception) {
-            return@withContext BrainIndexOutcome(false, error = error.message ?: "File AI analysis failed")
-        }
-        saveDocumentAi(file, analysis, config.chatModel.ifBlank { config.providerType })
-        // File AI owns the embedding stage. Brain receives only the completed vectors for persistence.
-        val embeddingTexts = try {
-            indexer.buildEmbeddingTexts(file, config)
-        } catch (error: Exception) {
-            return@withContext BrainIndexOutcome(false, error = error.message ?: "Could not prepare embedding input")
-        }
-        val (textEmbeddings, textEmbeddingModel) = try {
-            embedTextForAi(embeddingTexts, config)
-        } catch (error: Exception) {
-            if (error is CancellationException) throw error
-            return@withContext BrainIndexOutcome(false, error = error.message ?: "Text embedding failed")
-        }
-        indexer.index(
-            file,
-            normalizeAiConfig(config),
-            force = force,
-            precomputedTextEmbeddings = textEmbeddings,
-            precomputedTextEmbeddingModel = textEmbeddingModel
-        )
-        val indexed = brainDocumentDao.get(file.absolutePath)?.state == BrainIndexStates.READY
-        if (indexed) BrainIndexOutcome(true) else BrainIndexOutcome(false, error = "Embedding failed")
-    }
-
-    suspend fun runGalleryAi(
+    suspend fun buildEmbeddingTextsForAi(
         file: File,
-        force: Boolean = true,
-        precomputedImageEmbedding: FloatArray
-    ): BrainIndexOutcome = withContext(Dispatchers.IO) {
-        if (!file.exists() || !file.isFile || !file.canRead()) {
-            return@withContext BrainIndexOutcome(false, error = "File is not readable")
-        }
-        val config = getAiConfig()
-        if (!isAiReady(config)) {
-            return@withContext BrainIndexOutcome(false, error = "Configure a Gallery AI VLM first")
-        }
-        val input = try {
-            contentReader.read(file, config)
-        } catch (error: Exception) {
-            return@withContext BrainIndexOutcome(false, error = error.message ?: "Could not read image")
-        }
-        if (!input.isImage) {
-            return@withContext BrainIndexOutcome(false, error = "Gallery AI only processes images")
-        }
-        val analysis = try {
-            brainAi.analyzeImage(
-                base64Jpeg = input.imageBase64,
-                ocrText = input.ocrText,
-                metadataSummary = input.metadataSummary,
-                fileName = file.name,
-                config = config
-            )
-        } catch (error: Exception) {
-            return@withContext BrainIndexOutcome(false, error = error.message ?: "Gallery VLM analysis failed")
-        }
-        val tagsJson = org.json.JSONArray().apply { analysis.tags.take(50).forEach(::put) }.toString()
-        val entitiesJson = org.json.JSONArray().apply {
-            analysis.entities.take(50).forEach {
-                put(org.json.JSONObject().put("name", it.name).put("type", it.type).put("confidence", it.confidence))
-            }
-        }.toString()
-        val relationsJson = org.json.JSONArray().apply {
-            analysis.relations.take(50).forEach {
-                put(org.json.JSONObject().put("source", it.source).put("relation", it.relation).put("target", it.target).put("evidence", it.evidence))
-            }
-        }.toString()
-        brainImageProfileDao.insert(
-            BrainImageProfileEntity(
-                filePath = file.absolutePath,
-                fileName = file.name,
-                ocrText = input.ocrText,
-                metadataSummary = input.metadataSummary,
-                description = analysis.summary.trim().take(1200),
-                tagsJson = tagsJson,
-                entitiesJson = entitiesJson,
-                relationsJson = relationsJson,
-                visionModel = config.visionModel.trim().ifBlank { config.chatModel },
-                imageEmbeddingModel = ""
-            )
-        )
-        brainImageProfileDao.insert(
-            brainImageProfileDao.get(file.absolutePath)?.copy(
-                imageEmbeddingModel = config.multimodalEmbeddingModel.trim()
-            ) ?: return@withContext BrainIndexOutcome(false, error = "Gallery AI profile could not be saved")
-        )
-        // Gallery AI owns both image and text embedding stages. Brain receives only completed vectors.
-        val embeddingTexts = try {
-            indexer.buildEmbeddingTexts(file, config)
-        } catch (error: Exception) {
-            return@withContext BrainIndexOutcome(false, error = error.message ?: "Could not prepare embedding input")
-        }
-        val (textEmbeddings, textEmbeddingModel) = try {
-            embedTextForAi(embeddingTexts, config)
-        } catch (error: Exception) {
-            if (error is CancellationException) throw error
-            return@withContext BrainIndexOutcome(false, error = error.message ?: "Text embedding failed")
-        }
-        indexer.index(
-            file,
-            normalizeAiConfig(config),
-            force = force,
-            precomputedTextEmbeddings = textEmbeddings,
-            precomputedTextEmbeddingModel = textEmbeddingModel,
-            precomputedImageEmbedding = precomputedImageEmbedding
-        )
-        val indexed = brainDocumentDao.get(file.absolutePath)?.state == BrainIndexStates.READY
-        if (indexed) BrainIndexOutcome(true) else BrainIndexOutcome(false, error = "Embedding failed")
+        config: AiProviderConfigEntity
+    ): List<String> = withContext(Dispatchers.IO) {
+        indexer.buildEmbeddingTexts(file, normalizeAiConfig(config))
     }
 
     suspend fun getBrainNode(path: String): BrainNodeEntity? = withContext(Dispatchers.IO) {
