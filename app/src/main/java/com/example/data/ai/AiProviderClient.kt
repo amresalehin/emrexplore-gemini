@@ -83,11 +83,7 @@ class AiProviderClient {
             if (!listedModels.isNullOrEmpty()) {
                 val selectedModels = listOf(
                     "chat" to config.chatModel,
-                    "vision" to config.visionModel,
-                    "text embedding" to config.textEmbeddingModel.ifBlank { config.embeddingModel },
-                    "multimodal embedding" to config.multimodalEmbeddingModel.ifBlank {
-                        config.textEmbeddingModel.ifBlank { config.embeddingModel }
-                    }
+                    "vision" to config.visionModel
                 )
                 for ((role, modelIdRaw) in selectedModels) {
                     val modelId = modelIdRaw.trim()
