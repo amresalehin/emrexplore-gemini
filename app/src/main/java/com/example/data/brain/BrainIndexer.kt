@@ -27,6 +27,7 @@ class BrainIndexer(
     private val edgeDao: BrainEdgeDao,
     private val edgeEvidenceDao: BrainEdgeEvidenceDao,
     private val runDao: BrainRunDao,
+    private val imageProfileDao: BrainImageProfileDao,
     private val client: BrainAiGateway,
     private val embeddingClient: com.example.data.ai.AiProviderClient,
     private val db: AppDatabase,
@@ -75,6 +76,10 @@ class BrainIndexer(
             }
 
             val (embeddings, embeddingModel) = embed(chunkTexts, config)
+            val imageEmbedding = if (input.isImage && config.multimodalEmbeddingModel.trim().isNotBlank()) {
+                embeddingClient.embedMultimodalDocument(input.imageBase64, config)
+                    ?: throw IllegalStateException("Configured image embedding model returned no image vector")
+            } else null
 
             val now = System.currentTimeMillis()
             val fileNode = BrainNodeEntity(
@@ -223,6 +228,8 @@ class BrainIndexer(
                     content = text,
                     embeddingJson = BrainVectorCodec.toJson(embeddings[index]),
                     embeddingModel = embeddingModel,
+                    imageEmbeddingJson = if (input.isImage && index == 0) imageEmbedding?.let(BrainVectorCodec::toJson).orEmpty() else "",
+                    imageEmbeddingModel = if (input.isImage && index == 0) config.multimodalEmbeddingModel.trim() else "",
                     locator = if (input.isImage) file.name else "chunk-" + index,
                     pageNumber = null,
                     indexedAt = now
@@ -263,6 +270,7 @@ class BrainIndexer(
                 if (edgeEvidence.isNotEmpty()) edgeEvidenceDao.insertAll(edgeEvidence.values.toList())
                 if (chunks.isNotEmpty()) chunkDao.insertAll(chunks)
                 documentDao.insert(document)
+                if (input.isImage) imageProfileDao.insert(buildImageProfile(input, analysis, config, imageEmbedding != null))
             }
 
             vectorStore(config).upsert(chunks, config)
@@ -319,6 +327,7 @@ class BrainIndexer(
             return if (input.isImage) {
                 client.analyzeImage(
                     base64Jpeg = input.imageBase64,
+                    ocrText = input.ocrText,
                     metadataSummary = input.metadataSummary,
                     fileName = input.file.name,
                     config = config
@@ -343,16 +352,39 @@ class BrainIndexer(
             listOf(
                 buildString {
                     append("Image: ").append(input.file.name).append('\n')
+                    append("Local OCR: ").append(input.ocrText.take(20_000).ifBlank { "<none>" }).append('\n')
                     append("Description: ").append(analysis.summary.trim()).append('\n')
-                    if (analysis.tags.isNotEmpty()) {
-                        append("Tags: ").append(analysis.tags.joinToString(", ")).append('\n')
-                    }
+                    if (analysis.tags.isNotEmpty()) append("Tags: ").append(analysis.tags.joinToString(", ")).append('\n')
+                    if (analysis.entities.isNotEmpty()) append("Entities: ").append(analysis.entities.joinToString(", ") { it.name }).append('\n')
+                    if (analysis.relations.isNotEmpty()) append("Relations: ").append(analysis.relations.joinToString("; ") { it.source + " " + it.relation + " " + it.target }).append('\n')
                     append("Metadata: ").append(input.metadataSummary)
                 }.take(MAX_CHUNK_CHARS)
             )
         } else {
             BrainChunker.chunk(input.text, MAX_CHUNK_CHARS, CHUNK_OVERLAP, MAX_CHUNKS)
         }
+    }
+
+    private fun buildImageProfile(input: BrainFileContent, analysis: AnalysisResult, config: AiProviderConfigEntity, imageEmbeddingReady: Boolean): BrainImageProfileEntity {
+        val tagsJson = org.json.JSONArray().apply { analysis.tags.take(50).forEach { put(it) } }.toString()
+        val entitiesJson = org.json.JSONArray().apply {
+            analysis.entities.take(50).forEach { put(org.json.JSONObject().put("name", it.name).put("type", it.type).put("confidence", it.confidence)) }
+        }.toString()
+        val relationsJson = org.json.JSONArray().apply {
+            analysis.relations.take(50).forEach { put(org.json.JSONObject().put("source", it.source).put("relation", it.relation).put("target", it.target).put("evidence", it.evidence)) }
+        }.toString()
+        return BrainImageProfileEntity(
+            filePath = input.file.absolutePath,
+            fileName = input.file.name,
+            ocrText = input.ocrText,
+            metadataSummary = input.metadataSummary,
+            description = analysis.summary.trim().take(MAX_SUMMARY_CHARS),
+            tagsJson = tagsJson,
+            entitiesJson = entitiesJson,
+            relationsJson = relationsJson,
+            visionModel = config.visionModel.trim().ifBlank { "local-fallback" },
+            imageEmbeddingModel = if (imageEmbeddingReady) config.multimodalEmbeddingModel.trim() else ""
+        )
     }
 
     private suspend fun embed(texts: List<String>, config: AiProviderConfigEntity): Pair<List<FloatArray>, String> {
@@ -473,10 +505,12 @@ class BrainIndexer(
     private fun modelSignature(config: AiProviderConfigEntity): String =
         listOf(
             MODEL_VERSION,
+            "ocr:mlkit-local-v1",
             ProviderType.fromString(config.providerType).name,
             config.isEnabled.toString(),
             config.chatModel.trim(),
             config.visionModel.trim(),
+            config.multimodalEmbeddingModel.trim(),
             embeddingSignature(config),
             config.vectorDatabaseType.trim(),
             config.vectorDatabaseBaseUrl.trim(),
@@ -503,7 +537,7 @@ class BrainIndexer(
             .filter { it !in STOP_WORDS }
 
     companion object {
-        const val MODEL_VERSION = "brain-v5-ondevice"
+        const val MODEL_VERSION = "brain-v6-multimodal"
         const val MAX_CHUNK_CHARS = 1600
         const val CHUNK_OVERLAP = 240
         const val MAX_CHUNKS = 120
