@@ -156,10 +156,8 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 enum class BrainScreenTab(val label: String, val icon: ImageVector) {
-    ASK_AI("Ask AI", Icons.Default.AutoAwesome),
-    CANVAS("Canvas", Icons.Default.Hub),
-    TOPICS("Topics", Icons.Default.Category),
-    DOTS("Connections", Icons.Default.LinearScale)
+    ASK_AI("Chat", Icons.Default.AutoAwesome),
+    CANVAS("Graph", Icons.Default.Hub)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -199,30 +197,15 @@ fun BrainScreen(
     onOpenFile: (File) -> Unit,
     onOpenImage: (File) -> Unit,
     modifier: Modifier = Modifier
-) {
-    var selectedTab by rememberSaveable { mutableStateOf(BrainScreenTab.ASK_AI) }
+) {    var selectedTab by rememberSaveable { mutableStateOf(BrainScreenTab.ASK_AI) }
     var selectedNode by remember { mutableStateOf<BrainNodeEntity?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    val syncRotation = if (isIndexing) {
-        val transition = rememberInfiniteTransition(label = "sync_anim")
-        transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 360f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(1000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "sync_rot"
-        ).value
-    } else 0f
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // --- 1. Clean, Streamlined Top Header ---
         Surface(
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 1.dp,
@@ -233,159 +216,68 @@ fun BrainScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // App title & live status indicator
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Psychology,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                    Icon(
+                        imageVector = if (selectedTab == BrainScreenTab.ASK_AI) Icons.Default.AutoAwesome else Icons.Default.Hub,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = if (selectedTab == BrainScreenTab.ASK_AI) "Chat" else "Knowledge Graph",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (selectedTab == BrainScreenTab.ASK_AI) {
+                            val chatProvider = aiConfig?.let {
+                                com.example.data.ai.ProviderType.fromString(it.providerType).displayName
+                            } ?: "Not configured"
+                            val chatModel = aiConfig?.chatModel?.ifBlank { "No model selected" } ?: "No model selected"
                             Text(
-                                text = "Brain",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = if (isIndexing) {
-                                    "Syncing Brain (${(indexingProgress * 100).toInt()}%)…"
-                                } else if (nodes.isEmpty()) {
-                                    if (onDeviceBrainModel.status == OnDeviceBrainModelStatus.NOT_INSTALLED) {
-                                        "Download the local Brain model to enable semantic search"
-                                    } else if (onDeviceBrainModel.status == OnDeviceBrainModelStatus.DOWNLOADING) {
-                                        "Downloading the local Brain model…"
-                                    } else if (onDeviceBrainModel.status == OnDeviceBrainModelStatus.ERROR) {
-                                        "Local Brain model unavailable"
-                                    } else {
-                                        "Brain is ready — sync storage to build the semantic index"
-                                    }
-                                } else {
-                                    "$nodeCount entities • $edgeCount links"
-                                },
+                                text = "$chatProvider  •  $chatModel",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (isIndexing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        } else {
+                            Text(
+                                text = "$nodeCount nodes  •  $edgeCount links",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
-
-                    // Header Action Buttons
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        IconButton(
-                            onClick = onIndexAllFiles,
-                            enabled = !isIndexing && onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
-                            modifier = Modifier
-                                .size(38.dp)
-                                .testTag("brain_sync_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Sync Brain index",
-                                tint = if (isIndexing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = if (isIndexing) Modifier.rotate(syncRotation) else Modifier.size(20.dp)
-                            )
-                        }
+                    if (selectedTab == BrainScreenTab.ASK_AI) {
                         IconButton(
                             onClick = onOpenAiSettings,
-                            modifier = Modifier
-                                .size(38.dp)
-                                .testTag("brain_settings_button")
+                            modifier = Modifier.testTag("brain_settings_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Brain and AI settings",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
+                            Icon(Icons.Default.Settings, contentDescription = "AI model settings")
                         }
                     }
                 }
 
-                // The Brain engine is local-first: make model readiness visible at the point
-                // where indexing depends on it instead of failing only after the user taps Sync.
-                AnimatedVisibility(visible = onDeviceBrainModel.status != OnDeviceBrainModelStatus.READY) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Icon(Icons.Default.PhoneAndroid, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = when (onDeviceBrainModel.status) {
-                                        OnDeviceBrainModelStatus.DOWNLOADING -> "Brain model downloading…"
-                                        OnDeviceBrainModelStatus.ERROR -> "Brain model needs attention"
-                                        else -> "Download the on-device Brain model to index files"
-                                    },
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = onDeviceBrainModel.error
-                                        ?: "Runs locally and powers semantic indexing and Gallery AI.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            TextButton(onClick = onOpenAiSettings) {
-                                Text(if (onDeviceBrainModel.status == OnDeviceBrainModelStatus.DOWNLOADING) "View" else "Set up")
-                            }
-                        }
+                if (selectedTab == BrainScreenTab.ASK_AI && aiConfig != null) {
+                    val embeddingProvider = com.example.data.ai.EmbeddingProviderType.fromString(aiConfig.embeddingProviderType)
+                    val embeddingModel = if (embeddingProvider == com.example.data.ai.EmbeddingProviderType.OFFLINE) {
+                        onDeviceBrainModel.displayName
+                    } else {
+                        aiConfig.textEmbeddingModel.ifBlank { aiConfig.embeddingModel }.ifBlank { "No model selected" }
                     }
+                    Text(
+                        text = "Embeddings: ${embeddingProvider.displayName}  •  $embeddingModel",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 48.dp, end = 16.dp, bottom = 8.dp)
+                    )
                 }
 
-                // Seamless indexing progress bar
-                AnimatedVisibility(visible = isIndexing) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 2.dp)
-                    ) {
-                        LinearProgressIndicator(
-                            progress = { indexingProgress },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(2.dp)
-                        )
-                        Text(
-                            text = indexingStatus,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
-                        )
-                    }
-                }
-
-                // Modern 4-Tab Bar
                 PrimaryTabRow(
                     selectedTabIndex = selectedTab.ordinal,
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -397,18 +289,10 @@ fun BrainScreen(
                             selected = selectedTab == tab,
                             onClick = { selectedTab = tab },
                             icon = {
-                                Icon(
-                                    imageVector = tab.icon,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Icon(tab.icon, contentDescription = null, modifier = Modifier.size(18.dp))
                             },
                             text = {
-                                Text(
-                                    text = tab.label,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (selectedTab == tab) FontWeight.Bold else FontWeight.Normal
-                                )
+                                Text(tab.label, fontSize = 12.sp, fontWeight = if (selectedTab == tab) FontWeight.Bold else FontWeight.Normal)
                             }
                         )
                     }
@@ -416,82 +300,46 @@ fun BrainScreen(
             }
         }
 
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-
-        // --- 2. Decluttered Main View Area ---
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
         ) {
             when (selectedTab) {
-                BrainScreenTab.ASK_AI -> {
-                    DeclutteredAskAiView(
-                        messages = askAiMessages,
-                        attachedFile = attachedAiFile,
-                        onAttachFile = onAttachFile,
-                        onDetachFile = onDetachFile,
-                        onClearChat = onClearChat,
-                        isQuerying = isRagQuerying,
-                        smartSuggestions = smartSuggestions,
-                        availableNodes = nodes,
-                        onQuery = onQueryRag,
-                        onCancel = onCancelRag,
-                        onOpenFile = onOpenFile,
-                        cloudAiReady = apiConfigured,
-                        localBrainReady = onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
-                        onOpenImage = onOpenImage
-                    )
-                }
-                BrainScreenTab.CANVAS -> {
-                    DeclutteredCanvasView(
-                        nodes = nodes,
-                        edges = edges,
-                        localBrainReady = onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
-                        onNodeClick = { selectedNode = it },
-                        onOpenFile = onOpenFile,
-                        onOpenImage = onOpenImage,
-                        onIndexFiles = onIndexAllFiles,
-                        isIndexing = isIndexing,
-                        onAskAiForFile = { node ->
-                            selectedTab = BrainScreenTab.ASK_AI
-                            onAskAiForFile(node)
-                        }
-                    )
-                }
-                BrainScreenTab.TOPICS -> {
-                    DeclutteredTopicsView(
-                        topics = brainTopics,
-                        selectedTopic = selectedBrainTopic,
-                        relevantFiles = brainTopicRelevantFiles,
-                        isLoading = isBrainTopicLoading,
-                        status = brainTopicStatus,
-                        onSelectTopic = onSelectBrainTopic,
-                        onSaveTopic = onSaveBrainTopic,
-                        onDeleteTopic = onDeleteBrainTopic,
-                        onAskAiForFile = { node ->
-                            selectedTab = BrainScreenTab.ASK_AI
-                            onAskAiForFile(node)
-                        },
-                        onOpenFile = onOpenFile,
-                        onOpenImage = onOpenImage
-                    )
-                }
-                BrainScreenTab.DOTS -> {
-                    DeclutteredConnectionsView(
-                        nodes = nodes,
-                        edges = edges,
-                        onNodeClick = { selectedNode = it },
-                        onOpenFile = onOpenFile,
-                        onOpenImage = onOpenImage,
-                        onIndexFiles = onIndexAllFiles
-                    )
-                }
+                BrainScreenTab.ASK_AI -> DeclutteredAskAiView(
+                    messages = askAiMessages,
+                    attachedFile = attachedAiFile,
+                    onAttachFile = onAttachFile,
+                    onDetachFile = onDetachFile,
+                    onClearChat = onClearChat,
+                    isQuerying = isRagQuerying,
+                    smartSuggestions = smartSuggestions,
+                    availableNodes = nodes,
+                    onQuery = onQueryRag,
+                    onCancel = onCancelRag,
+                    onOpenFile = onOpenFile,
+                    cloudAiReady = apiConfigured,
+                    localBrainReady = onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
+                    onOpenImage = onOpenImage
+                )
+                BrainScreenTab.CANVAS -> DeclutteredCanvasView(
+                    nodes = nodes,
+                    edges = edges,
+                    localBrainReady = onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY,
+                    onNodeClick = { selectedNode = it },
+                    onOpenFile = onOpenFile,
+                    onOpenImage = onOpenImage,
+                    onIndexFiles = onIndexAllFiles,
+                    isIndexing = isIndexing,
+                    onAskAiForFile = { node ->
+                        selectedTab = BrainScreenTab.ASK_AI
+                        onAskAiForFile(node)
+                    }
+                )
             }
         }
     }
 
-    // Node Detail Inspection Sheet
     selectedNode?.let { node ->
         ModalBottomSheet(
             onDismissRequest = { selectedNode = null },
@@ -532,710 +380,168 @@ fun DeclutteredAskAiView(
     onOpenImage: (File) -> Unit
 ) {
     var queryText by remember { mutableStateOf("") }
-    var showAttachmentDialog by remember { mutableStateOf(false) }
-    val context = LocalContext.current
     val listState = rememberLazyListState()
+    val context = LocalContext.current
 
-    // Auto-scroll to bottom of chat when new message arrives or when querying
-    LaunchedEffect(messages.size, isQuerying) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size)
-        }
-    }
-
-    // System pickers
     val documentPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
-        if (uri != null) {
-            val file = copyUriToTempFile(context, uri)
-            if (file != null) {
-                onAttachFile(file)
-            }
-        }
+        uri?.let { copyUriToTempFile(context, it)?.let(onAttachFile) }
     }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
-        if (uri != null) {
-            val file = copyUriToTempFile(context, uri)
-            if (file != null) {
-                onAttachFile(file)
-            }
+        uri?.let { copyUriToTempFile(context, it)?.let(onAttachFile) }
+    }
+
+    LaunchedEffect(messages.size, isQuerying) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.lastIndex)
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // Chat Header Status & Actions
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.AutoAwesome,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (attachedFile != null) "Focused on attached file" else "Ask AI Chat",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-
-            if (messages.isNotEmpty()) {
-                IconButton(
-                    onClick = onClearChat,
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Clear conversation",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-        }
-
-        Surface(
-            color = if (cloudAiReady) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-            else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f),
-            shape = RoundedCornerShape(10.dp),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
-        ) {
-            Text(
-                text = when {
-                    !localBrainReady -> "Local Brain model required for semantic search and indexing. Download it in Brain Settings."
-                    !cloudAiReady -> "Local Brain retrieval is ready. Configure an optional AI provider for generated answers."
-                    else -> "Local Brain retrieval is ready. Cloud AI is enabled for generated answers and optional enrichment."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
-            )
-        }
-
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
-
-        // Main Chat Messages Stream
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
+            modifier = Modifier.weight(1f).fillMaxWidth()
         ) {
             if (messages.isEmpty()) {
-                // Welcoming Empty Chat State
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    item {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-
-                    item {
-                        Text(
-                            text = "Ask Brain AI",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Have a question about your files? Attach any document or photo using the clip icon, and the AI will analyze that file only and talk about it.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    if (attachedFile == null) {
-                        item {
-                            FilledTonalButton(
-                                onClick = { showAttachmentDialog = true },
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.padding(top = 8.dp)
-                            ) {
-                                Icon(Icons.Default.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Attach a file to discuss")
-                            }
-                        }
-                    }
-
-                    // Starter Prompts
-                    item {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = if (attachedFile != null) "Suggestions for attached file" else "Try asking",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    val starterPrompts = if (attachedFile != null) {
-                        if (attachedFile.isImage) {
-                            listOf("What is depicted in this photo?", "Explain details and visible text", "Where and when was this taken?")
-                        } else {
-                            listOf("Summarize this document", "What are the main key points?", "Explain the conclusion of this file")
-                        }
-                    } else if (smartSuggestions.isNotEmpty() && localBrainReady && cloudAiReady) {
-                        smartSuggestions.take(4)
-                    } else {
-                        emptyList()
-                    }
-
-                    items(starterPrompts) { prompt ->
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    onQuery(prompt)
-                                }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = prompt,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(12.dp))
+                    Text("What can I help you find?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Ask about the files in your Brain index.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
                 }
             } else {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    items(messages, key = { it.id }) { msg ->
-                        if (msg.isUser) {
-                            // User Message Bubble
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 4.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    modifier = Modifier.widthIn(max = 320.dp)
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        // Attached File Badge inside User Bubble
-                                        msg.attachedFile?.let { att ->
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(bottom = 6.dp)
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    val icon = if (att.isImage) Icons.Default.Image else Icons.Default.Description
-                                                    val tint = if (att.isImage) ColorImages else ColorDocuments
-                                                    Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Text(
-                                                        text = att.name,
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        fontWeight = FontWeight.Bold,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                        modifier = Modifier.weight(1f)
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        Text(
-                                            text = msg.text,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            // Assistant Message Bubble
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Start
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp),
-                                    color = if (msg.isError) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                                    modifier = Modifier.widthIn(max = 340.dp)
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(
-                                                    imageVector = Icons.Default.AutoAwesome,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(15.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = "Brain AI",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                            }
-                                            IconButton(
-                                                onClick = {
-                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                    clipboard.setPrimaryClip(ClipData.newPlainText("AI Response", msg.text))
-                                                    Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
-                                                },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
-                                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(14.dp))
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(4.dp))
-
-                                        Text(
-                                            text = msg.text,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            lineHeight = 20.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-
-                                        // Referenced File Citations
-                                        if (msg.referencedNodes.isNotEmpty()) {
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Text(
-                                                text = "Referenced files:",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            msg.referencedNodes.take(3).forEach { node ->
-                                                Surface(
-                                                    shape = RoundedCornerShape(6.dp),
-                                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(vertical = 2.dp)
-                                                        .clickable {
-                                                            node.sourceFilePath?.let { path ->
-                                                                val f = File(path)
-                                                                if (node.nodeType == "IMAGE") onOpenImage(f) else onOpenFile(f)
-                                                            }
-                                                        }
-                                                ) {
-                                                    Row(
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        val icon = if (node.nodeType == "IMAGE") Icons.Default.Image else Icons.Default.Description
-                                                        Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                        Text(
-                                                            text = node.label,
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis,
-                                                            modifier = Modifier.weight(1f)
-                                                        )
-                                                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open", modifier = Modifier.size(12.dp))
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Thinking Bubble during querying
-                    if (isQuerying) {
-                        item {
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                                modifier = Modifier.widthIn(max = 280.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = if (attachedFile != null) "Analyzing ${attachedFile.name}…" else "Thinking…",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- Active File Attachment Card (Directly above input) ---
-        AnimatedVisibility(visible = attachedFile != null) {
-            attachedFile?.let { file ->
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                    tonalElevation = 2.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    items(messages, key = { it.id }) { message ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primaryContainer),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    val icon = if (file.isImage) Icons.Default.Image else Icons.Default.Description
-                                    val tint = if (file.isImage) ColorImages else ColorDocuments
-                                    Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = file.name,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "${Formatter.formatFileSize(context, file.size)} • AI will receive this file only",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-
-                            IconButton(
-                                onClick = onDetachFile,
-                                modifier = Modifier.size(28.dp)
+                            Surface(
+                                color = if (message.isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                shape = RoundedCornerShape(18.dp),
+                                modifier = Modifier.widthIn(max = 340.dp)
                             ) {
-                                Icon(Icons.Default.Close, contentDescription = "Detach file", modifier = Modifier.size(16.dp))
+                                Text(
+                                    message.text,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
                             }
                         }
-
-                        // Quick action suggestion chips for attached file
-                        Spacer(modifier = Modifier.height(4.dp))
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            val chips = if (file.isImage) {
-                                listOf("Describe image", "Read visible text", "Key visual details")
-                            } else {
-                                listOf("Summarize", "Key points", "What is inside?")
-                            }
-                            items(chips) { prompt ->
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = MaterialTheme.colorScheme.surface,
-                                    modifier = Modifier.clickable {
-                                        onQuery(prompt)
-                                    }
-                                ) {
-                                    Text(
-                                        text = prompt,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
+                    }
+                    if (isQuerying) {
+                        item {
+                            Text(
+                                "Thinking…",
+                                modifier = Modifier.padding(start = 8.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
             }
         }
 
-        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+        attachedFile?.let { file ->
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(file.file.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    IconButton(onClick = onDetachFile) {
+                        Icon(Icons.Default.Close, contentDescription = "Remove attachment")
+                    }
+                }
+            }
+        }
 
-        // --- Bottom Message & Attachment Input Row ---
         Surface(
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 2.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            shape = RoundedCornerShape(26.dp)
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.Bottom
             ) {
-                // Attach File Button
                 IconButton(
-                    onClick = { showAttachmentDialog = true },
-                    modifier = Modifier
-                        .size(38.dp)
-                        .testTag("attach_file_button")
+                    onClick = {
+                        documentPickerLauncher.launch(arrayOf("*/*"))
+                    },
+                    modifier = Modifier.size(44.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.AttachFile,
-                        contentDescription = "Attach file",
-                        tint = if (attachedFile != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    Icon(Icons.Default.AttachFile, contentDescription = "Attach file")
                 }
-
-                // Text Input Field
+                IconButton(
+                    onClick = {
+                        photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    },
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Icon(Icons.Default.Image, contentDescription = "Attach image")
+                }
                 OutlinedTextField(
                     value = queryText,
                     onValueChange = { queryText = it },
-                    placeholder = {
-                        Text(
-                            text = if (attachedFile != null) "Ask about ${attachedFile.name}…" else "Ask Brain a question…",
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    singleLine = false,
-                    maxLines = 3,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Message") },
+                    maxLines = 5,
+                    shape = RoundedCornerShape(22.dp),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(
-                        onSend = {
-                            if (queryText.isNotBlank() && !isQuerying) {
-                                val q = queryText.trim()
-                                queryText = ""
-                                onQuery(q)
-                            }
+                    keyboardActions = KeyboardActions(onSend = {
+                        if (!isQuerying && queryText.isNotBlank()) {
+                            onQuery(queryText.trim())
+                            queryText = ""
                         }
-                    ),
+                    }),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent
-                    ),
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 4.dp)
-                        .testTag("rag_query_input")
+                    )
                 )
-
-                // Send Button
-                IconButton(
-                    onClick = {
-                        if (isQuerying) {
-                            onCancel()
-                        } else if (queryText.isNotBlank()) {
-                            val q = queryText.trim()
-                            queryText = ""
-                            onQuery(q)
-                        } else if (queryText.isBlank() && attachedFile != null && !isQuerying) {
-                            onQuery("Tell me about this file: ${attachedFile.name}")
-                        }
-                    },
-                    enabled = isQuerying || queryText.isNotBlank() || attachedFile != null,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .testTag("rag_submit_query_btn")
-                ) {
-                    if (isQuerying) {
-                        Icon(Icons.Default.Close, contentDescription = "Cancel", modifier = Modifier.size(18.dp))
-                    } else {
-                        val active = queryText.isNotBlank() || attachedFile != null
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Send",
-                            tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(20.dp)
-                        )
+                if (isQuerying) {
+                    IconButton(onClick = onCancel, modifier = Modifier.size(44.dp)) {
+                        Icon(Icons.Default.Clear, contentDescription = "Stop")
+                    }
+                } else {
+                    IconButton(
+                        onClick = {
+                            if (queryText.isNotBlank()) {
+                                onQuery(queryText.trim())
+                                queryText = ""
+                            }
+                        },
+                        enabled = queryText.isNotBlank()
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                     }
                 }
             }
         }
-    }
-
-    // Modal Sheet / Dialog to Pick a File to Attach
-    if (showAttachmentDialog) {
-        AlertDialog(
-            onDismissRequest = { showAttachmentDialog = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.AttachFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Attach File for AI")
-                }
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "The AI will receive this file only and answer questions specifically about it.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Option 1: System Document Picker
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                showAttachmentDialog = false
-                                documentPickerLauncher.launch(arrayOf("*/*"))
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Description, contentDescription = null, tint = ColorDocuments, modifier = Modifier.size(22.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Browse Documents & Files", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                Text("PDFs, text files, code, docs", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-
-                    // Option 2: System Photo Picker
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                showAttachmentDialog = false
-                                photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Image, contentDescription = null, tint = ColorImages, modifier = Modifier.size(22.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Choose Photo from Gallery", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                Text("Images and photos for visual AI analysis", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-
-                    // Option 3: Pick from Brain-indexed Files
-                    val localFiles = remember(availableNodes) {
-                        availableNodes
-                            .mapNotNull { it.sourceFilePath?.let(::File) }
-                            .filter { it.exists() && it.isFile }
-                            .distinctBy { it.absolutePath }
-                            .take(6)
-                    }
-
-                    if (localFiles.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Recently scanned files:",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        localFiles.forEach { file ->
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        showAttachmentDialog = false
-                                        onAttachFile(file)
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val isImg = file.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp")
-                                    Icon(if (isImg) Icons.Default.Image else Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(file.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showAttachmentDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
     }
 }
 
