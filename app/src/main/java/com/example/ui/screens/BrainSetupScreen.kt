@@ -10,10 +10,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Database
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +30,7 @@ import com.example.data.local.AiProviderConfigEntity
 private data class SetupChatChoice(val provider: ProviderType, val model: String, val title: String, val subtitle: String, val local: Boolean)
 private data class SetupEmbeddingChoice(val provider: EmbeddingProviderType, val model: String, val title: String, val subtitle: String, val local: Boolean)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrainSetupScreen(
     currentConfig: AiProviderConfigEntity,
@@ -176,7 +178,7 @@ fun BrainSetupScreen(
                                 SetupChoiceCard("Room — Local", "Built into the app · vectors stay on this device", vectorChoice == VectorDatabaseType.ROOM, Icons.Default.PhoneAndroid) { vectorChoice = VectorDatabaseType.ROOM }
                             }
                             item {
-                                SetupChoiceCard("Qdrant", "Remote or self-hosted vector database", vectorChoice == VectorDatabaseType.QDRANT, Icons.Default.Database) { vectorChoice = VectorDatabaseType.QDRANT }
+                                SetupChoiceCard("Qdrant", "Remote or self-hosted vector database", vectorChoice == VectorDatabaseType.QDRANT, Icons.Default.Storage) { vectorChoice = VectorDatabaseType.QDRANT }
                             }
                             if (vectorChoice == VectorDatabaseType.QDRANT) {
                                 item {
