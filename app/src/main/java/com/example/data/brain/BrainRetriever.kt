@@ -23,6 +23,41 @@ data class BrainRetrieval(
         get() = hits.isNotEmpty() || relatedNodes.isNotEmpty()
 }
 
+internal object BrainLexicalScorer {
+    private val lowSignalTerms = setOf(
+        "a", "an", "and", "are", "as", "at", "be", "by", "can", "did", "do", "does",
+        "for", "from", "how", "i", "in", "is", "it", "me", "my", "of", "on", "or",
+        "that", "the", "this", "to", "was", "what", "when", "where", "which", "who",
+        "why", "with", "you", "your"
+    )
+    private val tokenPattern = Regex("[a-z0-9_./-]+")
+
+    fun meaningfulTokens(query: String): List<String> =
+        tokenPattern.findAll(query.lowercase(Locale.US))
+            .map { it.value }
+            .filter { it.length >= 2 && it !in lowSignalTerms }
+            .distinct()
+            .toList()
+
+    fun score(query: String, tokens: List<String>, content: String, filePath: String): Float {
+        if (tokens.isEmpty()) return 0f
+        val normalizedContent = content.lowercase(Locale.US)
+        val normalizedPath = filePath.lowercase(Locale.US)
+        val contentTokens = tokenPattern.findAll(normalizedContent).map { it.value }.toSet()
+        val pathTokens = tokenPattern.findAll(normalizedPath).map { it.value }.toSet()
+        val matches = tokens.count { it in contentTokens || it in pathTokens }
+        if (matches == 0) return 0f
+
+        val coverage = matches.toFloat() / tokens.size
+        val rareCoverage = tokens.count { it.length >= 6 && (it in contentTokens || it in pathTokens) }.toFloat() /
+            tokens.count { it.length >= 6 }.coerceAtLeast(1)
+        val normalizedQuery = tokens.joinToString(" ")
+        val phraseBonus = if (tokens.size >= 2 && normalizedContent.contains(normalizedQuery)) 0.25f else 0f
+        val pathBonus = if (tokens.any { it in pathTokens }) 0.15f else 0f
+        return (coverage * 0.45f + rareCoverage.coerceAtMost(1f) * 0.20f + phraseBonus + pathBonus).coerceAtMost(0.95f)
+    }
+}
+
 class BrainRetriever(
     private val chunkDao: BrainChunkDao,
     private val nodeDao: BrainNodeDao,
@@ -234,11 +269,8 @@ class BrainRetriever(
         semantic: List<BrainSearchHit>,
         limit: Int
     ): List<BrainSearchHit> {
-        val tokens = query.lowercase(Locale.US)
-            .split(Regex("[^a-z0-9_./-]+"))
-            .filter { it.length >= 2 }
-            .distinct()
-            .take(MAX_QUERY_TERMS)
+        val tokens = BrainLexicalScorer.meaningfulTokens(query).take(MAX_QUERY_TERMS)
+        if (tokens.isEmpty()) return semantic.take(limit)
 
         val lexical = tokens.flatMap { token ->
             chunkDao.lexical(token, limit * 4)
@@ -248,10 +280,8 @@ class BrainRetriever(
         semantic.forEach { scores[it.chunk.id] = maxOf(scores[it.chunk.id] ?: 0f, it.score) }
 
         lexical.forEach { chunk ->
-            val haystack = (chunk.content + " " + chunk.filePath).lowercase(Locale.US)
-            val matches = tokens.count { haystack.contains(it) }
-            if (matches > 0) {
-                val lexicalScore = (matches.toFloat() / tokens.size.coerceAtLeast(1)) * 0.8f
+            val lexicalScore = BrainLexicalScorer.score(query, tokens, chunk.content, chunk.filePath)
+            if (lexicalScore >= MIN_LEXICAL_SCORE) {
                 scores[chunk.id] = maxOf(scores[chunk.id] ?: 0f, lexicalScore)
             }
         }
@@ -283,6 +313,7 @@ class BrainRetriever(
     companion object {
         private const val PAGE_SIZE = 128
         private const val MIN_VECTOR_SCORE = 0.20f
+        private const val MIN_LEXICAL_SCORE = 0.32f
         private const val MAX_QUERY_TERMS = 12
         private const val MAX_FILE_SOURCES = 12
         private const val MAX_RELATED_NODES = 24
