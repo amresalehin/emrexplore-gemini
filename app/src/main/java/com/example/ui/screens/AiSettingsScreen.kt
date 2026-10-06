@@ -312,6 +312,30 @@ fun AiSettingsScreen(
                 }
             }
 
+                SectionTitle("OFFLINE EMBEDDING MODEL")
+                if (true) {
+                    OutlinedCard(
+                        modifier = Modifier.fillMaxWidth().clickable { showOfflineBrainPicker = true },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("On-device embedding model", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                val selectedOffline = offlineBrainModels.firstOrNull { it.id == selectedOfflineBrainModelId }
+                                Text(
+                                    selectedOffline?.displayName ?: onDeviceBrainModel.displayName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                if (selectedOffline != null) {
+                                    Text(selectedOffline.sizeLabel + " · " + selectedOffline.embeddingDimension + "-D", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            Text("Choose", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+
             SectionTitle("IMAGE INTELLIGENCE PIPELINE")
             OutlinedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -411,30 +435,6 @@ fun AiSettingsScreen(
                         else -> "This exact endpoint is queried for its live /models catalog. Change it, then Fetch models."
                     }
                 )
-
-                SectionTitle("OFFLINE EMBEDDING MODEL")
-                if (true) {
-                    OutlinedCard(
-                        modifier = Modifier.fillMaxWidth().clickable { showOfflineBrainPicker = true },
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("On-device embedding model", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                val selectedOffline = offlineBrainModels.firstOrNull { it.id == selectedOfflineBrainModelId }
-                                Text(
-                                    selectedOffline?.displayName ?: onDeviceBrainModel.displayName,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                if (selectedOffline != null) {
-                                    Text(selectedOffline.sizeLabel + " · " + selectedOffline.embeddingDimension + "-D", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                            Text("Choose", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
-                }
 
                 val cloudReady = isEnabled && (isKeylessAiConfig(draftConfig()) || apiKey.trim().isNotBlank())
                 CompactInfo(if (cloudReady) "Cloud AI is configured. It is used only for generated answers and optional enrichment." else "Cloud AI is not configured. You can still use the local Brain for semantic search; generated answers require a configured provider.")
