@@ -496,7 +496,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(isGalleryAiPaused = galleryAiStore.isPaused()) }
         viewModelScope.launch {
             WorkManager.getInstance(getApplication<Application>())
-                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
+                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.GalleryVlmWorker.UNIQUE_NAME)
                 .collectLatest { works ->
                     val work = works.firstOrNull() ?: run {
                         if (galleryAiStore.isPaused()) {
@@ -1723,7 +1723,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         val paths = galleryAiStore.pendingPaths()
         if (paths.isEmpty()) return
         val forcePaths = paths.filter { galleryAiStore.isForce(it) }
-        val request = OneTimeWorkRequestBuilder<com.example.data.ai.GalleryAiWorker>()
+        val request = OneTimeWorkRequestBuilder<com.example.data.ai.GalleryVlmWorker>()
             .setInputData(
                 androidx.work.workDataOf(
                     "paths" to paths.toTypedArray(),
@@ -1732,7 +1732,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             )
             .build()
         WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
-            com.example.data.ai.GalleryAiWorker.UNIQUE_NAME,
+            com.example.data.ai.GalleryVlmWorker.UNIQUE_NAME,
             ExistingWorkPolicy.REPLACE,
             request
         )
@@ -1752,13 +1752,13 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         WorkManager.getInstance(getApplication<Application>())
-            .cancelUniqueWork(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
+            .cancelUniqueWork(com.example.data.ai.GalleryVlmWorker.UNIQUE_NAME)
     }
 
     fun cancelGalleryAi() {
         val hadWork = galleryAiStore.hasPendingWork() || galleryAiStore.isPaused()
         WorkManager.getInstance(getApplication<Application>())
-            .cancelUniqueWork(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
+            .cancelUniqueWork(com.example.data.ai.GalleryVlmWorker.UNIQUE_NAME)
         galleryAiStore.clear()
         _uiState.update {
             it.copy(
@@ -2837,7 +2837,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         workManager.cancelUniqueWork(BrainModelDownloadWorker.UNIQUE_NAME)
         workManager.cancelUniqueWork(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
         workManager.cancelUniqueWork(com.example.data.ai.FileAiWorker.UNIQUE_NAME)
-        workManager.cancelUniqueWork(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
+        workManager.cancelUniqueWork(com.example.data.ai.GalleryVlmWorker.UNIQUE_NAME)
 
         // Reflect the capability loss immediately; disk cleanup happens off the main thread.
         val spec = brainRepository.getOnDeviceBrainModelSpec()
