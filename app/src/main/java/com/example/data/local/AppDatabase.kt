@@ -14,6 +14,7 @@ import com.example.data.brain.BrainEdgeEvidenceEntity
 import com.example.data.brain.BrainNodeEntity
 import com.example.data.brain.BrainRunEntity
 import com.example.data.brain.BrainTopicEntity
+import com.example.data.brain.BrainVectorSyncOperationEntity
 
 @Database(
     entities = [
@@ -58,6 +59,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun brainImageProfileDao(): com.example.data.brain.BrainImageProfileDao
     abstract fun brainDocumentDao(): com.example.data.brain.BrainDocumentDao
     abstract fun brainRunDao(): com.example.data.brain.BrainRunDao
+    abstract fun brainVectorSyncDao(): com.example.data.brain.BrainVectorSyncDao
 
     companion object {
         private val MIGRATION_7_8 = object : Migration(7, 8) {
@@ -501,6 +503,26 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS brain_vector_sync_operations (
+                        id TEXT NOT NULL,
+                        operation TEXT NOT NULL,
+                        chunkId TEXT,
+                        state TEXT NOT NULL,
+                        attempts INTEGER NOT NULL,
+                        lastError TEXT,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        PRIMARY KEY(id)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_brain_vector_sync_operations_state_createdAt ON brain_vector_sync_operations(state, createdAt)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_brain_vector_sync_operations_chunkId_createdAt ON brain_vector_sync_operations(chunkId, createdAt)")
+            }
+        }
+
         private val MIGRATION_16_17 = object : Migration(16, 17) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE ai_provider_config ADD COLUMN vectorDatabaseType TEXT NOT NULL DEFAULT 'ROOM'")
@@ -534,7 +556,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_14_15,
                         MIGRATION_15_16,
                         MIGRATION_16_17,
-                        MIGRATION_17_18
+                        MIGRATION_17_18,
+                        MIGRATION_18_19
                     )
                     .fallbackToDestructiveMigrationFrom(1, 2, 3, 5)
                     .fallbackToDestructiveMigrationOnDowngrade()
