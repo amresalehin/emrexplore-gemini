@@ -175,6 +175,32 @@ class AiProviderClient {
         if (EmbeddingProviderType.fromString(config.embeddingProviderType) == EmbeddingProviderType.OFFLINE) return emptyList()
         return listModels(embeddingConfig(config)).filter { it.supportsEmbedding || it.supportsMultimodalEmbedding }
     }
+    suspend fun testEmbeddingConnection(config: AiProviderConfigEntity): ConnectionTestResult = withContext(Dispatchers.IO) {
+        val started = System.currentTimeMillis()
+        if (EmbeddingProviderType.fromString(config.embeddingProviderType) == EmbeddingProviderType.OFFLINE) {
+            return@withContext ConnectionTestResult(true, "On-device embedding · private", System.currentTimeMillis() - started)
+        }
+        val providerConfig = embeddingConfig(config)
+        try {
+            val provider = EmbeddingProviderType.fromString(config.embeddingProviderType)
+            if (!isKeylessAiConfig(providerConfig) && config.embeddingApiKey.isBlank()) {
+                return@withContext ConnectionTestResult(false, "Enter an embedding API key first.", System.currentTimeMillis() - started)
+            }
+            val model = config.textEmbeddingModel.ifBlank { config.embeddingModel }.trim()
+            if (model.isBlank()) {
+                return@withContext ConnectionTestResult(false, "Choose an embedding model first.", System.currentTimeMillis() - started)
+            }
+            val vector = embedText(listOf("embedding connection test"), config, model, "query").firstOrNull()
+            if (vector.isNullOrEmpty()) {
+                ConnectionTestResult(false, "Embedding provider returned no vector.", System.currentTimeMillis() - started)
+            } else {
+                ConnectionTestResult(true, "Embedding connected · " + provider.displayName, System.currentTimeMillis() - started)
+            }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            ConnectionTestResult(false, error.message?.take(180) ?: "Could not connect to embedding provider.", System.currentTimeMillis() - started)
+        }
+    }
 
     suspend fun embedTextQuery(
         text: String,
