@@ -434,6 +434,10 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                 modelFetchError = uiState.aiModelFetchError,
                 onFetchModels = { viewModel.fetchAiModels(it) },
                 onFetchEmbeddingModels = { viewModel.fetchEmbeddingModels(it) },
+                onDownloadOllamaModel = { config, model -> viewModel.downloadOllamaModel(config, model) },
+                isDownloadingOllamaModel = uiState.isDownloadingOllamaModel,
+                ollamaDownloadProgress = uiState.ollamaDownloadProgress,
+                ollamaDownloadStatus = uiState.ollamaDownloadStatus,
                 onSelectOfflineModel = { viewModel.selectOnDeviceBrainModel(it) },
                 onSaveConfig = { viewModel.saveAiConfig(it) },
                 onNavigateBack = { viewModel.setShowAiSettings(false) }
