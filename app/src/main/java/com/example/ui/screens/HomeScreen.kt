@@ -645,20 +645,6 @@ fun HomeScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(4.dp))
-
-                        // Refresh button beside search bar
-                        IconButton(
-                            onClick = { viewModel.refreshHomeScreen() },
-                            modifier = Modifier.testTag("home_refresh_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Refresh counts",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
                         // Three-dot menu button beside search bar
                         Box {
                             IconButton(
