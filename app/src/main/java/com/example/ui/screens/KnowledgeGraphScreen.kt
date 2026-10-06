@@ -346,6 +346,7 @@ fun BrainScreen(
                     onPauseIndexing = onPauseIndexing,
                     onResumeIndexing = onResumeIndexing,
                     isIndexing = isIndexing,
+                    embeddingReady = embeddingReady,
                     onAskAiForFile = { node ->
                         selectedTab = BrainScreenTab.ASK_AI
                         onAskAiForFile(node)
