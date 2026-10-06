@@ -10,12 +10,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+enum class BrainVectorKind { TEXT, IMAGE }
+
 data class VectorSearchResult(val id: String, val score: Float)
 
 interface BrainVectorStore {
     suspend fun upsert(chunks: List<BrainChunkEntity>, config: AiProviderConfigEntity)
     suspend fun delete(ids: List<String>, config: AiProviderConfigEntity)
-    suspend fun search(vector: FloatArray, model: String, limit: Int, config: AiProviderConfigEntity): List<VectorSearchResult>
+    suspend fun search(vector: FloatArray, model: String, limit: Int, config: AiProviderConfigEntity, kind: BrainVectorKind = BrainVectorKind.TEXT): List<VectorSearchResult>
     suspend fun clear(config: AiProviderConfigEntity)
 }
 
@@ -24,14 +26,17 @@ class RoomBrainVectorStore(private val chunkDao: BrainChunkDao) : BrainVectorSto
     override suspend fun delete(ids: List<String>, config: AiProviderConfigEntity) = Unit
     override suspend fun clear(config: AiProviderConfigEntity) = Unit
 
-    override suspend fun search(vector: FloatArray, model: String, limit: Int, config: AiProviderConfigEntity): List<VectorSearchResult> {
+    override suspend fun search(vector: FloatArray, model: String, limit: Int, config: AiProviderConfigEntity, kind: BrainVectorKind): List<VectorSearchResult> {
         val queue = java.util.PriorityQueue<VectorSearchResult>(limit.coerceAtLeast(1)) { a, b -> a.score.compareTo(b.score) }
         var offset = 0
         while (true) {
-            val page = chunkDao.getEmbeddedPage(model, 128, offset)
+            val page = when (kind) {
+                BrainVectorKind.TEXT -> chunkDao.getEmbeddedPage(model, 128, offset)
+                BrainVectorKind.IMAGE -> chunkDao.getImageEmbeddedPage(model, 128, offset)
+            }
             if (page.isEmpty()) break
             for (chunk in page) {
-                val stored = BrainVectorCodec.fromJson(chunk.embeddingJson)
+                val stored = BrainVectorCodec.fromJson(if (kind == BrainVectorKind.TEXT) chunk.embeddingJson else chunk.imageEmbeddingJson)
                 if (stored.size != vector.size || stored.isEmpty()) continue
                 val score = BrainVectorCodec.cosine(vector, stored)
                 if (score >= 0.20f) {
@@ -71,7 +76,7 @@ class QdrantBrainVectorStore : BrainVectorStore {
         request("POST", endpoint(config, "/points/delete?wait=true"), JSONObject().put("points", points), config)
     }
 
-    override suspend fun search(vector: FloatArray, model: String, limit: Int, config: AiProviderConfigEntity): List<VectorSearchResult> {
+    override suspend fun search(vector: FloatArray, model: String, limit: Int, config: AiProviderConfigEntity, kind: BrainVectorKind): List<VectorSearchResult> {
         if (vector.isEmpty() || limit <= 0) return emptyList()
         val json = request("POST", endpoint(config, "/points/search"),
             JSONObject().put("vector", JSONArray(vector.toList())).put("limit", limit).put("with_payload", true), config)
