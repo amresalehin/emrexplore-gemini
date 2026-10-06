@@ -141,6 +141,10 @@ fun AiSettingsScreen(
     var vectorDatabaseApiKey by remember { mutableStateOf(currentConfig.vectorDatabaseApiKey) }
     var vectorDatabaseCollection by remember { mutableStateOf(currentConfig.vectorDatabaseCollection.ifBlank { "emrexplore_brain" }) }
 
+    fun persistDraft() {
+        onSaveConfig(draftConfig())
+    }
+
     fun draftConfig(): AiProviderConfigEntity = currentConfig.copy(
         providerType = selectedProvider.name,
         apiKey = apiKey.trim(),
@@ -391,7 +395,7 @@ fun AiSettingsScreen(
                     )
                 }
 
-                if (selectedProvider == ProviderType.OPENAI_COMPATIBLE) {
+                if (selectedProvider != ProviderType.OLLAMA && selectedProvider != ProviderType.GEMINI) {
                     OutlinedTextField(
                         value = baseUrl,
                         onValueChange = { baseUrl = it },
@@ -730,15 +734,17 @@ fun AiSettingsScreen(
 
     if (showProviderPicker) ProviderPickerDialog(selectedProvider, ::selectProvider) { showProviderPicker = false }
     if (showEmbeddingProviderPicker) EmbeddingProviderPickerDialog(selectedEmbeddingProvider, ::selectEmbeddingProvider) { showEmbeddingProviderPicker = false }
-    if (showChatPicker) ModelPickerDialog("Choose chat model", chats, chatModel, { chatModel = it; showChatPicker = false }) { showChatPicker = false }
-    if (showVisionPicker) ModelPickerDialog("Choose vision model", visions, visionModel, { visionModel = it; showVisionPicker = false }) { showVisionPicker = false }
-    if (showEmbeddingPicker) ModelPickerDialog("Choose text embedding model", embeddings, embeddingModel, { embeddingModel = it; showEmbeddingPicker = false }) { showEmbeddingPicker = false }
-    if (showMultimodalEmbeddingPicker) ModelPickerDialog("Choose multimodal embedding model", multimodalEmbeddings, multimodalEmbeddingModel, { multimodalEmbeddingModel = it; showMultimodalEmbeddingPicker = false }) { showMultimodalEmbeddingPicker = false }
+    if (showChatPicker) ModelPickerDialog("Choose chat model", chats, chatModel, { chatModel = it; showChatPicker = false; persistDraft() }) { showChatPicker = false }
+    if (showVisionPicker) ModelPickerDialog("Choose vision model", visions, visionModel, { visionModel = it; showVisionPicker = false; persistDraft() }) { showVisionPicker = false }
+    if (showEmbeddingPicker) ModelPickerDialog("Choose text embedding model", embeddings, embeddingModel, { embeddingModel = it; showEmbeddingPicker = false; persistDraft() }) { showEmbeddingPicker = false }
+    if (showMultimodalEmbeddingPicker) ModelPickerDialog("Choose image embedding model", multimodalEmbeddings, multimodalEmbeddingModel, { multimodalEmbeddingModel = it; showMultimodalEmbeddingPicker = false; persistDraft() }) { showMultimodalEmbeddingPicker = false }
     if (showOfflineBrainPicker) OfflineBrainModelPickerDialog(
         models = offlineBrainModels,
         selectedId = selectedOfflineBrainModelId,
         onSelect = {
             onSelectOfflineBrainModel(it)
+            embeddingModel = it
+            onSaveConfig(draftConfig())
             showOfflineBrainPicker = false
         },
         onDismiss = { showOfflineBrainPicker = false }
@@ -783,6 +789,12 @@ private fun ModelPicker(
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(when {
+                    label.startsWith("Text embedding") -> "Used to turn documents and text into vectors for semantic search."
+                    label.startsWith("Image embedding") -> "Used to turn images into vectors for visual retrieval."
+                    label.startsWith("Vision") -> "Used to understand images and create their AI profile."
+                    else -> "Used to answer Brain questions and synthesize retrieved context."
+                }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(value.ifBlank { "Tap Fetch models" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 if (models.isNotEmpty()) {
                     val selected = models.firstOrNull { it.id == value }
