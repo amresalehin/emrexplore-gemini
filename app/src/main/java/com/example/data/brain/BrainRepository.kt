@@ -38,6 +38,7 @@ class BrainRepository(context: Context) {
     private val brainChunkDao = db.brainChunkDao()
     private val brainDocumentDao = db.brainDocumentDao()
     private val brainRunDao = db.brainRunDao()
+    private val brainImageProfileDao = db.brainImageProfileDao()
     private val aiConfigDao = db.aiProviderConfigDao()
     private val fileIndexDao = db.fileIndexDao()
 
@@ -53,6 +54,7 @@ class BrainRepository(context: Context) {
         edgeDao = brainEdgeDao,
         edgeEvidenceDao = brainEdgeEvidenceDao,
         runDao = brainRunDao,
+        imageProfileDao = brainImageProfileDao,
         client = brainAi,
         embeddingClient = client,
         db = db,
@@ -141,6 +143,7 @@ class BrainRepository(context: Context) {
             brainChunkDao.clearAll()
             brainDocumentDao.clearAll()
             brainRunDao.clearAll()
+            brainImageProfileDao.clearAll()
         }
     }
 
@@ -291,12 +294,18 @@ class BrainRepository(context: Context) {
                 brainChunkDao.deleteForFile(path)
                 brainNodeDao.deleteFileNode(path)
                 brainDocumentDao.delete(path)
+                brainImageProfileDao.delete(path)
             }
             brainEdgeEvidenceDao.refreshRepresentatives()
             brainEdgeEvidenceDao.deleteEdgesWithoutEvidence()
         }
         brainNodeDao.deleteOrphans()
         brainNodeDao.recomputeDegrees()
+    }
+
+    suspend fun getImageProfile(path: String): BrainImageProfileEntity? = withContext(Dispatchers.IO) {
+        if (path.isBlank()) return@withContext null
+        brainImageProfileDao.get(path)
     }
 
     suspend fun getBrainNode(path: String): BrainNodeEntity? = withContext(Dispatchers.IO) {
