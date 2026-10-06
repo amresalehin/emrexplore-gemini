@@ -102,27 +102,9 @@ class BrainRetriever(
             emptyList()
         }
 
-        val imageSemanticHits = if (
-            embeddingProvider != EmbeddingProviderType.OFFLINE &&
-            config.multimodalEmbeddingModel.trim().isNotBlank()
-        ) {
-            runCatching {
-                embeddingClient.embedMultimodalQuery(clean, config)?.let {
-                    vectorStoreFactory(config).search(
-                        it,
-                        config.multimodalEmbeddingModel.trim(),
-                        limit * 3,
-                        config,
-                        BrainVectorKind.IMAGE
-                    )
-                }?.let { results -> results.mapNotNull { result ->
-                    chunkDao.getByIds(listOf(result.id)).firstOrNull()?.let { BrainSearchHit(it, result.score) }
-                }}.orEmpty()
-            }.getOrElse { error ->
-                if (error is CancellationException) throw error
-                emptyList()
-            }
-        } else emptyList()
+        // Brain never generates or queries image embeddings. Gallery AI owns image embedding generation;
+        // Brain retrieves the saved image AI profile through the normal text/lexical representation.
+        val imageSemanticHits = emptyList<BrainSearchHit>()
 
         val semanticHits = fuseSemanticHits(textSemanticHits, imageSemanticHits, limit * 3)
 
@@ -225,13 +207,6 @@ class BrainRetriever(
             .mapNotNull { (id, score) -> best[id]?.copy(score = score) }
             .take(limit)
     }
-
-    private fun remoteEmbeddingSignature(config: AiProviderConfigEntity, model: String): String =
-        "remote:" + listOf(
-            EmbeddingProviderType.fromString(config.embeddingProviderType).name,
-            config.embeddingBaseUrl.trim(),
-            model
-        ).joinToString(":")
 
     private suspend fun collectLocalHits(
         model: String,
