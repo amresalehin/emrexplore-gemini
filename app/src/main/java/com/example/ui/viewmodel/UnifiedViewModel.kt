@@ -2411,13 +2411,13 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             val saved = config.copy(
                 apiKey = config.apiKey.trim(),
                 baseUrl = config.baseUrl.trim(),
-                embeddingApiKey = config.embeddingApiKey.trim(),
-                embeddingBaseUrl = config.embeddingBaseUrl.trim(),
-                embeddingProviderType = EmbeddingProviderType.fromString(config.embeddingProviderType).name,
+                embeddingApiKey = "",
+                embeddingBaseUrl = "",
+                embeddingProviderType = EmbeddingProviderType.OFFLINE.name,
                 textEmbeddingModel = canonicalTextEmbedding,
                 // Keep legacy + new fields synchronized for existing databases.
                 embeddingModel = canonicalTextEmbedding,
-                multimodalEmbeddingModel = config.multimodalEmbeddingModel.trim(),
+                multimodalEmbeddingModel = "",
                 vectorDatabaseType = com.example.data.ai.VectorDatabaseType.fromString(config.vectorDatabaseType).name,
                 vectorDatabaseBaseUrl = config.vectorDatabaseBaseUrl.trim(),
                 vectorDatabaseApiKey = config.vectorDatabaseApiKey.trim(),
@@ -2425,8 +2425,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             )
             brainRepository.saveAiConfig(saved)
             _uiState.update { it.copy(aiConfig = saved, aiConfigLoaded = true) }
-            showMessage("AI settings saved · Brain will re-index if the embedder changed")
-            runCatching { brainRepository.syncAll(force = false) }
+            showMessage("AI settings saved. Existing File AI and Gallery AI embeddings are kept.")
         }
     }
 
