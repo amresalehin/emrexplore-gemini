@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.brain.BrainChunkEntity
+import com.example.data.brain.BrainImageProfileEntity
 import com.example.data.brain.BrainDocumentEntity
 import com.example.data.brain.BrainEdgeEntity
 import com.example.data.brain.BrainEdgeEvidenceEntity
@@ -32,9 +33,10 @@ import com.example.data.brain.BrainTopicEntity
         BrainEdgeEvidenceEntity::class,
         BrainChunkEntity::class,
         BrainDocumentEntity::class,
-        BrainRunEntity::class
+        BrainRunEntity::class,
+        BrainImageProfileEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -53,6 +55,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun brainEdgeEvidenceDao(): com.example.data.brain.BrainEdgeEvidenceDao
     abstract fun brainTopicDao(): com.example.data.brain.BrainTopicDao
     abstract fun brainChunkDao(): com.example.data.brain.BrainChunkDao
+    abstract fun brainImageProfileDao(): com.example.data.brain.BrainImageProfileDao
     abstract fun brainDocumentDao(): com.example.data.brain.BrainDocumentDao
     abstract fun brainRunDao(): com.example.data.brain.BrainRunDao
 
@@ -473,6 +476,31 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE brain_chunks ADD COLUMN imageEmbeddingJson TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE brain_chunks ADD COLUMN imageEmbeddingModel TEXT NOT NULL DEFAULT ''")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS brain_image_profiles (
+                        filePath TEXT NOT NULL,
+                        fileName TEXT NOT NULL,
+                        ocrText TEXT NOT NULL,
+                        metadataSummary TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        tagsJson TEXT NOT NULL,
+                        entitiesJson TEXT NOT NULL,
+                        relationsJson TEXT NOT NULL,
+                        visionModel TEXT NOT NULL,
+                        imageEmbeddingModel TEXT NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        PRIMARY KEY(filePath)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_brain_image_profiles_visionModel ON brain_image_profiles(visionModel)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_brain_image_profiles_updatedAt ON brain_image_profiles(updatedAt)")
+            }
+        }
+
         private val MIGRATION_16_17 = object : Migration(16, 17) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE ai_provider_config ADD COLUMN vectorDatabaseType TEXT NOT NULL DEFAULT 'ROOM'")
@@ -505,7 +533,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_13_14,
                         MIGRATION_14_15,
                         MIGRATION_15_16,
-                        MIGRATION_16_17
+                        MIGRATION_16_17,
+                        MIGRATION_17_18
                     )
                     .fallbackToDestructiveMigrationFrom(1, 2, 3, 5)
                     .fallbackToDestructiveMigrationOnDowngrade()
