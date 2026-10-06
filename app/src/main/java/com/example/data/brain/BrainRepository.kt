@@ -59,7 +59,6 @@ class BrainRepository(context: Context) {
         edgeEvidenceDao = brainEdgeEvidenceDao,
         runDao = brainRunDao,
         imageProfileDao = brainImageProfileDao,
-        client = brainAi,
         db = db,
         vectorSyncDao = db.brainVectorSyncDao()
     )
