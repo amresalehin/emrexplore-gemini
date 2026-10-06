@@ -62,7 +62,8 @@ class BrainRepository(context: Context) {
         chunkDao = brainChunkDao,
         nodeDao = brainNodeDao,
         edgeDao = brainEdgeDao,
-        onDeviceEmbedding = onDeviceEmbedding
+        onDeviceEmbedding = onDeviceEmbedding,
+        embeddingClient = client
     )
 
     val allNodesFlow: Flow<List<BrainNodeEntity>> = brainNodeDao.observePreview().map { it }
