@@ -2948,10 +2948,13 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                 isBrainIndexing = true,
                                 brainIndexingProgress = if (total > 0) current.toFloat() / total else 0f,
                                 brainIndexingStatus = if (path.isBlank()) {
-                                    "Indexing Brain · " + brainConfig.textEmbeddingModel.ifBlank { brainConfig.embeddingModel.ifBlank { "On-device model" } }
-                                } else {
-                                    "Indexing " + File(path).name + " · " +
+                                    "Indexing Brain · Embed " +
                                         brainConfig.textEmbeddingModel.ifBlank { brainConfig.embeddingModel.ifBlank { "On-device model" } } +
+                                        " · VLM " + brainConfig.visionModel.ifBlank { "not configured" }
+                                } else {
+                                    "Indexing " + File(path).name + " · Embed " +
+                                        brainConfig.textEmbeddingModel.ifBlank { brainConfig.embeddingModel.ifBlank { "On-device model" } } +
+                                        " · VLM " + brainConfig.visionModel.ifBlank { "not configured" } +
                                         " (" + current + "/" + total + ")"
                                 }
                             )
