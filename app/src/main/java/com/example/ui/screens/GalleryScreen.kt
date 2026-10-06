@@ -610,42 +610,47 @@ fun GalleryScreen(
         }
 
         if (uiState.isGalleryAiProcessing || uiState.isGalleryAiPaused) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)
             ) {
-                LinearProgressIndicator(
-                    progress = { uiState.galleryAiProgress },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        uiState.galleryAiStatus,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(
-                        onClick = {
-                            if (uiState.isGalleryAiPaused) {
-                                viewModel.resumeGalleryAi()
-                            } else {
-                                viewModel.pauseGalleryAi()
-                            }
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                if (uiState.isGalleryAiPaused) "Gallery AI paused" else "Gallery AI indexing",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                uiState.galleryAiStatus,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
-                    ) {
-                        Text(if (uiState.isGalleryAiPaused) "Resume" else "Pause")
+                        Text(
+                            "${(uiState.galleryAiProgress * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
-                    TextButton(
-                        onClick = { viewModel.cancelGalleryAi() }
-                    ) {
-                        Text("Cancel")
+                    LinearProgressIndicator(
+                        progress = { uiState.galleryAiProgress.coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(6.dp)
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(
+                            onClick = {
+                                if (uiState.isGalleryAiPaused) viewModel.resumeGalleryAi()
+                                else viewModel.pauseGalleryAi()
+                            }
+                        ) { Text(if (uiState.isGalleryAiPaused) "Resume" else "Pause") }
+                        TextButton(onClick = { viewModel.cancelGalleryAi() }) { Text("Stop") }
                     }
                 }
             }
