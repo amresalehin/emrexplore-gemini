@@ -578,55 +578,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
 
 
-        // Brain indexing is WorkManager-backed. Reattach the UI to the durable
-        // unique work after process recreation instead of relying on ViewModel state.
-        viewModelScope.launch {
-            WorkManager.getInstance(getApplication<Application>())
-                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
-                .collectLatest { works ->
-                    val work = works.firstOrNull() ?: run {
-                        val ready = brainRepository.getOnDeviceBrainModelState()
-                        _uiState.update { state ->
-                            state.copy(
-                                isBrainIndexing = false,
-                                onDeviceBrainModel = if (state.onDeviceBrainModel.status == OnDeviceBrainModelStatus.DOWNLOADING) state.onDeviceBrainModel else ready
-                            )
-                        }
-                        return@collectLatest
-                    }
-                    val progress = work.progress
-                    val total = progress.getInt("total", 0)
-                    val current = progress.getInt("current", 0)
-                    val path = progress.getString("path").orEmpty()
-                    when (work.state) {
-                        androidx.work.WorkInfo.State.RUNNING -> _uiState.update {
-                            it.copy(
-                                isBrainIndexing = true,
-                                brainIndexingProgress = if (total > 0) current.toFloat() / total else 0f,
-                                brainIndexingStatus = if (path.isBlank()) "Indexing Brain..." else "Indexing " + File(path).name + " ($current/$total)"
-                            )
-                        }
-                        androidx.work.WorkInfo.State.ENQUEUED -> _uiState.update {
-                            it.copy(isBrainIndexing = true, brainIndexingStatus = "Brain indexing queued...")
-                        }
-                        androidx.work.WorkInfo.State.SUCCEEDED -> {
-                            _uiState.update {
-                                it.copy(
-                                    isBrainIndexing = false,
-                                    brainIndexingProgress = 1f
-                                )
-                            }
-                            refreshBrainTopicFiles(_uiState.value.selectedBrainTopicId)
-                        }
-                        else -> _uiState.update {
-                            it.copy(
-                                isBrainIndexing = false,
-                                brainIndexingProgress = it.brainIndexingProgress
-                            )
-                        }
-                    }
-                }
-        }
+        // Brain no longer owns indexing. Legacy Brain indexing work is cancelled below; File AI and Gallery AI own enrichment.
         // On-device semantic model download is durable and independent of Brain indexing.
         viewModelScope.launch(Dispatchers.IO) {
             val specs = brainRepository.getOnDeviceBrainModelSpecs()
@@ -2881,6 +2833,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         val workManager = WorkManager.getInstance(getApplication<Application>())
         workManager.cancelUniqueWork(BrainModelDownloadWorker.UNIQUE_NAME)
         workManager.cancelUniqueWork(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
+        workManager.cancelUniqueWork(com.example.data.ai.FileAiWorker.UNIQUE_NAME)
         workManager.cancelUniqueWork(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
 
         // Reflect the capability loss immediately; disk cleanup happens off the main thread.
