@@ -171,6 +171,7 @@ fun BrainScreen(
     isIndexing: Boolean,
     indexingProgress: Float,
     indexingStatus: String,
+    embeddingReady: Boolean = false,
     ragAnswer: RagAnswer?,
     isRagQuerying: Boolean,
     onDeviceBrainModel: OnDeviceBrainModelUiState = OnDeviceBrainModelUiState(),
@@ -342,6 +343,8 @@ fun BrainScreen(
                     onOpenFile = onOpenFile,
                     onOpenImage = onOpenImage,
                     onIndexFiles = onIndexAllFiles,
+                    onPauseIndexing = onPauseIndexing,
+                    onResumeIndexing = onResumeIndexing,
                     isIndexing = isIndexing,
                     onAskAiForFile = { node ->
                         selectedTab = BrainScreenTab.ASK_AI
@@ -593,7 +596,10 @@ fun DeclutteredCanvasView(
     onOpenFile: (File) -> Unit,
     onOpenImage: (File) -> Unit,
     onIndexFiles: () -> Unit,
+    onPauseIndexing: () -> Unit,
+    onResumeIndexing: () -> Unit,
     isIndexing: Boolean,
+    embeddingReady: Boolean,
     onAskAiForFile: (BrainNodeEntity) -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("ALL") }
@@ -727,15 +733,12 @@ fun DeclutteredCanvasView(
                 }
                 if (isIndexing) {
                     TextButton(onClick = onPauseIndexing) { Text("Pause") }
-                    Button(onClick = onIndexFiles, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
-                        Text("Restart")
-                    }
                 } else if (indexingStatus.contains("paused", ignoreCase = true)) {
-                    Button(onClick = onResumeIndexing, enabled = localBrainReady, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
+                    Button(onClick = onResumeIndexing, enabled = embeddingReady, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
                         Text("Resume")
                     }
                 } else {
-                    Button(onClick = onIndexFiles, enabled = localBrainReady, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
+                    Button(onClick = onIndexFiles, enabled = embeddingReady, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
                         Text("Start indexing")
                     }
                 }
@@ -1000,18 +1003,18 @@ fun DeclutteredCanvasView(
                             modifier = Modifier.size(32.dp)
                         )
                         Text(
-                             if (!localBrainReady) "Local Brain model required" else "No indexed entities found",
+                             if (!embeddingReady) "Configure an embedding model" else "No indexed entities found",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                             if (!localBrainReady) "Download the local model in Brain Settings to enable semantic search and indexing." else "Brain is ready. Sync storage to build the semantic index.",
+                             if (!embeddingReady) "Choose an embedding provider and model in Brain Settings before indexing." else "Brain is ready. Start indexing to build the semantic graph.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Button(
                             onClick = onIndexFiles,
-                             enabled = !isIndexing && localBrainReady
+                             enabled = !isIndexing && embeddingReady
                         ) {
                              Text(if (isIndexing) "Indexing…" else if (localBrainReady) "Start indexing" else "Open Brain Settings")
                         }
