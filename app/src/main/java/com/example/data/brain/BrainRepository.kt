@@ -233,8 +233,13 @@ class BrainRepository(context: Context) {
         BrainSyncResult(total, indexed, skipped, failed)
     }
 
-    suspend fun indexFile(file: File, config: AiProviderConfigEntity, force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
-        indexer.index(file, normalizeAiConfig(config), force).success
+    suspend fun indexFile(
+        file: File,
+        config: AiProviderConfigEntity,
+        force: Boolean = false,
+        precomputedImageEmbedding: FloatArray? = null
+    ): Boolean = withContext(Dispatchers.IO) {
+        indexer.index(file, normalizeAiConfig(config), force, precomputedImageEmbedding).success
     }
 
     suspend fun reconcileMutation(
@@ -415,8 +420,22 @@ class BrainRepository(context: Context) {
                 imageEmbeddingModel = ""
             )
         )
-        // VLM/caption/tag generation is complete and persisted before embedding starts.
-        indexFile(file, config, force = force)
+        // Gallery AI owns the image embedding stage too. Brain never generates image vectors.
+        val imageVector = if (config.multimodalEmbeddingModel.isNotBlank()) {
+            try {
+                embeddingClient.embedMultimodalDocument(input.imageBase64, config)
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                return@withContext BrainIndexOutcome(false, error = "Image embedding failed: " + (error.message ?: "inference error"))
+            }
+        } else null
+        brainImageProfileDao.insert(
+            brainImageProfileDao.get(file.absolutePath)?.copy(
+                imageEmbeddingModel = if (imageVector != null) config.multimodalEmbeddingModel.trim() else ""
+            ) ?: return@withContext BrainIndexOutcome(false, error = "Gallery AI profile could not be saved")
+        )
+        // VLM + image embedding are complete and persisted before the final text embedding/storage stage.
+        indexFile(file, config, force = force, precomputedImageEmbedding = imageVector)
         val indexed = brainDocumentDao.get(file.absolutePath)?.state == BrainIndexStates.READY
         if (indexed) BrainIndexOutcome(true) else BrainIndexOutcome(false, error = "Embedding failed")
     }
@@ -598,19 +617,20 @@ class BrainRepository(context: Context) {
         val canonicalTextEmbedding = explicitTextEmbedding.ifBlank { legacyEmbedding }
         return config.copy(
             providerType = provider.name,
-            // Embeddings are always local. Existing remote-provider settings are
-            // intentionally ignored so changing the LLM/VLM never invalidates saved vectors.
-            embeddingProviderType = EmbeddingProviderType.OFFLINE.name,
+            // Embedding configuration is independent from the answer/VLM provider.
+            // Changing LLM/VLM does not invalidate existing vectors.
+            embeddingProviderType = EmbeddingProviderType.fromString(config.embeddingProviderType).name,
             vectorDatabaseType = com.example.data.ai.VectorDatabaseType.fromString(config.vectorDatabaseType).name,
             vectorDatabaseBaseUrl = config.vectorDatabaseBaseUrl.trim(),
             vectorDatabaseApiKey = config.vectorDatabaseApiKey.trim(),
             vectorDatabaseCollection = config.vectorDatabaseCollection.trim().ifBlank { "emrexplore_brain" },
-            embeddingApiKey = "",
-            embeddingBaseUrl = "",
+            embeddingApiKey = config.embeddingApiKey.trim(),
+            embeddingBaseUrl = config.embeddingBaseUrl.trim(),
             textEmbeddingModel = canonicalTextEmbedding,
             // Keep the legacy field in lockstep so old readers and migrations cannot
             // silently discard a newly selected text embedding model.
-            embeddingModel = canonicalTextEmbedding
+            embeddingModel = canonicalTextEmbedding,
+            multimodalEmbeddingModel = config.multimodalEmbeddingModel.trim()
         )
     }
 
