@@ -256,6 +256,7 @@ data class UiState(
     val isAiSettingsScreenOpen: Boolean = false,
     val aiConfigLoaded: Boolean = false,
     val isBrainIndexing: Boolean = false,
+    val isBrainIndexPaused: Boolean = false,
     val isGalleryAiProcessing: Boolean = false,
     val isGalleryAiPaused: Boolean = false,
     val galleryAiProgress: Float = 0f,
@@ -2894,6 +2895,30 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun pauseBrainIndexing() {
+        if (!_uiState.value.isBrainIndexing) return
+        WorkManager.getInstance(getApplication<Application>())
+            .cancelUniqueWork(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
+        _uiState.update {
+            it.copy(
+                isBrainIndexing = false,
+                isBrainIndexPaused = true,
+                brainIndexingStatus = "Indexing paused — resume to continue"
+            )
+        }
+    }
+
+    fun resumeBrainIndexing() {
+        if (!_uiState.value.isBrainIndexPaused) return
+        _uiState.update {
+            it.copy(
+                isBrainIndexPaused = false,
+                brainIndexingStatus = "Resuming Brain indexing…"
+            )
+        }
+        indexAllFilesForBrain()
+    }
+
     fun indexAllFilesForBrain() {
         if (_uiState.value.isBrainIndexing) return
         val brainConfig = _uiState.value.aiConfig
@@ -2905,6 +2930,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update {
             it.copy(
                 isBrainIndexing = true,
+                isBrainIndexPaused = false,
                 brainIndexingProgress = 0f,
                 brainIndexingStatus = "Brain indexing queued..."
             )
@@ -2947,6 +2973,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                             _uiState.update { state ->
                                 state.copy(
                                     isBrainIndexing = false,
+                                    isBrainIndexPaused = false,
                                     brainIndexingProgress = 1f,
                                     brainIndexingStatus = "Brain ready — " + indexed + " indexed, " + skipped + " skipped, " + failed + " failed",
                                     brainSmartSuggestions = suggestions
