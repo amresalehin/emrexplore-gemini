@@ -2444,12 +2444,17 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun saveAiConfig(config: AiProviderConfigEntity) {
         viewModelScope.launch {
+            val canonicalTextEmbedding = config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() }
             val saved = config.copy(
                 apiKey = config.apiKey.trim(),
                 baseUrl = config.baseUrl.trim(),
                 embeddingApiKey = config.embeddingApiKey.trim(),
                 embeddingBaseUrl = config.embeddingBaseUrl.trim(),
                 embeddingProviderType = EmbeddingProviderType.fromString(config.embeddingProviderType).name,
+                textEmbeddingModel = canonicalTextEmbedding,
+                // Keep legacy + new fields synchronized for existing databases.
+                embeddingModel = canonicalTextEmbedding,
+                multimodalEmbeddingModel = config.multimodalEmbeddingModel.trim(),
                 vectorDatabaseType = com.example.data.ai.VectorDatabaseType.fromString(config.vectorDatabaseType).name,
                 vectorDatabaseBaseUrl = config.vectorDatabaseBaseUrl.trim(),
                 vectorDatabaseApiKey = config.vectorDatabaseApiKey.trim(),
