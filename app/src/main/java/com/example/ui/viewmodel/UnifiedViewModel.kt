@@ -2411,13 +2411,13 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             val saved = config.copy(
                 apiKey = config.apiKey.trim(),
                 baseUrl = config.baseUrl.trim(),
-                embeddingApiKey = "",
-                embeddingBaseUrl = "",
-                embeddingProviderType = EmbeddingProviderType.OFFLINE.name,
+                embeddingApiKey = config.embeddingApiKey.trim(),
+                embeddingBaseUrl = config.embeddingBaseUrl.trim(),
+                embeddingProviderType = EmbeddingProviderType.fromString(config.embeddingProviderType).name,
                 textEmbeddingModel = canonicalTextEmbedding,
                 // Keep legacy + new fields synchronized for existing databases.
                 embeddingModel = canonicalTextEmbedding,
-                multimodalEmbeddingModel = "",
+                multimodalEmbeddingModel = config.multimodalEmbeddingModel.trim(),
                 vectorDatabaseType = com.example.data.ai.VectorDatabaseType.fromString(config.vectorDatabaseType).name,
                 vectorDatabaseBaseUrl = config.vectorDatabaseBaseUrl.trim(),
                 vectorDatabaseApiKey = config.vectorDatabaseApiKey.trim(),
