@@ -1,179 +1,111 @@
-# emrexplore
+### Critical weaknesses
 
-**emrexplore** is an Android file manager and media gallery with an optional AI layer for file understanding, semantic search, connected-file discovery, and local/private knowledge retrieval.
+1. **Filesystem ↔ Brain consistency**
+   - Rename/move/delete can update the filesystem without every derived store being updated consistently.
+   - This can leave stale Brain paths, favorites, bookmarks, metadata, etc.
+   - A file can effectively exist in Brain after it has disappeared from storage.
 
-The app remains useful without an AI provider: file browsing, media browsing, search, file operations, metadata inspection, and Brain semantic retrieval does not require a cloud API key after the on-device model is downloaded.
+2. **Delete/Trash safety**
+   - There is risk that a UI operation presented as “move to trash” can reach physical deletion paths.
+   - For a file manager, this is a **data-loss-class defect**.
 
-## Features
+3. **Permission lifecycle**
+   - Initial indexing can race with storage permission initialization.
+   - Granting/revoking permission can leave stale indexing state.
+   - The app needs permission changes to be treated as lifecycle events, not one-time startup conditions.
 
-### File Explorer
-- Browse shared storage with tabs and folder navigation.
-- Search by filename with type, date, and size filters.
-- Sort and switch between supported list/grid views.
-- Copy, move, rename, delete, restore, and manage files.
-- Use the recycle-bin/trash flow for recoverable deletion.
-- Create and inspect ZIP archives.
-- Open and edit supported text files.
-- Share and open files through Android-compatible URIs.
+4. **Database migration confidence**
+   - The migration chain is extensive, but there isn't enough automated testing of upgrades from every historical DB version.
+   - A fresh install working does **not** prove existing users can upgrade safely.
 
-### Gallery
-- Browse photos and videos by timeline or album.
-- Filter by media type, date, GPS presence, favorites, and search.
-- Sort by date, name, and size.
-- Open a paged fullscreen media viewer.
-- Inspect EXIF, IPTC, and XMP metadata.
-- Optionally enrich images with AI captions, tags, entities, and relations.
+---
 
-### Brain
-Brain is the replacement for the legacy Knowledge Graph and RAG subsystem.
+### Major Brain weaknesses
 
-Brain v2 is separated into bounded components:
+5. **Local vector search doesn't scale well**
+   - Room retrieval uses paged scanning and has a hard scan ceiling.
+   - At sufficiently large Brain indexes, relevant documents can simply never be examined.
+   - This becomes a **recall correctness problem**, not merely a performance problem.
 
-```text
-data/brain/
-├── BrainContentReader.kt   # bounded text/PDF/image extraction
-├── BrainCore.kt            # chunking, privacy, stable identity
-├── BrainEntities.kt        # Brain Room entities
-├── BrainDaos.kt            # Brain persistence/query surface
-├── BrainAiGateway.kt       # provider-independent Brain AI boundary
-├── BrainIndexer.kt         # atomic per-file indexing
-├── BrainRetriever.kt       # semantic retrieval + bounded graph expansion
-├── BrainRepository.kt      # single public Brain boundary
-├── BrainModelDownloadWorker.kt
-├── OnDeviceBrainModel.kt   # model catalog and downloader
-├── OnDeviceEmbeddingEngine.kt # tokenizer, ONNX inference, vector codec
-└── BrainModels.kt          # Brain/UI data models
-```
+6. **Lexical fallback can produce weak matches**
+   - Semantic retrieval has meaningful relevance controls.
+   - Lexical fallback is comparatively permissive.
+   - Generic words can therefore pull irrelevant files into the answer context.
 
-The indexing pipeline is deliberately conservative:
-1. Read a bounded file snapshot.
-2. Analyze text or images when an AI provider is available.
-3. Build deterministic chunks.
-4. Require the downloaded on-device neural embedding model.
-5. Encode chunks with that local model.
-6. Build file/entity nodes and relationship evidence.
-7. Verify the file did not change during processing.
-8. Commit the staged Brain representation atomically.
+7. **Room ↔ Qdrant consistency**
+   - Room can successfully commit an index while Qdrant fails afterward.
+   - There is no strong durable synchronization/outbox mechanism guaranteeing eventual convergence.
+   - The two stores can temporarily disagree.
 
-A failed index preserves the previous known-good Brain representation.
+8. **Secret ingestion**
+   - Brain can index ordinary filesystem text, including potentially `.env`/credential-bearing files.
+   - If cloud enrichment is enabled, sensitive content could become eligible for provider processing.
+   - A warning to the user isn't as strong as automatic secret detection/exclusion.
 
-### On-device semantic model
-Brain downloads a real semantic embedding model only when the user requests it, stores it in app-private storage, and executes it locally with ONNX Runtime. The current catalog uses [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2): a 384-dimensional BERT-family encoder with a 256-token sentence-transformer sequence limit. The ARM64 INT8 ONNX export is about 23 MB; the generic FP32 ONNX export is about 90 MB.
+9. **Model-switch transition**
+   - Changing the embedding model triggers reindexing.
+   - During rebuild, the application can temporarily operate against an index produced by a different model.
+   - The UX needs an explicit “rebuilding / old index still active” state.
 
-The model is downloaded only after the user requests it from AI settings. It is written through temporary files, the ONNX weights are SHA-256 verified before activation, and Brain automatically reindexes after a successful model install so document and query vectors are produced by the same local model. ONNX Runtime provides an Android package for running ONNX models on-device and includes XNNPACK support for mobile inference.
+---
 
-### Retrieval
-When the local neural model is installed, it is the only Brain semantic retrieval space and the query encoder. Brain does not maintain a second synthetic/hash embedding space.
+### Architecture weaknesses
 
-Retrieval also provides:
-- lexical fallback for exact terms and identifiers,
-- minimum relevance gating,
-- live filesystem validation,
-- bounded graph expansion and context construction,
-- source-count limits,
-- hidden-file and `.trash` exclusion.
+10. **`UnifiedViewModel` is too large**
+   - Roughly 3,000 lines.
+   - It owns Explorer, Gallery, Brain, AI configuration, operations, permissions, media, topics, etc.
+   - This dramatically increases regression risk.
 
-## AI providers
+11. **Heavy screens remain alive**
+   - Multiple major screens can remain composed rather than being fully disposed.
+   - This increases memory/recomposition pressure, especially alongside ONNX inference.
 
-The provider layer supports:
-- Google Gemini
-- OpenAI-compatible endpoints
-- OpenRouter
-- Ollama
-- Groq
-- Custom OpenAI-compatible endpoints
+12. **ONNX memory/lifecycle isn't sufficiently proven**
+   - The implementation is legitimate, but real-device memory and model-loading behavior haven't been sufficiently demonstrated.
+   - Multiple inference/model lifecycle paths could become expensive on low-RAM Android devices.
 
-Provider identity is preserved instead of collapsing all compatible services into one generic type.
+---
 
-Ollama is the private/local path. Exact GPS graph data is restricted to Ollama indexing. Cloud-oriented Brain context removes or redacts precise location information.
+### Testing weaknesses
 
-AI generation is optional. With the downloaded on-device embedding model, Brain can build and search a real semantic index without a provider embedding API or API key. Cloud/local providers can still enrich documents, generate graph relations, and produce final grounded answers.
+13. **Too much unit testing, not enough integration testing**
+   Missing high-value tests include:
+   - rename → Brain update
+   - move → Brain update
+   - delete → Brain cleanup
+   - trash → restore → Brain recovery
+   - permission revoke/regrant
+   - migration upgrades
+   - Room/Qdrant divergence
+   - model change → complete reindex
+   - large-index retrieval
+   - cancellation during indexing
 
-## Privacy and security
+14. **No convincing real-device semantic validation**
+   - Code inspection shows the ONNX pipeline exists.
+   - It doesn't prove semantic quality, latency, memory consumption, or stability across actual Android hardware.
 
-- API keys are handled through the encrypted application-key path.
-- Real API keys, tokens, signing keystores, and signing passwords must never be committed.
-- Cloud Brain context is redacted for precise GPS/location information.
-- Exact location graph nodes are only created for Ollama indexing.
-- AI file chat is scoped to the attached file rather than unrelated previous file conversations.
-- The repository requests broad storage/media access because file-manager behavior is a core product feature; permission minimization remains a release review item.
+15. **Current CI evidence is insufficient**
+   - The audited PR head doesn't currently have corresponding GitHub status/workflow evidence proving a green build.
+   - Therefore the branch should not be described as verified-green merely from source inspection.
 
-## Brain database migration
+---
 
-Brain v2 intentionally replaces the old KG/RAG storage model.
+### Secondary weaknesses
 
-The migration from the previous Brain/KG/RAG schema intentionally removes the legacy Brain tables and creates the new Brain v2 schema. After upgrading an existing installation, synchronize Brain again so the new representation is populated.
+16. **UI/configuration can permit theoretically valid but operationally unusable combinations.**
+   - Provider/model selection should validate actual compatibility and readiness.
 
-Current Brain tables:
-- `brain_documents`
-- `brain_chunks`
-- `brain_nodes`
-- `brain_edges`
-- `brain_edge_evidence`
-- `brain_topics`
-- `brain_runs`
+17. **Some legacy terminology remains.**
+   - “Knowledge Graph” naming persists around a Brain system that has been substantially redesigned.
 
-The database is currently **version 14**. Migration 13 -> 14 removes the duplicate legacy `offlineEmbeddingJson` column because each Brain chunk now stores one canonical local neural embedding.
+18. **Large files remain difficult to maintain.**
+   - `UnifiedViewModel`, settings UI, and other large classes make future changes risky.
 
-Edge provenance is stored separately for each supporting source file. Removing one source therefore does not erase a relationship supported by another source.
+19. **ZIP extraction needs stronger resource limits.**
+   - Zip bombs / enormous extraction workloads need stronger protection.
 
-## Build locally
+20. **Large-file text handling needs stricter bounds.**
+   - Direct whole-file reads can create memory pressure.
 
-### Prerequisites
-- Android Studio
-- JDK 17
-- Android SDK compatible with the project
-- Android emulator or physical device for device testing
-
-Open the repository in Android Studio, let Gradle sync, and run the `app` configuration.
-
-No `.env` file and no API key are required to build the application. The on-device Brain model is downloaded post-install rather than bundled into the APK, keeping the initial application package smaller.
-
-CI uses the following verification tasks:
-
-```bash
-gradle :app:testDebugUnitTest
-gradle :app:lintDebug
-gradle :app:assembleDebug
-```
-
-Release builds use environment-provided signing credentials. Keep release keystores and passwords outside the repository.
-
-## CI
-
-The Android workflow runs for:
-- pushes to `gemini`,
-- pull requests targeting `gemini`,
-- manual `workflow_dispatch` runs.
-
-The workflow performs environment setup, unit tests, debug lint, debug APK build, optional signed release APK build, APK verification, and artifact upload.
-
-Release signing is optional for the public build workflow and is supplied only through GitHub Actions secrets when available.
-
-## Project structure
-
-```text
-app/src/main/java/com/example/
-├── data/
-│   ├── ai/          # provider transport, model discovery, AI workers
-│   ├── brain/       # Brain v2 indexing, retrieval, graph, and models
-│   ├── local/       # Room database, DAOs, migrations
-│   ├── media/       # gallery/media flows
-│   ├── metadata/    # EXIF/IPTC/XMP extraction and writing
-│   ├── model/       # domain models
-│   ├── operations/  # file-operation execution and progress
-│   └── repository/  # filesystem/index coordination
-├── ui/
-│   ├── components/
-│   ├── screens/
-│   └── viewmodel/
-└── MainActivity.kt
-```
-
-The UI still contains some historical `kg*` state and screen naming. Runtime Brain data ownership is now under `com.example.data.brain`; the remaining naming cleanup is tracked in `task.md`.
-
-## Current engineering status
-
-Brain v2 is implemented on `agent/brain-rebuild` in draft PR #3 and is intended to merge into `gemini`.
-
-The current phase is validation of the real on-device semantic Brain path plus cross-feature hardening. See [task.md](task.md) for the active backlog and release definition of done.
+---
