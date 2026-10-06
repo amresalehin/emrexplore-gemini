@@ -519,7 +519,14 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                 isGalleryAiProcessing = true,
                                 isGalleryAiPaused = false,
                                 galleryAiProgress = if (total > 0) current.toFloat() / total else 0f,
-                                galleryAiStatus = if (path.isBlank()) "Processing with Brain..." else "Brain: " + File(path).name + " ($current/$total)"
+                                galleryAiStatus = if (path.isBlank()) {
+                                    "Processing with Brain…"
+                                } else {
+                                    val config = _uiState.value.aiConfig
+                                    val embedModel = config.textEmbeddingModel.ifBlank { config.embeddingModel }.ifBlank { "embedding model" }
+                                    val visionModel = config.visionModel.ifBlank { "vision model" }
+                                    "Brain: " + File(path).name + " ($current/$total) · VLM " + visionModel + " · Embed " + embedModel
+                                }
                             )
                         }
                         androidx.work.WorkInfo.State.SUCCEEDED -> {
