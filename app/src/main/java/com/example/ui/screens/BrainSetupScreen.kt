@@ -75,6 +75,20 @@ fun BrainSetupScreen(
     val filteredEmbeddingModels = availableEmbeddingModels.filter { embeddingSearch.isBlank() || it.id.contains(embeddingSearch, true) || it.displayName.contains(embeddingSearch, true) }
     val filteredMultimodalEmbeddingModels = availableMultimodalEmbeddingModels.filter { embeddingSearch.isBlank() || it.id.contains(embeddingSearch, true) || it.displayName.contains(embeddingSearch, true) }
 
+    LaunchedEffect(selectedChatProvider) {
+        if (selectedChatProvider == ProviderType.OLLAMA || apiKey.isNotBlank()) {
+            onFetchModels(chatDraft())
+        }
+    }
+
+    LaunchedEffect(selectedEmbedding) {
+        if (selectedEmbedding != EmbeddingProviderType.OFFLINE &&
+            (selectedEmbedding == EmbeddingProviderType.OLLAMA || embeddingApiKey.isNotBlank())
+        ) {
+            onFetchEmbeddingModels(embeddingDraft())
+        }
+    }
+
     fun chatDraft(): AiProviderConfigEntity = currentConfig.copy(
         providerType = selectedChatProvider.name,
         baseUrl = endpoint.trim(),
