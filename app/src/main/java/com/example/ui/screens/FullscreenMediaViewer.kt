@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import android.content.Intent
+import android.widget.MediaController
+import android.widget.VideoView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,20 +21,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -88,6 +89,8 @@ fun FullscreenMediaViewer(
     onClose: () -> Unit,
     onIndexChange: (Int) -> Unit,
     onToggleFavorite: (FileItem) -> Unit,
+    onTogglePin: (MediaItem) -> Unit = {},
+    isPinned: (MediaItem) -> Boolean = { false },
     onInspectMetadata: (MediaItem) -> Unit = {},
     onLoadBrainNode: suspend (MediaItem) -> BrainNodeEntity? = { null },
     onReindexWithBrain: (MediaItem) -> Unit = {},
@@ -107,6 +110,7 @@ fun FullscreenMediaViewer(
     var showMoreMenu by remember { mutableStateOf(false) }
     var showSummarySheet by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var currentItemPinned by remember(currentItem?.path) { mutableStateOf(currentItem?.let(isPinned) == true) }
     var brainNode by remember { mutableStateOf<BrainNodeEntity?>(null) }
     var isLoadingBrainNode by remember { mutableStateOf(false) }
     var rotationDegrees by remember { mutableFloatStateOf(0f) }
@@ -119,6 +123,7 @@ fun FullscreenMediaViewer(
     LaunchedEffect(currentItem?.path) {
         brainNode = null
         isLoadingBrainNode = false
+        currentItemPinned = currentItem?.let(isPinned) == true
     }
 
     LaunchedEffect(showSummarySheet, currentItem?.path) {
@@ -231,34 +236,42 @@ fun FullscreenMediaViewer(
                 .clickable { showControls = !showControls },
             contentAlignment = Alignment.Center
         ) {
-            AsyncImage(
-                model = currentItem.uri,
-                contentDescription = currentItem.name,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                        translationX = offsetX
-                        translationY = offsetY
-                        rotationZ = rotationDegrees
-                    }
-            )
-
             if (currentItem.isVideo) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color.Black.copy(alpha = 0.6f),
-                    modifier = Modifier.size(72.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayCircle,
-                        contentDescription = "Play Video",
-                        tint = Color.White,
-                        modifier = Modifier.fillMaxSize().padding(8.dp)
-                    )
-                }
+                AndroidView(
+                    factory = { context ->
+                        VideoView(context).apply {
+                            setVideoURI(currentItem.uri)
+                            setMediaController(MediaController(context))
+                            setOnPreparedListener { player ->
+                                player.isLooping = false
+                                start()
+                            }
+                        }
+                    },
+                    update = { videoView ->
+                        if (videoView.tag != currentItem.uri.toString()) {
+                            videoView.tag = currentItem.uri.toString()
+                            videoView.setVideoURI(currentItem.uri)
+                            videoView.start()
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                AsyncImage(
+                    model = currentItem.uri,
+                    contentDescription = currentItem.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            translationX = offsetX
+                            translationY = offsetY
+                            rotationZ = rotationDegrees
+                        }
+                )
             }
         }
 
@@ -319,6 +332,19 @@ fun FullscreenMediaViewer(
                             imageVector = if (currentItem.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
                             contentDescription = if (currentItem.isFavorite) "Remove favorite" else "Favorite",
                             tint = if (currentItem.isFavorite) Color(0xFFFBBF24) else Color.White
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            onTogglePin(currentItem)
+                            currentItemPinned = !currentItemPinned
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (currentItemPinned) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                            contentDescription = if (currentItemPinned) "Remove from Pinboard" else "Pin to Pinboard",
+                            tint = if (currentItemPinned) MaterialTheme.colorScheme.primary else Color.White
                         )
                     }
 
@@ -404,47 +430,7 @@ fun FullscreenMediaViewer(
                 }
             }
 
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.68f))
-                    .navigationBarsPadding()
-                    .padding(vertical = 10.dp)
-            ) {
-                LazyRow(
-                    state = filmstripState,
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    itemsIndexed(
-                        mediaList,
-                        key = { _, item -> item.uri.toString() + item.path }
-                    ) { idx, item ->
-                        val isSelected = idx == localIndex
-                        Box(
-                            modifier = Modifier
-                                .size(54.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(
-                                    width = if (isSelected) 2.5.dp else 0.dp,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                                .clickable { onIndexChange(windowStartIndex + idx) }
-                        ) {
-                            AsyncImage(
-                                model = item.uri,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                    }
-                }
-            }
+
         }
     }
 
