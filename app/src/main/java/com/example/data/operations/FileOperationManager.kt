@@ -325,9 +325,9 @@ class FileOperationManager(
                 }
 
                 onFilesMutated(
-                    relocatedPaths = relocatedPaths,
-                    removedPaths = removedPaths,
-                    affectedPaths = affectedDirectories.toList()
+                    relocatedPaths,
+                    removedPaths,
+                    affectedDirectories.toList()
                 )
 
             } catch (e: CancellationException) {
@@ -339,9 +339,9 @@ class FileOperationManager(
                     )
                 }
                 onFilesMutated(
-                    relocatedPaths = relocatedPaths,
-                    removedPaths = removedPaths,
-                    affectedPaths = affectedDirectories.toList()
+                    relocatedPaths,
+                    removedPaths,
+                    affectedDirectories.toList()
                 )
             } catch (e: Exception) {
                 _progress.update {
@@ -352,9 +352,9 @@ class FileOperationManager(
                     )
                 }
                 onFilesMutated(
-                    relocatedPaths = relocatedPaths,
-                    removedPaths = removedPaths,
-                    affectedPaths = affectedDirectories.toList()
+                    relocatedPaths,
+                    removedPaths,
+                    affectedDirectories.toList()
                 )
             }
         }
