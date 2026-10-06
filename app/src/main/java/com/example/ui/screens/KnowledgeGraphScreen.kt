@@ -726,6 +726,7 @@ fun DeclutteredCanvasView(
                 }
             }
         }
+        if (nodes.isNotEmpty()) {
         // Minimal horizontal category filters
         Surface(
             color = MaterialTheme.colorScheme.surface,
@@ -828,6 +829,8 @@ fun DeclutteredCanvasView(
                     }
                 }
             }
+        }
+
         }
 
         if (showNodeList) {
