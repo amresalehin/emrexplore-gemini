@@ -28,7 +28,7 @@ internal object BrainLexicalScorer {
         "a", "an", "and", "are", "as", "at", "be", "by", "can", "did", "do", "does",
         "for", "from", "how", "i", "in", "is", "it", "me", "my", "of", "on", "or",
         "that", "the", "this", "to", "was", "what", "when", "where", "which", "who",
-        "why", "with", "you", "your"
+        "why", "with", "you", "your", "document", "file", "project"
     )
     private val tokenPattern = Regex("[a-z0-9_./-]+")
 
