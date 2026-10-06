@@ -79,6 +79,62 @@ enum class ProviderType(
     }
 }
 
+enum class EmbeddingProviderType(
+    val displayName: String,
+    val description: String,
+    val defaultBaseUrl: String,
+    val defaultModel: String,
+    val keyHint: String
+) {
+    OFFLINE(
+        "On-device Brain",
+        "Private local MiniLM embeddings. Nothing leaves the device.",
+        "",
+        "all-MiniLM-L6-v2-int8",
+        "No key required"
+    ),
+    OLLAMA(
+        "Ollama",
+        "Local or LAN embeddings such as nomic-embed-text.",
+        "http://10.0.2.2:11434/v1/",
+        "nomic-embed-text:latest",
+        "Optional"
+    ),
+    OPENAI_COMPATIBLE(
+        "OpenAI-compatible",
+        "OpenAI, NVIDIA NIM, LocalAI, or another compatible embedding endpoint.",
+        "https://api.openai.com/v1",
+        "text-embedding-3-small",
+        "API key"
+    ),
+    GEMINI(
+        "Google Gemini",
+        "Google's hosted embedding API.",
+        "https://generativelanguage.googleapis.com/",
+        "gemini-embedding-2",
+        "AIzaSy..."
+    ),
+    OPENROUTER(
+        "OpenRouter",
+        "Hosted OpenAI-compatible embedding models.",
+        "https://openrouter.ai/api/v1/",
+        "openai/text-embedding-3-small",
+        "sk-or-v1-..."
+    ),
+    CUSTOM(
+        "Custom embedding endpoint",
+        "Bring your own OpenAI-compatible embedding server.",
+        "",
+        "",
+        "Optional for local endpoints"
+    );
+
+    companion object {
+        fun fromString(value: String): EmbeddingProviderType =
+            entries.firstOrNull { it.name.equals(value.trim(), ignoreCase = true) } ?: OFFLINE
+    }
+}
+
 data class ExtractedEntity(
     val name: String,
     val type: String, // "LOCATION", "PERSON", "TOPIC", "ORGANIZATION", "DATE", "EVENT"
