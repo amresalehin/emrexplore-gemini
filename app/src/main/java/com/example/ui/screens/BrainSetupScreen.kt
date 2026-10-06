@@ -385,6 +385,13 @@ private fun SetupModelCard(model: AvailableAiModel, selected: Boolean, onClick: 
             append(model.id)
             model.contextWindow?.let { append(" · ").append(it / 1000).append("K ctx") }
             if (badges.isNotEmpty()) append(" · ").append(badges.joinToString(" · "))
+            append(" · ").append(
+                when {
+                    model.isFree -> "Free"
+                    model.priceKnown -> "Paid / metered"
+                    else -> "Pricing unknown"
+                }
+            )
             append(" · ").append(model.availabilityMessage)
         },
         selected,
