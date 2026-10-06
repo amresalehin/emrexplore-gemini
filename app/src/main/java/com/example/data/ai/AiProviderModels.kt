@@ -84,6 +84,7 @@ enum class EmbeddingProviderType(
     val description: String,
     val defaultBaseUrl: String,
     val defaultModel: String,
+    val defaultMultimodalEmbeddingModel: String,
     val keyHint: String
 ) {
     OFFLINE(
@@ -91,6 +92,7 @@ enum class EmbeddingProviderType(
         "Private local MiniLM embeddings. Nothing leaves the device.",
         "",
         "all-MiniLM-L6-v2-int8",
+        "",
         "No key required"
     ),
     OLLAMA(
@@ -98,6 +100,7 @@ enum class EmbeddingProviderType(
         "Local or LAN embeddings such as nomic-embed-text.",
         "http://10.0.2.2:11434/v1/",
         "nomic-embed-text:latest",
+        "",
         "Optional"
     ),
     OPENAI_COMPATIBLE(
@@ -105,6 +108,7 @@ enum class EmbeddingProviderType(
         "OpenAI, NVIDIA NIM, LocalAI, or another compatible embedding endpoint.",
         "https://api.openai.com/v1",
         "text-embedding-3-small",
+        "nvidia/llama-nemotron-embed-vl-1b-v2",
         "API key"
     ),
     GEMINI(
@@ -119,11 +123,13 @@ enum class EmbeddingProviderType(
         "Hosted OpenAI-compatible embedding models.",
         "https://openrouter.ai/api/v1/",
         "openai/text-embedding-3-small",
+        "",
         "sk-or-v1-..."
     ),
     CUSTOM(
         "Custom embedding endpoint",
         "Bring your own OpenAI-compatible embedding server.",
+        "",
         "",
         "",
         "Optional for local endpoints"
