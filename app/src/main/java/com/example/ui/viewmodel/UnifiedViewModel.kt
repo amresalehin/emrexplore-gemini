@@ -1709,8 +1709,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     fun processGalleryAiSelection() {
         val selected = _uiState.value.gallerySelection.filter { !it.isVideo }
         if (selected.isEmpty()) return
-        if (!brainRepository.isOnDeviceBrainModelReady()) {
-            showMessage("Download the on-device Brain model before processing gallery images")
+        val brainConfig = _uiState.value.aiConfig
+        if (EmbeddingProviderType.fromString(brainConfig.embeddingProviderType) == EmbeddingProviderType.OFFLINE && !brainRepository.isOnDeviceBrainModelReady()) {
+            showMessage("Download the selected on-device text embedding model before Brain processing")
             return
         }
 
@@ -1813,10 +1814,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             showMessage("No pending gallery AI work")
             return
         }
-        if (!brainRepository.isOnDeviceBrainModelReady()) {
-            showMessage("Download the on-device Brain model before resuming gallery processing")
+        val brainConfig = _uiState.value.aiConfig
+        if (EmbeddingProviderType.fromString(brainConfig.embeddingProviderType) == EmbeddingProviderType.OFFLINE && !brainRepository.isOnDeviceBrainModelReady()) {
+            showMessage("Download the selected on-device text embedding model before Brain processing")
             return
         }
+
         galleryAiStore.setPaused(false)
         _uiState.update {
             it.copy(
@@ -1830,10 +1833,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun reAnalyzeGalleryImage(item: MediaItem) {
         if (item.isVideo || item.path.isBlank()) return
-        if (!brainRepository.isOnDeviceBrainModelReady()) {
-            showMessage("Download the on-device Brain model before re-analyzing")
+        val brainConfig = _uiState.value.aiConfig
+        if (EmbeddingProviderType.fromString(brainConfig.embeddingProviderType) == EmbeddingProviderType.OFFLINE && !brainRepository.isOnDeviceBrainModelReady()) {
+            showMessage("Download the selected on-device text embedding model before Brain processing")
             return
         }
+
         startGalleryAiProcessing(listOf(item.path), force = true)
         showMessage("Re-analysis queued for ${item.name}")
     }
@@ -2839,10 +2844,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun indexAllFilesForBrain() {
         if (_uiState.value.isBrainIndexing) return
-        if (!brainRepository.isOnDeviceBrainModelReady()) {
-            showMessage("Download the on-device Brain model before indexing.")
+        val brainConfig = _uiState.value.aiConfig
+        if (EmbeddingProviderType.fromString(brainConfig.embeddingProviderType) == EmbeddingProviderType.OFFLINE && !brainRepository.isOnDeviceBrainModelReady()) {
+            showMessage("Download the selected on-device text embedding model before Brain processing")
             return
         }
+
         _uiState.update {
             it.copy(
                 isBrainIndexing = true,
