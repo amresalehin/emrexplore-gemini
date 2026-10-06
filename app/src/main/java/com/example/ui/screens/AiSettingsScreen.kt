@@ -186,7 +186,7 @@ fun AiSettingsScreen(
             embeddingApiKey = ""
             embeddingBaseUrl = provider.defaultBaseUrl
             embeddingModel = provider.defaultModel
-            multimodalEmbeddingModel = ""
+            multimodalEmbeddingModel = provider.defaultMultimodalEmbeddingModel
             if (provider == EmbeddingProviderType.OFFLINE) {
                 embeddingApiKey = ""
                 embeddingBaseUrl = ""
@@ -299,6 +299,16 @@ fun AiSettingsScreen(
                             }
                         }
                     }
+                }
+            }
+
+            SectionTitle("IMAGE INTELLIGENCE PIPELINE")
+            OutlinedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Per image: Local OCR → ExifTool metadata → VLM profile → text + image embeddings", fontWeight = FontWeight.SemiBold)
+                    Text("VLM: " + visionModel.ifBlank { "Not selected" }, style = MaterialTheme.typography.bodySmall)
+                    Text("Image embedding: " + multimodalEmbeddingModel.ifBlank { "Not configured" }, style = MaterialTheme.typography.bodySmall)
+                    Text("Text and image vectors are stored separately and fused during retrieval.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
@@ -458,7 +468,7 @@ fun AiSettingsScreen(
 
                 if (selectedEmbeddingProvider != EmbeddingProviderType.OFFLINE) {
                     ModelPicker("Text embedding / semantic search", firstUsable(embeddings, embeddingModel), { showEmbeddingPicker = true }, "ai_embedding_model_field", embeddings)
-                    ModelPicker("Multimodal embedding / image retrieval", firstUsable(multimodalEmbeddings, multimodalEmbeddingModel), { showMultimodalEmbeddingPicker = true }, "ai_multimodal_embedding_model_field", multimodalEmbeddings)
+                    ModelPicker("Image embedding / visual retrieval", firstUsable(multimodalEmbeddings, multimodalEmbeddingModel), { showMultimodalEmbeddingPicker = true }, "ai_multimodal_embedding_model_field", multimodalEmbeddings)
                     Button(
                         onClick = { onTestEmbeddingConnection(draftConfig()) },
                         modifier = Modifier.fillMaxWidth(),
