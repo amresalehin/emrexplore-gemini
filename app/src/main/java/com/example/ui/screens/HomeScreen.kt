@@ -690,6 +690,17 @@ fun HomeScreen(
                                     },
                                     modifier = Modifier.testTag("menu_preferences")
                                 )
+                                DropdownMenuItem(
+                                    text = { Text("Refresh Home") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Refresh, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showHomeMenu = false
+                                        viewModel.refreshHomeScreen()
+                                    },
+                                    modifier = Modifier.testTag("home_refresh_btn")
+                                )
                             }
                         }
                     }
