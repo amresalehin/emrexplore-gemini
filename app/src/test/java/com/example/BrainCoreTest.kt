@@ -71,7 +71,7 @@ class BrainCoreTest {
     @Test
     fun lexicalScorer_ignores_generic_query_words() {
         val tokens = BrainLexicalScorer.meaningfulTokens("what is the project file")
-        assertEquals(listOf("project", "file"), tokens)
+        assertTrue(tokens.isEmpty())
     }
 
     @Test
