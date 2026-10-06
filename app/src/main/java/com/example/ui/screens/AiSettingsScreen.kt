@@ -208,10 +208,10 @@ fun AiSettingsScreen(
     val embeddings = usableModels(availableEmbeddingModels)
     val multimodalEmbeddings = usableModels(availableMultimodalEmbeddingModels)
     LaunchedEffect(chats, visions, embeddings, multimodalEmbeddings) {
-        if (chats.isNotEmpty()) chatModel = firstUsable(chats, chatModel)
-        if (visions.isNotEmpty()) visionModel = firstUsable(visions, visionModel)
-        if (embeddings.isNotEmpty()) embeddingModel = firstUsable(embeddings, embeddingModel)
-        if (multimodalEmbeddings.isNotEmpty()) multimodalEmbeddingModel = firstUsable(multimodalEmbeddings, multimodalEmbeddingModel)
+        if (chatModel.isBlank() && chats.isNotEmpty()) chatModel = chats.first().id
+        if (visionModel.isBlank() && visions.isNotEmpty()) visionModel = visions.first().id
+        if (embeddingModel.isBlank() && embeddings.isNotEmpty()) embeddingModel = embeddings.first().id
+        if (multimodalEmbeddingModel.isBlank() && multimodalEmbeddings.isNotEmpty()) multimodalEmbeddingModel = multimodalEmbeddings.first().id
     }
 
     Scaffold(
@@ -741,7 +741,199 @@ private fun ModelPicker(
             Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(value.ifBlank { "Tap Fetch models" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                if (models.isNotEmpty()) Text("${models.size} available", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                if (models.isNotEmpty()) {
+                    val selected = models.firstOrNull { it.id == value }
+                    Text(
+                        if (selected != null) {
+                            "Available · " + models.size + " discovered" + (if (selected.supportsVision) " · Vision" else "") + (if (selected.supportsTools) " · Tools" else "")
+                        } else {
+                            models.size.toString() + " discovered · selected ID not found"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (selected != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+            Text("Choose", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
+private fun EmbeddingProviderPickerDialog(
+    selected: EmbeddingProviderType,
+    onSelect: (EmbeddingProviderType) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose embedding provider") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                EmbeddingProviderType.entries.forEach { provider ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelect(provider) },
+                        color = if (provider == selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(Modifier.padding(11.dp)) {
+                            Text(provider.displayName, fontWeight = FontWeight.SemiBold)
+                            Text(provider.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
+
+@Composable
+private fun OfflineBrainModelPickerDialog(
+    models: List<OnDeviceBrainModelSpec>,
+    selectedId: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose offline embedding model") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                models.forEach { model ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelect(model.id) },
+                        color = if (model.id == selectedId) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(Modifier.padding(11.dp)) {
+                            Text(model.displayName, fontWeight = FontWeight.SemiBold)
+                            Text(model.sizeLabel + " · " + model.embeddingDimension + "-D · max " + model.maxTokens + " tokens", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
+
+@Composable
+private fun ProviderPickerDialog(selected: ProviderType, onSelect: (ProviderType) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose provider") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ProviderType.entries.forEach { provider ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelect(provider) },
+                        color = if (provider == selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(Modifier.padding(11.dp)) {
+                            Text(provider.displayName, fontWeight = FontWeight.SemiBold)
+                            Text(provider.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
+
+@Composable
+private fun ModelPickerDialog(title: String, models: List<AvailableAiModel>, current: String, onSelect: (String) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(title)
+                Text(
+                    models.size.toString() + " models discovered from this endpoint",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().height(500.dp)) {
+                items(models, key = { it.id }) { model ->
+                    val badges = buildList {
+                        if (model.supportsChat) add("Chat")
+                        if (model.supportsVision) add("Vision")
+                        if (model.supportsEmbedding) add("Embed")
+                        if (model.supportsMultimodalEmbedding) add("Image embed")
+                        if (model.supportsTools) add("Tools")
+                        if (model.isFree) add("Free")
+                    }
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelect(model.id) },
+                        color = if (model.id == current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(Modifier.padding(11.dp)) {
+                            Text(model.displayName.ifBlank { model.id }, fontWeight = FontWeight.SemiBold)
+                            Text(model.id, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                buildString {
+                                    append("Available")
+                                    if (badges.isNotEmpty()) append(" · ").append(badges.joinToString(" · "))
+                                    model.contextWindow?.let { append(" · ").append(it / 1000).append("K ctx") }
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
+
+@Composable
+private fun PresetChip(label: String, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
+    }
+}
+
+@Composable
+private fun ModelPicker(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    testTag: String,
+    models: List<AvailableAiModel>
+) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(testTag),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(value.ifBlank { "Tap Fetch models" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                if (models.isNotEmpty()) {
+                    val selected = models.firstOrNull { it.id == value }
+                    Text(
+                        if (selected != null) {
+                            "Available · " + models.size + " discovered" + (if (selected.supportsVision) " · Vision" else "") + (if (selected.supportsTools) " · Tools" else "")
+                        } else {
+                            models.size.toString() + " discovered · selected ID not found"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (selected != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    )
+                }
             }
             Text("Choose", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
         }
