@@ -2599,6 +2599,27 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         return attached
     }
 
+    fun processFileAi(file: File) {
+        if (file.isDirectory) return
+        if (file.extension.lowercase() in setOf("jpg","jpeg","png","webp","gif","heic","heif","mp4","mov","mkv","webm")) {
+            showMessage("Images belong to Gallery AI. Open Gallery and run Gallery AI.")
+            return
+        }
+        if (!brainRepository.isOnDeviceBrainModelReady()) {
+            showMessage("Download an offline embedding model before running File AI.")
+            return
+        }
+        val work = OneTimeWorkRequestBuilder<com.example.data.ai.FileAiWorker>()
+            .setInputData(androidx.work.workDataOf("paths" to arrayOf(file.absolutePath)))
+            .build()
+        WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
+            "file-ai-" + file.absolutePath.hashCode(),
+            ExistingWorkPolicy.REPLACE,
+            work
+        )
+        showMessage("File AI started for " + file.name)
+    }
+
     fun askAiAboutFile(file: File) {
         if (!file.exists() || !file.isFile || !file.canRead()) {
             showMessage("This file is no longer readable.")
