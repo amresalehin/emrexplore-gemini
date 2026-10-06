@@ -610,46 +610,28 @@ fun GalleryScreen(
         }
 
         if (uiState.isGalleryAiProcessing || uiState.isGalleryAiPaused) {
-            Surface(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp),
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
             ) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(
-                                if (uiState.isGalleryAiPaused) "Gallery AI paused" else "Gallery AI indexing",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                uiState.galleryAiStatus,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Text("Gallery Brain", fontWeight = FontWeight.SemiBold)
+                            Text(uiState.galleryAiStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
-                        Text(
-                            "${(uiState.galleryAiProgress * 100).toInt()}%",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text((uiState.galleryAiProgress.coerceIn(0f, 1f) * 100).toInt().toString() + "%", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     }
                     LinearProgressIndicator(
                         progress = { uiState.galleryAiProgress.coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().height(6.dp)
+                        modifier = Modifier.fillMaxWidth().height(7.dp)
                     )
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(
-                            onClick = {
-                                if (uiState.isGalleryAiPaused) viewModel.resumeGalleryAi()
-                                else viewModel.pauseGalleryAi()
-                            }
-                        ) { Text(if (uiState.isGalleryAiPaused) "Resume" else "Pause") }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("AI enrichment uses the configured VLM and embedding models.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { if (uiState.isGalleryAiPaused) viewModel.resumeGalleryAi() else viewModel.pauseGalleryAi() }) {
+                            Text(if (uiState.isGalleryAiPaused) "Resume" else "Pause")
+                        }
                         TextButton(onClick = { viewModel.cancelGalleryAi() }) { Text("Stop") }
                     }
                 }
