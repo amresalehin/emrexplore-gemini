@@ -193,7 +193,7 @@ class AiProviderClient {
                 val multimodalModel = config.multimodalEmbeddingModel.trim()
                 if (multimodalModel.isNotBlank()) {
                     val visualQuery = embedMultimodalQuery("visual embedding connection test", config)
-                    if (visualQuery.isEmpty()) {
+                    if (visualQuery == null || visualQuery.isEmpty()) {
                         return@withContext ConnectionTestResult(false, "Text embedding connected, but the configured image embedding model returned no vector.", System.currentTimeMillis() - started)
                     }
                 }
