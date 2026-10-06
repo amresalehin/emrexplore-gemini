@@ -3,6 +3,7 @@ package com.example
 import com.example.data.ai.ProviderType
 import com.example.data.brain.BrainChunker
 import com.example.data.brain.BrainIdentity
+import com.example.data.brain.BrainLexicalScorer
 import com.example.data.brain.BrainPrivacy
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -64,6 +65,35 @@ class BrainCoreTest {
         )
         assertTrue(BrainIdentity.fileNodeId("/x").startsWith("file:"))
         assertTrue(BrainIdentity.chunkId("/x", 0).startsWith("chunk:"))
+    }
+
+
+    @Test
+    fun lexicalScorer_ignores_generic_query_words() {
+        val tokens = BrainLexicalScorer.meaningfulTokens("what is the project file")
+        assertEquals(listOf("project", "file"), tokens)
+    }
+
+    @Test
+    fun lexicalScorer_requires_meaningful_overlap() {
+        val tokens = BrainLexicalScorer.meaningfulTokens("why is the sync failing")
+        assertEquals(listOf("sync", "failing"), tokens)
+        assertTrue(BrainLexicalScorer.score(
+            "why is the sync failing",
+            tokens,
+            "This file explains sync behavior and failing retries.",
+            "/storage/test/sync.kt"
+        ) >= 0.32f)
+        assertEquals(
+            0f,
+            BrainLexicalScorer.score(
+                "why is the sync failing",
+                tokens,
+                "A generic unrelated document.",
+                "/storage/test/notes.txt"
+            ),
+            0.001f
+        )
     }
 
     @Test
