@@ -37,6 +37,7 @@ class GalleryVlmWorker(appContext: Context, params: WorkerParameters) : Coroutin
             }
             val imageEmbedding = runCatching {
                 client.embedMultimodalDocument(input.imageBase64 ?: error("Image preview unavailable"), config)
+                    ?: error("Image embedding provider returned no vector")
             }.getOrElse { error ->
                 failed++
                 setProgress(workDataOf("current" to index + 1, "total" to paths.size, "path" to path, "stage" to "failed", "error" to (error.message ?: "Image embedding failed")))
