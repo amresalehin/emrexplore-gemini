@@ -434,6 +434,15 @@ fun GalleryScreen(
 
                                 Spacer(modifier = Modifier.weight(1f))
 
+                                // Gallery AI settings
+                                IconButton(onClick = onOpenBrainSettings) {
+                                    Icon(
+                                        Icons.Default.AutoAwesome,
+                                        contentDescription = "Gallery AI settings",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+
                                 // Search button
                                 val hasSearchQuery = uiState.gallerySearchQuery.isNotBlank()
                                 IconButton(onClick = { viewModel.setGallerySearchActive(true) }) {
