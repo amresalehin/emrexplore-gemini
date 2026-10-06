@@ -600,13 +600,15 @@ class BrainRepository(context: Context) {
         val defaultEmbeddingBase = embeddingProvider.defaultBaseUrl
         return config.copy(
             providerType = provider.name,
-            embeddingProviderType = embeddingProvider.name,
+            // Embeddings are always local. Existing remote-provider settings are
+            // intentionally ignored so changing the LLM/VLM never invalidates saved vectors.
+            embeddingProviderType = EmbeddingProviderType.OFFLINE.name,
             vectorDatabaseType = com.example.data.ai.VectorDatabaseType.fromString(config.vectorDatabaseType).name,
             vectorDatabaseBaseUrl = config.vectorDatabaseBaseUrl.trim(),
             vectorDatabaseApiKey = config.vectorDatabaseApiKey.trim(),
             vectorDatabaseCollection = config.vectorDatabaseCollection.trim().ifBlank { "emrexplore_brain" },
-            embeddingApiKey = config.embeddingApiKey.trim(),
-            embeddingBaseUrl = config.embeddingBaseUrl.trim().ifBlank { defaultEmbeddingBase },
+            embeddingApiKey = "",
+            embeddingBaseUrl = "",
             textEmbeddingModel = canonicalTextEmbedding,
             // Keep the legacy field in lockstep so old readers and migrations cannot
             // silently discard a newly selected text embedding model.
