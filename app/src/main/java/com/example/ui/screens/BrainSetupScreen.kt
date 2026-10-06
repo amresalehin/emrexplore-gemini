@@ -80,6 +80,21 @@ fun BrainSetupScreen(
     val filteredEmbeddingModels = availableEmbeddingModels.filter { embeddingSearch.isBlank() || it.id.contains(embeddingSearch, true) || it.displayName.contains(embeddingSearch, true) }
     val filteredMultimodalEmbeddingModels = availableMultimodalEmbeddingModels.filter { embeddingSearch.isBlank() || it.id.contains(embeddingSearch, true) || it.displayName.contains(embeddingSearch, true) }
 
+
+    LaunchedEffect(selectedChatProvider) {
+        if (selectedChatProvider == ProviderType.OLLAMA || apiKey.isNotBlank()) {
+            onFetchModels(chatDraft())
+        }
+    }
+
+    LaunchedEffect(selectedEmbedding) {
+        if (selectedEmbedding != EmbeddingProviderType.OFFLINE &&
+            (selectedEmbedding == EmbeddingProviderType.OLLAMA || embeddingApiKey.isNotBlank())
+        ) {
+            onFetchEmbeddingModels(embeddingDraft())
+        }
+    }
+
     LaunchedEffect(selectedChatProvider) {
         if (selectedChatProvider == ProviderType.OLLAMA || apiKey.isNotBlank()) {
             onFetchModels(chatDraft())
@@ -295,7 +310,7 @@ fun BrainSetupScreen(
                                 items(filteredEmbeddingModels, key = { "embed:" + it.id }) { model -> SetupModelCard(model, model.id == embeddingModel) { embeddingModel = model.id } }
                                 items(filteredMultimodalEmbeddingModels, key = { "mmembed:" + it.id }) { model -> SetupModelCard(model, model.id == imageEmbeddingModel) { imageEmbeddingModel = model.id } }
                             } else {
-                                offlineModels.forEach { spec ->
+                                items(offlineModels, key = { "offline:" + it.id }) { spec ->
                                     SetupChoiceCard(spec.displayName, spec.sizeLabel + " · " + spec.embeddingDimension + "-D", spec.id == embeddingModel, Icons.Default.PhoneAndroid) {
                                         embeddingModel = spec.id
                                         onSelectOfflineModel(spec.id)
@@ -334,8 +349,8 @@ fun BrainSetupScreen(
                             item {
                                 Spacer(Modifier.height(8.dp))
                                 Text("Your setup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                Text("Chat · ${chatCustom.ifBlank { chatChoice.model }}", style = MaterialTheme.typography.bodyMedium)
-                                Text("Embedding · ${embeddingCustom.ifBlank { embeddingChoice.model }}", style = MaterialTheme.typography.bodyMedium)
+                                Text("Chat · " + chatModel, style = MaterialTheme.typography.bodyMedium)
+                                Text("Embedding · " + embeddingModel, style = MaterialTheme.typography.bodyMedium)
                                 Text("Vector DB · ${vectorChoice.displayName}", style = MaterialTheme.typography.bodyMedium)
                             }
                         }
