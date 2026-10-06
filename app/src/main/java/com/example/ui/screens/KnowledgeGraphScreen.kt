@@ -184,6 +184,8 @@ fun BrainScreen(
     onCancelRag: () -> Unit = {},
     onQueryRag: (String) -> Unit,
     onIndexAllFiles: () -> Unit,
+    onPauseIndexing: () -> Unit = {},
+    onResumeIndexing: () -> Unit = {},
     onOpenAiSettings: () -> Unit,
     onAskAiForFile: (BrainNodeEntity) -> Unit,
     brainTopics: List<BrainTopicEntity> = emptyList(),
@@ -251,13 +253,11 @@ fun BrainScreen(
                             )
                         }
                     }
-                    if (selectedTab == BrainScreenTab.ASK_AI) {
-                        IconButton(
-                            onClick = onOpenAiSettings,
-                            modifier = Modifier.testTag("brain_settings_button")
-                        ) {
-                            Icon(Icons.Default.Settings, contentDescription = "AI model settings")
-                        }
+                    IconButton(
+                        onClick = onOpenAiSettings,
+                        modifier = Modifier.testTag("brain_settings_button")
+                    ) {
+                        Icon(Icons.Default.Settings, contentDescription = "AI model settings")
                     }
                 }
 
@@ -278,23 +278,35 @@ fun BrainScreen(
                     )
                 }
 
-                PrimaryTabRow(
-                    selectedTabIndex = selectedTab.ordinal,
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    divider = {}
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.Center
                 ) {
-                    BrainScreenTab.entries.forEach { tab ->
-                        Tab(
-                            selected = selectedTab == tab,
-                            onClick = { selectedTab = tab },
-                            icon = {
-                                Icon(tab.icon, contentDescription = null, modifier = Modifier.size(18.dp))
-                            },
-                            text = {
-                                Text(tab.label, fontSize = 12.sp, fontWeight = if (selectedTab == tab) FontWeight.Bold else FontWeight.Normal)
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                    ) {
+                        Row(Modifier.padding(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            BrainScreenTab.entries.forEach { tab ->
+                                val selected = selectedTab == tab
+                                Surface(
+                                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { selectedTab = tab },
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                ) {
+                                    Row(
+                                        Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(tab.icon, contentDescription = null, modifier = Modifier.size(17.dp))
+                                        Text(tab.label, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                    }
+                                }
                             }
-                        )
+                        }
                     }
                 }
             }
@@ -688,6 +700,34 @@ fun DeclutteredCanvasView(
     val outlineColor = MaterialTheme.colorScheme.outlineVariant
 
     Column(modifier = Modifier.fillMaxSize()) {
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 1.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Brain index", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (isIndexing) "Building the graph from your files" else if (nodes.isEmpty()) "Nothing indexed yet" else "${nodes.size} entities · ${edges.size} links",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (isIndexing) {
+                    TextButton(onClick = onIndexFiles) { Text("Restart") }
+                } else {
+                    Button(onClick = onIndexFiles, enabled = localBrainReady, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
+                        Text("Start indexing")
+                    }
+                }
+            }
+        }
         // Minimal horizontal category filters
         Surface(
             color = MaterialTheme.colorScheme.surface,
@@ -960,7 +1000,7 @@ fun DeclutteredCanvasView(
                             onClick = onIndexFiles,
                              enabled = !isIndexing && localBrainReady
                         ) {
-                             Text(if (isIndexing) "Indexing…" else if (localBrainReady) "Sync Brain" else "Open Brain Settings")
+                             Text(if (isIndexing) "Indexing…" else if (localBrainReady) "Start indexing" else "Open Brain Settings")
                         }
                     }
                 }
