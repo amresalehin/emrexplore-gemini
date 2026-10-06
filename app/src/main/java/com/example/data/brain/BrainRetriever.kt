@@ -208,6 +208,13 @@ class BrainRetriever(
             .take(limit)
     }
 
+    private fun remoteEmbeddingSignature(config: AiProviderConfigEntity, model: String): String =
+        "remote:" + listOf(
+            EmbeddingProviderType.fromString(config.embeddingProviderType).name,
+            config.embeddingBaseUrl.trim(),
+            model
+        ).joinToString(":")
+
     private suspend fun collectLocalHits(
         model: String,
         queryVector: FloatArray,
