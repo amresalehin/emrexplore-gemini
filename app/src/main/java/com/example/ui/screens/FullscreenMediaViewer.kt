@@ -230,6 +230,8 @@ fun FullscreenMediaViewer(
             contentAlignment = Alignment.Center
         ) {
             if (currentItem.isVideo) {
+                var videoError by remember(currentItem.uri) { mutableStateOf<String?>(null) }
+
                 AndroidView(
                     factory = { context ->
                         VideoView(context).apply {
@@ -238,19 +240,39 @@ fun FullscreenMediaViewer(
                             setMediaController(MediaController(context))
                             setOnPreparedListener { player ->
                                 player.isLooping = false
+                                videoError = null
                                 start()
+                            }
+                            setOnErrorListener { _, _, _ ->
+                                videoError = "Unable to play this video."
+                                true
                             }
                         }
                     },
                     update = { videoView ->
                         if (videoView.tag != currentItem.uri.toString()) {
                             videoView.tag = currentItem.uri.toString()
+                            videoError = null
                             videoView.setVideoURI(currentItem.uri)
                             videoView.start()
                         }
                     },
                     modifier = Modifier.fillMaxSize()
                 )
+
+                videoError?.let { message ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.Black.copy(alpha = 0.75f)
+                    ) {
+                        Text(
+                            text = message,
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                        )
+                    }
+                }
             } else {
                 AsyncImage(
                     model = currentItem.uri,
