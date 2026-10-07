@@ -203,6 +203,7 @@ data class UiState(
     // Browse / Categories
     val selectedCategory: CategoryType? = null,
     val categoryFiles: List<FileItem> = emptyList(),
+    val isCategoryLoading: Boolean = false,
     val categoryCounts: Map<CategoryType, Int> = emptyMap(),
     val categorySizes: Map<CategoryType, Long> = emptyMap(),
 
@@ -398,6 +399,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     private var ragQueryJob: Job? = null
     private var ragRequestId: Long = 0L
     private var permissionRefreshJob: Job? = null
+    private var categoryLoadJob: Job? = null
     private val pinboardStore = PinboardStore(getApplication())
 
     init {
@@ -2073,15 +2075,40 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     // --- Browse / Categories Actions ---
 
     fun selectCategory(category: CategoryType?) {
-        _uiState.update { it.copy(selectedCategory = category, isRecycleBinOpen = false) }
-        if (category != null) {
-            viewModelScope.launch {
-                val list = repository.getFilesByCategory(category)
-                _uiState.update { it.copy(categoryFiles = list) }
+        categoryLoadJob?.cancel()
+        if (category == null) {
+            _uiState.update {
+                it.copy(
+                    selectedCategory = null,
+                    categoryFiles = emptyList(),
+                    isCategoryLoading = false,
+                    isRecycleBinOpen = false
+                )
             }
-        } else {
             calculateCategoryCounts()
             loadStorageStats()
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                selectedCategory = category,
+                categoryFiles = emptyList(),
+                isCategoryLoading = true,
+                isRecycleBinOpen = false
+            )
+        }
+
+        categoryLoadJob = viewModelScope.launch(Dispatchers.IO) {
+            val list = repository.getFilesByCategory(category)
+            if (isActive && _uiState.value.selectedCategory == category) {
+                _uiState.update {
+                    it.copy(
+                        categoryFiles = list,
+                        isCategoryLoading = false
+                    )
+                }
+            }
         }
     }
 
