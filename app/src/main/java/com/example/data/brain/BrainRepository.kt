@@ -252,13 +252,29 @@ class BrainRepository(context: Context) {
         relocatedPaths: List<Pair<String, String>>,
         removedPaths: List<String>
     ) = withContext(Dispatchers.IO) {
+        if (relocatedPaths.isEmpty() && removedPaths.isEmpty()) return@withContext
+
+        val config = getAiConfig()
         for (oldPath in removedPaths.distinct()) {
             removeIndexedSource(oldPath)
         }
-        // File moves/renames do not start AI work. Existing enrichment remains
-        // owned by the old file identity until File AI/Gallery AI explicitly reruns.
-        for ((oldPath, _) in relocatedPaths.distinctBy { it.first to it.second }) {
-            removeIndexedSource(oldPath)
+
+        for ((oldPath, newPath) in relocatedPaths.distinctBy { it.first to it.second }) {
+            val destination = File(newPath)
+            val sourceStillExists = File(oldPath).exists()
+
+            if (!destination.isFile || !destination.canRead()) {
+                if (!sourceStillExists) removeIndexedSource(oldPath)
+                continue
+            }
+
+            // COPY keeps the source identity. MOVE/RENAME/RESTORE removes the
+            // old identity after the destination has been indexed.
+            indexer.index(destination, config, force = false)
+
+            if (!sourceStillExists) {
+                removeIndexedSource(oldPath)
+            }
         }
     }
 
