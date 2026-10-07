@@ -1,10 +1,14 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.Manifest
+import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.ExplorerPreferencesEntity
@@ -394,7 +398,6 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     private var ragQueryJob: Job? = null
     private var ragRequestId: Long = 0L
     private var permissionRefreshJob: Job? = null
-    private var permissionsInitialized = false
     private val pinboardStore = PinboardStore(getApplication())
 
     init {
@@ -451,7 +454,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
             // File indexing may continue, but Brain/AI indexing is strictly opt-in.
             launch(Dispatchers.IO) {
-                if (prefs.autoIndexOnStart && repository.totalIndexedCount() == 0) {
+                if (prefs.autoIndexOnStart && hasStorageAccess() && repository.totalIndexedCount() == 0) {
                     repository.indexStorage(force = false)
                 }
             }
@@ -943,9 +946,30 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         } else false
     }
 
+    private fun hasStorageAccess(): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Environment.isExternalStorageManager()
+            } else {
+                val app = getApplication<Application>()
+                val readGranted = ContextCompat.checkSelfPermission(
+                    app,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                ) == PackageManager.PERMISSION_GRANTED
+                val writeGranted = Build.VERSION.SDK_INT > Build.VERSION_CODES.P ||
+                    ContextCompat.checkSelfPermission(
+                        app,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                    ) == PackageManager.PERMISSION_GRANTED
+                readGranted && writeGranted
+            }
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     fun onPermissionsGranted() {
-        if (permissionsInitialized || permissionRefreshJob?.isActive == true) return
-        permissionsInitialized = true
+        if (permissionRefreshJob?.isActive == true || !hasStorageAccess()) return
         permissionRefreshJob = viewModelScope.launch {
             try {
                 val root = repository.rootPath
@@ -959,11 +983,16 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 }
                 loadStorageStats()
                 calculateCategoryCounts()
-                // Storage permission alone must never start Brain/AI indexing.
+                refreshGallery()
             } finally {
                 permissionRefreshJob = null
             }
         }
+    }
+
+    fun onPermissionsRevoked() {
+        permissionRefreshJob?.cancel()
+        permissionRefreshJob = null
     }
 
     fun loadFiles(path: String = _uiState.value.currentPath) {
