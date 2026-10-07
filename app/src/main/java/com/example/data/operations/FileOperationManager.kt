@@ -35,9 +35,7 @@ class FileOperationManager(
         removedPaths: List<String>,
         affectedPaths: List<String>
     ) -> Unit,
-    private val deleteFile: suspend (path: String, toTrash: Boolean) -> Boolean = { path, _ -> File(path).let { file ->
-        if (file.isDirectory) file.deleteRecursively() else file.delete()
-    } }
+    private val deleteFile: suspend (path: String, toTrash: Boolean) -> Boolean
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var currentJob: Job? = null
