@@ -178,13 +178,14 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
         showAllFilesDialog = false
     }
 
-    // Refresh storage only when All Files Access actually changes to granted.
+    // Reconcile storage access whenever the user returns from system settings.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         val granted = isAllFilesAccessGranted()
-        val changedToGranted = granted && !lastAllFilesAccessGranted
+        if (granted != lastAllFilesAccessGranted) {
+            if (granted) viewModel.onPermissionsGranted() else viewModel.onPermissionsRevoked()
+        }
         allFilesAccessGranted = granted
         lastAllFilesAccessGranted = granted
-        if (changedToGranted) viewModel.onPermissionsGranted()
     }
 
     // Accompanist Permissions setup for reading and writing files to external storage
@@ -207,8 +208,9 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
         ) {
             storagePermissionsState.launchMultiplePermissionRequest()
         }
-        val changedToGranted = runtimeGranted && !lastRuntimePermissionsGranted
-        if (changedToGranted) viewModel.onPermissionsGranted()
+        if (runtimeGranted != lastRuntimePermissionsGranted) {
+            if (runtimeGranted) viewModel.onPermissionsGranted() else viewModel.onPermissionsRevoked()
+        }
         lastRuntimePermissionsGranted = runtimeGranted
     }
 
