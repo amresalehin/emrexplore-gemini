@@ -430,6 +430,16 @@ fun HomeScreen(
 
                     val categoryColor = getCategoryColor(uiState.selectedCategory)
 
+                    // Loading state is shown immediately after category changes so stale rows
+                    // from the previous category can never appear under the new title.
+                    if (uiState.isCategoryLoading) {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                        )
+                    }
+
                     // Category Header
                     Row(
                         modifier = Modifier
@@ -553,7 +563,8 @@ fun HomeScreen(
                     }
 
                     // Modern Category Filter & Sort Control Strip
-                    CategoryFilterChipsBar(
+                    if (!uiState.isCategoryLoading) {
+                        CategoryFilterChipsBar(
                         category = uiState.selectedCategory,
                         sortOption = categorySortOption,
                         onSortSelected = { categorySortOption = it },
@@ -577,6 +588,7 @@ fun HomeScreen(
                         }
                     )
                     Spacer(modifier = Modifier.height(2.dp))
+                    }
                 } else {
                     // Home Top Bar: Compact search bar + three-dot preferences menu beside it
                     var showHomeMenu by remember { mutableStateOf(false) }
@@ -861,7 +873,26 @@ fun HomeScreen(
                 sortFiles(filtered, categorySortOption)
             }
 
-            if (filteredCategoryFiles.isEmpty()) {
+            if (uiState.isCategoryLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator()
+                        Text(
+                            text = "Loading " + uiState.selectedCategory.displayName + "…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else if (filteredCategoryFiles.isEmpty()) {
                 val categoryColor = getCategoryColor(uiState.selectedCategory)
                 val categoryIcon = getCategoryIcon(uiState.selectedCategory)
                 val isFiltered = categorySearchQuery.isNotBlank() ||
