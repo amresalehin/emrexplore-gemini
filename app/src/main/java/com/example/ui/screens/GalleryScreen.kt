@@ -231,15 +231,12 @@ fun GalleryScreen(
         }.collectAsLazyPagingItems()
     } else null
 
-    // Gallery owns Back while its tab is visible. Collapse local state before
-    // allowing any higher-level navigation to run, and never fall through to Home.
+    // Gallery consumes Back while visible. Local state is unwound before any
+    // higher-level navigation: search -> selection -> album -> stay on Gallery.
     BackHandler(enabled = LocalMainTabVisible.current) {
         when {
-            uiState.gallerySearchActive -> {
-                viewModel.setGallerySearchActive(false)
-                keyboardController?.hide()
-            }
-            uiState.gallerySearchQuery.isNotBlank() -> {
+            uiState.gallerySearchActive || uiState.gallerySearchQuery.isNotBlank() ||
+                uiState.gallerySearchSubmittedQuery.isNotBlank() -> {
                 viewModel.clearGallerySearch()
                 keyboardController?.hide()
             }
