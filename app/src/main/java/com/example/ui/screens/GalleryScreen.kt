@@ -231,9 +231,26 @@ fun GalleryScreen(
         }.collectAsLazyPagingItems()
     } else null
 
-    // If inside an album, handle back button
-    BackHandler(enabled = LocalMainTabVisible.current && uiState.selectedAlbum != null) {
-        viewModel.selectAlbum(null)
+    // Gallery owns Back while its tab is visible. Collapse local state before
+    // allowing any higher-level navigation to run, and never fall through to Home.
+    BackHandler(enabled = LocalMainTabVisible.current) {
+        when {
+            uiState.gallerySearchActive -> {
+                viewModel.setGallerySearchActive(false)
+                keyboardController?.hide()
+            }
+            uiState.gallerySearchQuery.isNotBlank() -> {
+                viewModel.clearGallerySearch()
+                keyboardController?.hide()
+            }
+            uiState.gallerySelection.isNotEmpty() -> {
+                viewModel.clearGallerySelection()
+            }
+            uiState.selectedAlbum != null -> {
+                viewModel.selectAlbum(null)
+            }
+            else -> Unit
+        }
     }
 
     val hasMediaPermission = androidx.core.content.ContextCompat.checkSelfPermission(
