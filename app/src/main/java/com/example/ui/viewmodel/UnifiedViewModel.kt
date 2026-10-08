@@ -2448,7 +2448,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun openRecycleBin() {
-        _uiState.update { it.copy(isRecycleBinOpen = true, selectedCategory = null, currentTab = MainTab.HOME) }
+        _uiState.update { it.copy(isRecycleBinOpen = true, selectedCategory = null) }
     }
 
     fun closeRecycleBin() {
