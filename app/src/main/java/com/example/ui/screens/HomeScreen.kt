@@ -165,19 +165,9 @@ fun HomeScreen(
     viewModel: UnifiedViewModel,
     modifier: Modifier = Modifier
 ) {
-    // Back handler: if Home search query is active, clear search first
+    // Back handler: Home search query is cleared before higher-level navigation.
     BackHandler(enabled = LocalMainTabVisible.current && uiState.homeSearchQuery.isNotEmpty()) {
         viewModel.clearHomeSearch()
-    }
-
-    // Back handler when inspecting Recycle Bin
-    BackHandler(enabled = LocalMainTabVisible.current && uiState.isRecycleBinOpen && uiState.homeSearchQuery.isEmpty()) {
-        viewModel.closeRecycleBin()
-    }
-
-    // Back handler when inspecting a category
-    BackHandler(enabled = LocalMainTabVisible.current && uiState.selectedCategory != null && uiState.homeSearchQuery.isEmpty() && !uiState.isRecycleBinOpen) {
-        viewModel.selectCategory(null)
     }
 
     // Home Page Quick Tiles & Dashboard State
@@ -221,6 +211,45 @@ fun HomeScreen(
     LaunchedEffect(uiState.isRecycleBinOpen) {
         recycleBinSearchQuery = ""
         recycleBinSearchExpanded = false
+    }
+
+    // Nested page Back priority: search -> page. Local search must not fall through to Home.
+    BackHandler(
+        enabled = LocalMainTabVisible.current &&
+            uiState.isRecycleBinOpen &&
+            (recycleBinSearchExpanded || recycleBinSearchQuery.isNotBlank())
+    ) {
+        recycleBinSearchQuery = ""
+        recycleBinSearchExpanded = false
+    }
+
+    BackHandler(
+        enabled = LocalMainTabVisible.current &&
+            uiState.isRecycleBinOpen &&
+            !recycleBinSearchExpanded &&
+            recycleBinSearchQuery.isBlank()
+    ) {
+        viewModel.closeRecycleBin()
+    }
+
+    BackHandler(
+        enabled = LocalMainTabVisible.current &&
+            uiState.selectedCategory != null &&
+            !uiState.isRecycleBinOpen &&
+            (categorySearchExpanded || categorySearchQuery.isNotBlank())
+    ) {
+        categorySearchQuery = ""
+        categorySearchExpanded = false
+    }
+
+    BackHandler(
+        enabled = LocalMainTabVisible.current &&
+            uiState.selectedCategory != null &&
+            !uiState.isRecycleBinOpen &&
+            !categorySearchExpanded &&
+            categorySearchQuery.isBlank()
+    ) {
+        viewModel.selectCategory(null)
     }
 
     // Home Search Results State
