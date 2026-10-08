@@ -142,7 +142,6 @@ import coil.compose.AsyncImage
 import com.example.data.brain.OnDeviceBrainModelStatus
 import com.example.data.model.MediaAlbum
 import com.example.data.model.MediaItem
-import com.example.data.media.MediaAlbumRepository
 import com.example.data.media.FullscreenMediaSource
 import com.example.ui.viewmodel.GallerySubTab
 import com.example.ui.viewmodel.GallerySortOption
@@ -214,11 +213,9 @@ fun GalleryScreen(
             onRequestMediaLocationPermission()
         }
     }
-    var discoveredAlbums by remember { mutableStateOf(uiState.mediaAlbums) }
-
     LaunchedEffect(uiState.gallerySubTab) {
-        if (uiState.gallerySubTab == GallerySubTab.ALBUMS && discoveredAlbums.isEmpty()) {
-            discoveredAlbums = MediaAlbumRepository(context).getAlbums()
+        if (uiState.gallerySubTab == GallerySubTab.ALBUMS) {
+            viewModel.refreshGalleryAlbums()
         }
     }
 
@@ -793,7 +790,7 @@ fun GalleryScreen(
                         EmptyGalleryMessage("No albums detected")
                     } else {
                         AlbumsGrid(
-                            albums = discoveredAlbums,
+                            albums = uiState.mediaAlbums,
                             onAlbumClick = { album -> viewModel.selectAlbum(album) }
                         )
                     }
