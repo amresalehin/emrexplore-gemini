@@ -910,7 +910,27 @@ private fun PagedMediaGrid(
     }
 
     if (items.itemCount == 0 && items.loadState.refresh is LoadState.Error) {
-        EmptyGalleryMessage("Could not load media. Pull to refresh.")
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            EmptyGalleryMessage("Could not load media.")
+            Spacer(modifier = Modifier.height(16.dp))
+            FilledTonalButton(
+                onClick = {
+                    items.refresh()
+                    viewModel.refreshGalleryAlbums()
+                },
+                modifier = Modifier.testTag("gallery_retry_button")
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Retry")
+            }
+        }
     }
 }
 
