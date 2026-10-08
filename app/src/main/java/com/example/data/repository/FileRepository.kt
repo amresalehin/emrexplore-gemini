@@ -1340,6 +1340,7 @@ class FileRepository(
                     val entities = if (catString != null) {
                         fileIndexDao.searchFilesUnderPathByCategory(
                             targetDir.absolutePath,
+                            escapeSqlLike(targetDir.absolutePath + File.separator),
                             q,
                             catString,
                             limit = 1000
@@ -1347,6 +1348,7 @@ class FileRepository(
                     } else {
                         fileIndexDao.searchFilesUnderPath(
                             targetDir.absolutePath,
+                            escapeSqlLike(targetDir.absolutePath + File.separator),
                             q,
                             limit = 1000
                         )
