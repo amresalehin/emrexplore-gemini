@@ -1320,9 +1320,60 @@ class FileRepository(
             }
 
             ExplorerSearchScope.SUBFOLDERS -> {
-                if (effectiveDir.exists() && effectiveDir.isDirectory) {
+                // Never broaden a dead requested path to the storage root.
+                if (!targetDir.exists() || !targetDir.isDirectory) {
+                    return@withContext emptyList()
+                }
+
+                val prefs = getPreferences()
+                var loadedFromRoom = false
+                if (prefs.enableFastRoomSearch) {
+                    val catString = when (filterType) {
+                        ExplorerFilterType.IMAGES -> "IMAGES"
+                        ExplorerFilterType.VIDEOS -> "VIDEOS"
+                        ExplorerFilterType.AUDIO -> "AUDIO"
+                        ExplorerFilterType.DOCUMENTS -> "DOCUMENTS"
+                        ExplorerFilterType.ARCHIVES -> "ARCHIVES"
+                        ExplorerFilterType.APKS -> "APKS"
+                        else -> null
+                    }
+                    val entities = if (catString != null) {
+                        fileIndexDao.searchFilesUnderPathByCategory(
+                            targetDir.absolutePath,
+                            q,
+                            catString,
+                            limit = 1000
+                        )
+                    } else {
+                        fileIndexDao.searchFilesUnderPath(
+                            targetDir.absolutePath,
+                            q,
+                            limit = 1000
+                        )
+                    }
+                    entities.forEach { entity ->
+                        val file = File(entity.path)
+                        if (!file.exists() || file.isDirectory != entity.isDirectory) return@forEach
+                        val item = FileItem(
+                            name = entity.name,
+                            path = entity.path,
+                            size = entity.size,
+                            lastModified = entity.lastModified,
+                            isDirectory = entity.isDirectory,
+                            mimeType = entity.mimeType,
+                            extension = entity.extension,
+                            isFavorite = favSet.contains(entity.path),
+                            childCount = entity.childCount,
+                            uri = Uri.fromFile(file)
+                        )
+                        if (filterPredicate(item)) rawItems.add(item)
+                    }
+                    loadedFromRoom = rawItems.isNotEmpty()
+                }
+
+                if (!loadedFromRoom) {
                     scanDirectoryRecursive(
-                        effectiveDir,
+                        targetDir,
                         filterPredicate,
                         favSet,
                         rawItems,
@@ -1398,9 +1449,12 @@ class FileRepository(
         outList: MutableList<FileItem>,
         maxDepth: Int,
         currentDepth: Int,
-        maxResults: Int = 1000
+        maxResults: Int = 1000,
+        visitedPaths: MutableSet<String> = mutableSetOf()
     ) {
         if (currentDepth > maxDepth || !dir.exists() || !dir.isDirectory || outList.size >= maxResults) return
+        val canonicalPath = runCatching { dir.canonicalFile.absolutePath }.getOrNull() ?: return
+        if (!visitedPaths.add(canonicalPath)) return
         val list = dir.listFiles() ?: return
         for (file in list) {
             if (outList.size >= maxResults) return
@@ -1411,14 +1465,14 @@ class FileRepository(
                 if (name == ".trash" || name == "cache") continue
                 if (name == "Android") {
                     if (baseWorkingDir.absolutePath.startsWith(file.absolutePath)) {
-                        scanDirectoryRecursive(baseWorkingDir, predicate, favSet, outList, maxDepth, currentDepth + 1)
+                        scanDirectoryRecursive(baseWorkingDir, predicate, favSet, outList, maxDepth, currentDepth + 1, maxResults, visitedPaths)
                     }
                     continue
                 }
                 if (predicate(item)) {
                     outList.add(item)
                 }
-                scanDirectoryRecursive(file, predicate, favSet, outList, maxDepth, currentDepth + 1, maxResults)
+                scanDirectoryRecursive(file, predicate, favSet, outList, maxDepth, currentDepth + 1, maxResults, visitedPaths)
             } else {
                 if (predicate(item)) {
                     outList.add(item)
