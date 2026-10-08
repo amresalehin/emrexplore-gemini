@@ -1862,11 +1862,4 @@ fun ExplorerTabSegmentedSwitcher(
         }
     }
 
-    if (uiState.isRecycleBinOpen) {
-        RecycleBinDialog(
-            uiState = uiState,
-            viewModel = viewModel,
-            onDismiss = { viewModel.closeRecycleBin() }
-        )
-    }
 }
