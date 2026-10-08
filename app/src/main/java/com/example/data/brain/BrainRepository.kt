@@ -177,8 +177,6 @@ class BrainRepository(context: Context) {
         val config = getAiConfig()
         val extensions = BrainContentReader.SUPPORTED_EXTENSIONS.map { it.lowercase(Locale.US) }
         val total = fileIndexDao.getBrainCandidateCount(extensions)
-        val candidatePaths = HashSet<String>(total)
-        val existingBrainPaths = brainDocumentDao.getAllPaths()
 
         var indexed = 0
         var skipped = 0
@@ -206,7 +204,6 @@ class BrainRepository(context: Context) {
                     continue
                 }
 
-                candidatePaths += candidate.path
                 val outcome = indexer.index(file, config, force)
                 when {
                     outcome.success && outcome.skipped -> skipped++
@@ -220,8 +217,27 @@ class BrainRepository(context: Context) {
             if (candidates.size < pageSize) break
         }
 
-        for (stalePath in existingBrainPaths.filterNot { it in candidatePaths }) {
-            removeIndexedSource(stalePath)
+        // Reconcile stale Brain documents in bounded keyset pages instead of
+        // materializing the complete Brain path set or candidate set in memory.
+        var afterBrainPath = ""
+        while (true) {
+            val brainPaths = brainDocumentDao.getPathsPage(afterBrainPath, pageSize)
+            if (brainPaths.isEmpty()) break
+
+            val indexedCandidates = fileIndexDao.getByPaths(brainPaths)
+                .asSequence()
+                .filter { it.isDirectory == false && it.extension in extensions }
+                .map { it.path }
+                .toSet()
+
+            for (brainPath in brainPaths) {
+                if (brainPath !in indexedCandidates) {
+                    removeIndexedSource(brainPath)
+                }
+            }
+
+            afterBrainPath = brainPaths.last()
+            if (brainPaths.size < pageSize) break
         }
 
         brainNodeDao.deleteOrphans()
