@@ -2649,7 +2649,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
         val attached = attachAiFile(file)
         setTab(MainTab.BRAIN)
-        queryRag("Tell me about this file: \${file.name}", attachedOverride = attached)
+        queryRag("Tell me about this file: ${file.name}", attachedOverride = attached)
     }
 
     fun detachAiFile() {
