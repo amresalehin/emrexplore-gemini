@@ -14,8 +14,14 @@ interface BrainDocumentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(item: BrainDocumentEntity)
 
-    @Query("SELECT path FROM brain_documents")
-    suspend fun getAllPaths(): List<String>
+    @Query("""
+        SELECT path
+        FROM brain_documents
+        WHERE path > :afterPath
+        ORDER BY path ASC
+        LIMIT :limit
+    """)
+    suspend fun getPathsPage(afterPath: String, limit: Int): List<String>
 
     @Query("""
         SELECT path
