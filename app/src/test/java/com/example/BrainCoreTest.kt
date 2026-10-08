@@ -97,6 +97,38 @@ class BrainCoreTest {
     }
 
     @Test
+    fun lexicalScorer_rejects_low_signal_single_term() {
+        assertFalse(BrainLexicalScorer.isSignificantQuery(listOf("ab")))
+        assertFalse(BrainLexicalScorer.isSignificantQuery(listOf("the")))
+        assertTrue(BrainLexicalScorer.isSignificantQuery(listOf("photos")))
+    }
+
+    @Test
+    fun lexicalScorer_requires_half_query_coverage() {
+        val tokens = BrainLexicalScorer.meaningfulTokens("invoice march")
+        assertEquals(
+            0.5f,
+            BrainLexicalScorer.coverage(
+                "invoice march",
+                tokens,
+                "March summary",
+                "/storage/notes.txt"
+            ),
+            0.001f
+        )
+        assertEquals(
+            0.0f,
+            BrainLexicalScorer.coverage(
+                "invoice march",
+                tokens,
+                "Unrelated notes",
+                "/storage/notes.txt"
+            ),
+            0.001f
+        )
+    }
+
+    @Test
     fun provider_identity_is_preserved() {
         assertEquals(ProviderType.OPENROUTER, ProviderType.fromString("openrouter"))
         assertEquals(ProviderType.GROQ, ProviderType.fromString("groq"))
