@@ -34,6 +34,7 @@ import com.example.data.media.MediaRepository
 import com.example.data.media.FullscreenMediaSource
 import com.example.data.media.MediaViewerWindow
 import com.example.data.media.MediaMetadataRepository
+import com.example.data.media.MediaAlbumRepository
 import com.example.data.ai.BrainTargetedOperationStore
 import com.example.data.brain.BrainRepository
 import com.example.data.ai.AvailableAiModel
@@ -307,6 +308,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
     private val metadataExtractor = MetadataExtractor(application.applicationContext)
     private val mediaRepository = MediaRepository(application)
+    private val mediaAlbumRepository = MediaAlbumRepository(application.applicationContext)
     private val mediaMetadataRepository = MediaMetadataRepository(application.applicationContext)
     private val galleryAiStore = BrainTargetedOperationStore(application.applicationContext)
     private val galleryFilterFlow = MutableStateFlow<MediaFilter?>(MediaFilter.ALL)
@@ -1679,6 +1681,15 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun refreshGallery() {
         galleryRefreshFlow.value = System.currentTimeMillis()
+        refreshGalleryAlbums()
+    }
+
+    fun refreshGalleryAlbums() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!hasStorageAccess()) return@launch
+            val albums = runCatching { mediaAlbumRepository.getAlbums() }.getOrElse { emptyList() }
+            _uiState.update { it.copy(mediaAlbums = albums) }
+        }
     }
 
     // Gallery selection is intentionally bounded to items the user explicitly selects.
