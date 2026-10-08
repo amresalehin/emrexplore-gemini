@@ -799,7 +799,6 @@ fun GalleryScreen(
             }
         }
     }
-}
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
@@ -829,7 +828,7 @@ fun GalleryScreen(
         )
     }
 
-
+}
 sealed interface GalleryGridItem {
     data class Media(val item: MediaItem) : GalleryGridItem
     data class Header(val title: String) : GalleryGridItem
