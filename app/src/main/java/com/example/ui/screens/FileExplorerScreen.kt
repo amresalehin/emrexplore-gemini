@@ -156,7 +156,11 @@ fun FileExplorerScreen(
     uiState: UiState,
     viewModel: UnifiedViewModel,
     modifier: Modifier = Modifier
-) {
+) 
+    if (LocalMainTabVisible.current && uiState.isRecycleBinOpen) {
+        BackHandler { viewModel.closeRecycleBin() }
+    }
+
     val context = LocalContext.current
 
     // Dialog states
@@ -1848,4 +1852,13 @@ fun ExplorerTabSegmentedSwitcher(
             }
         }
     }
+
+    if (uiState.isRecycleBinOpen) {
+        RecycleBinDialog(
+            uiState = uiState,
+            viewModel = viewModel,
+            onDismiss = { viewModel.closeRecycleBin() }
+        )
+    }
+
 }
