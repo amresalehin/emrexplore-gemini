@@ -62,6 +62,11 @@ android {
     includeInApk = false
     includeInBundle = true
   }
+}
+
+ksp {
+  arg("room.schemaLocation", "$projectDir/schemas")
+}
 
   // ExifTool is shipped as an executable shared object per Android ABI.
   // Android's linker installs jniLibs under applicationInfo.nativeLibraryDir,
