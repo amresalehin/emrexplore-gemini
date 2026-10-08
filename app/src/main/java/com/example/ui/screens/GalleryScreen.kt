@@ -737,7 +737,8 @@ fun GalleryScreen(
                         }
                     },
                     onItemLongClick = { item -> viewModel.toggleGallerySelection(item) },
-                    selectedPaths = uiState.gallerySelection.map { it.path }.toSet()
+                    selectedPaths = uiState.gallerySelection.map { it.path }.toSet(),
+                    onRetry = { viewModel.refreshGalleryAlbums() }
                 )
             }
         } else {
@@ -787,7 +788,7 @@ fun GalleryScreen(
                     }
                 }
                 GallerySubTab.ALBUMS -> {
-                    if (discoveredAlbums.isEmpty()) {
+                    if (uiState.mediaAlbums.isEmpty()) {
                         EmptyGalleryMessage("No albums detected")
                     } else {
                         AlbumsGrid(
@@ -852,7 +853,8 @@ private fun PagedMediaGrid(
     columns: Int,
     onItemClick: (MediaItem) -> Unit,
     onItemLongClick: (MediaItem) -> Unit = {},
-    selectedPaths: Set<String> = emptySet()
+    selectedPaths: Set<String> = emptySet(),
+    onRetry: () -> Unit = {}
 ) {
     LazyVerticalGrid(
         state = gridState,
@@ -950,7 +952,7 @@ private fun PagedMediaGrid(
             FilledTonalButton(
                 onClick = {
                     items.refresh()
-                    viewModel.refreshGalleryAlbums()
+                    onRetry()
                 },
                 modifier = Modifier.testTag("gallery_retry_button")
             ) {
