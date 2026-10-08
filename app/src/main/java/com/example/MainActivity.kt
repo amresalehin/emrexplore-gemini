@@ -68,6 +68,7 @@ import com.example.ui.screens.FullscreenMediaViewer
 import com.example.ui.screens.GalleryScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MetadataInspectorSheet
+import com.example.ui.screens.RecycleBinDialog
 import com.example.ui.screens.TextEditorScreen
 import com.example.ui.screens.ZipViewerDialog
 import com.example.ui.theme.EmrExploreTheme
@@ -446,6 +447,15 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                 viewModel.closeMetadataInspector()
                 viewModel.askAiAboutFile(file)
             }
+        )
+    }
+
+    // Recycle Bin is a modal overlay so Files/Home context is preserved.
+    if (uiState.isRecycleBinOpen) {
+        RecycleBinDialog(
+            uiState = uiState,
+            viewModel = viewModel,
+            onDismiss = { viewModel.closeRecycleBin() }
         )
     }
 
