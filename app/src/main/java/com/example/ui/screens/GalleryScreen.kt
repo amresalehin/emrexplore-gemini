@@ -169,6 +169,7 @@ fun GalleryScreen(
     var filterMenuVisible by remember { mutableStateOf(false) }
     var sortMenuVisible by remember { mutableStateOf(false) }
     var groupMenuVisible by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     val groupBy = uiState.galleryGroupBy
 
     val groupedPagingFlow: Flow<PagingData<GalleryGridItem>> = remember(groupBy, selectedAlbumId) {
@@ -706,7 +707,7 @@ fun GalleryScreen(
                         viewModel.showMessage("No app available to share these items")
                     }
                 },
-                onDelete = { viewModel.deleteGallerySelection() }
+                onDelete = { showDeleteConfirm = true }
             )
         }
 
@@ -804,6 +805,35 @@ fun GalleryScreen(
 sealed interface GalleryGridItem {
     data class Media(val item: MediaItem) : GalleryGridItem
     data class Header(val title: String) : GalleryGridItem
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Move to Trash?") },
+            text = {
+                Text(
+                    "Move " + uiState.gallerySelection.size +
+                        " selected item(s) to the Recycle Bin? You can restore them later."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        viewModel.deleteGallerySelection(toTrash = true)
+                    }
+                ) {
+                    Text("Move to Trash")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            },
+            modifier = Modifier.testTag("gallery_delete_confirm_dialog")
+        )
+    }
+
 }
 
 private fun galleryGroupKey(timestamp: Long, groupBy: String): String {
