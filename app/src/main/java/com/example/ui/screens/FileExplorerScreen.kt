@@ -161,9 +161,6 @@ fun FileExplorerScreen(
         BackHandler { viewModel.closeRecycleBin() }
     }
 
-    if (LocalMainTabVisible.current && uiState.isRecycleBinOpen) {
-        BackHandler { viewModel.closeRecycleBin() }
-    }
 
     val context = LocalContext.current
 
