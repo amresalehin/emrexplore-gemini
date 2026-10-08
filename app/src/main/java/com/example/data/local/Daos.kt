@@ -182,6 +182,9 @@ interface FileIndexDao {
     @Query("SELECT * FROM indexed_files WHERE path = :path LIMIT 1")
     suspend fun getByPath(path: String): IndexedFileEntity?
 
+    @Query("SELECT * FROM indexed_files WHERE path IN (:paths)")
+    suspend fun getByPaths(paths: List<String>): List<IndexedFileEntity>
+
     @Query("SELECT * FROM indexed_files WHERE path = :path OR path LIKE :pathPrefix || '/%' ORDER BY path ASC")
     suspend fun getFilesUnderPath(path: String, pathPrefix: String): List<IndexedFileEntity>
 
