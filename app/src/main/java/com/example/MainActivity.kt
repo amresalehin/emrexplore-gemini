@@ -536,56 +536,48 @@ private fun PersistentTabHost(
     mediaLocationLauncher: androidx.activity.result.ActivityResultLauncher<String>
 ) {
     Box(Modifier.fillMaxSize()) {
-        TabHostPage(uiState.currentTab == MainTab.HOME) { HomeScreen(uiState, viewModel) }
-        TabHostPage(uiState.currentTab == MainTab.FILES) { FileExplorerScreen(uiState, viewModel) }
-        TabHostPage(uiState.currentTab == MainTab.GALLERY) {
-            GalleryScreen(
-                uiState = uiState,
-                viewModel = viewModel,
-                onOpenBrainSettings = { viewModel.setShowAiSettings(true) },
-                onRequestMediaLocationPermission = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !mediaLocationGranted) {
-                        mediaLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
-                    }
-                }
-            )
-        }
-        TabHostPage(uiState.currentTab == MainTab.BRAIN) {
-            BrainScreen(
-                aiConfig = uiState.aiConfig,
-                ragAnswer = uiState.ragAnswer,
-                isRagQuerying = uiState.isRagQuerying,
-                askAiMessages = uiState.askAiMessages,
-                attachedAiFile = uiState.attachedAiFile,
-                onAttachFile = viewModel::attachAiFile,
-                onDetachFile = viewModel::detachAiFile,
-                onClearChat = viewModel::clearAskAiChat,
-                onQueryRag = viewModel::queryRag,
-                onCancelRag = viewModel::cancelRagQuery,
-                onOpenAiSettings = { viewModel.setShowAiSettings(true) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun TabHostPage(
-    visible: Boolean,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
-) {
-    androidx.compose.runtime.CompositionLocalProvider(LocalMainTabVisible provides visible) {
-    Box(
-        modifier = modifier
-            .alpha(if (visible) 1f else 0f)
-            .zIndex(if (visible) 1f else 0f)
-            .pointerInput(visible) {
-                if (!visible) {
-                    awaitPointerEventScope {
-                        while (true) awaitPointerEvent()
-                    }
+        when (uiState.currentTab) {
+            MainTab.HOME -> {
+                CompositionLocalProvider(LocalMainTabVisible provides true) {
+                    HomeScreen(uiState, viewModel)
                 }
             }
-    ) { content() }
+            MainTab.FILES -> {
+                CompositionLocalProvider(LocalMainTabVisible provides true) {
+                    FileExplorerScreen(uiState, viewModel)
+                }
+            }
+            MainTab.GALLERY -> {
+                CompositionLocalProvider(LocalMainTabVisible provides true) {
+                    GalleryScreen(
+                        uiState = uiState,
+                        viewModel = viewModel,
+                        onOpenBrainSettings = { viewModel.setShowAiSettings(true) },
+                        onRequestMediaLocationPermission = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !mediaLocationGranted) {
+                                mediaLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+                            }
+                        }
+                    )
+                }
+            }
+            MainTab.BRAIN -> {
+                CompositionLocalProvider(LocalMainTabVisible provides true) {
+                    BrainScreen(
+                        aiConfig = uiState.aiConfig,
+                        ragAnswer = uiState.ragAnswer,
+                        isRagQuerying = uiState.isRagQuerying,
+                        askAiMessages = uiState.askAiMessages,
+                        attachedAiFile = uiState.attachedAiFile,
+                        onAttachFile = viewModel::attachAiFile,
+                        onDetachFile = viewModel::detachAiFile,
+                        onClearChat = viewModel::clearAskAiChat,
+                        onQueryRag = viewModel::queryRag,
+                        onCancelRag = viewModel::cancelRagQuery,
+                        onOpenAiSettings = { viewModel.setShowAiSettings(true) }
+                    )
+                }
+            }
+        }
     }
 }
