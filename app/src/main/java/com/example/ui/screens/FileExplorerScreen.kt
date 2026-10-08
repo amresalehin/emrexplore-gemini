@@ -153,17 +153,14 @@ import com.example.ui.viewmodel.UnifiedViewModel
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileExplorerScreen(
-    if (uiState.isRecycleBinOpen) {
-        RecycleBinDialog(
-            uiState = uiState,
-            viewModel = viewModel,
-            onDismiss = { viewModel.closeRecycleBin() }
-        )
-    }
     uiState: UiState,
     viewModel: UnifiedViewModel,
     modifier: Modifier = Modifier
 ) {
+    if (LocalMainTabVisible.current && uiState.isRecycleBinOpen) {
+        BackHandler { viewModel.closeRecycleBin() }
+    }
+
     if (LocalMainTabVisible.current && uiState.isRecycleBinOpen) {
         BackHandler { viewModel.closeRecycleBin() }
     }
@@ -1516,6 +1513,14 @@ fun FileExplorerScreen(
             }
         )
     }
+    if (uiState.isRecycleBinOpen) {
+        RecycleBinDialog(
+            uiState = uiState,
+            viewModel = viewModel,
+            onDismiss = { viewModel.closeRecycleBin() }
+        )
+    }
+
 }
 
 @OptIn(ExperimentalFoundationApi::class)
