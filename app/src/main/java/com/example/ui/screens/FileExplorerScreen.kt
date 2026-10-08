@@ -4,6 +4,7 @@ import android.content.Intent
 import android.widget.Toast
 import java.io.File
 import androidx.activity.compose.BackHandler
+import com.example.ui.viewmodel.LocalMainTabVisible
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -46,6 +47,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
@@ -82,7 +86,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.VideogameAsset
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -153,6 +157,11 @@ fun FileExplorerScreen(
     viewModel: UnifiedViewModel,
     modifier: Modifier = Modifier
 ) {
+    if (LocalMainTabVisible.current && uiState.isRecycleBinOpen) {
+        BackHandler { viewModel.closeRecycleBin() }
+    }
+
+
     val context = LocalContext.current
 
     // Dialog states
@@ -174,6 +183,8 @@ fun FileExplorerScreen(
     var showDateFilterMenu by remember { mutableStateOf(false) }
     var showSizeFilterMenu by remember { mutableStateOf(false) }
     var activeMenuItem by remember { mutableStateOf<FileItem?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var deletePaths by remember { mutableStateOf<List<String>>(emptyList()) }
 
     val hasActiveFilters = uiState.explorerFilterType != ExplorerFilterType.ALL ||
         uiState.explorerDateFilter != ExplorerDateFilter.ALL ||
@@ -188,12 +199,12 @@ fun FileExplorerScreen(
     }
 
     // Intercept back button when search or filters are active
-    BackHandler(enabled = (uiState.explorerSearchActive || uiState.searchQuery.isNotEmpty() || hasActiveFilters) && !uiState.isSelectionMode) {
+    BackHandler(enabled = LocalMainTabVisible.current && (uiState.explorerSearchActive || uiState.searchQuery.isNotEmpty() || hasActiveFilters) && !uiState.isSelectionMode) {
         viewModel.resetExplorerSearchAndFilters()
     }
 
     // Intercept hardware back button when inside a subfolder
-    BackHandler(enabled = viewModel.canNavigateUp() && !uiState.isSelectionMode && !uiState.explorerSearchActive && uiState.searchQuery.isEmpty() && !hasActiveFilters) {
+    BackHandler(enabled = LocalMainTabVisible.current && viewModel.canNavigateUp() && !uiState.isSelectionMode && !uiState.explorerSearchActive && uiState.searchQuery.isEmpty() && !hasActiveFilters) {
         val navigated = viewModel.navigateUp()
         if (!navigated) {
             // Let default handler run
@@ -201,7 +212,7 @@ fun FileExplorerScreen(
     }
 
     // Intercept back button when selection mode is active
-    BackHandler(enabled = uiState.isSelectionMode) {
+    BackHandler(enabled = LocalMainTabVisible.current && uiState.isSelectionMode) {
         viewModel.clearSelection()
     }
 
@@ -248,7 +259,10 @@ fun FileExplorerScreen(
                         }) {
                             Icon(Icons.Default.Archive, contentDescription = "Compress")
                         }
-                        IconButton(onClick = { viewModel.deleteSelected(toTrash = true) }) {
+                        IconButton(onClick = {
+                            deletePaths = uiState.selectedPaths.toList()
+                            showDeleteConfirm = deletePaths.isNotEmpty()
+                        }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                         }
                     }
@@ -690,7 +704,7 @@ fun FileExplorerScreen(
                                                 ExplorerFilterType.VIDEOS -> Icons.Default.Movie
                                                 ExplorerFilterType.AUDIO -> Icons.Default.AudioFile
                                                 ExplorerFilterType.ARCHIVES -> Icons.Default.Archive
-                                                ExplorerFilterType.APKS -> Icons.Default.VideogameAsset
+                                                ExplorerFilterType.APKS -> Icons.Default.Android
                                             }
                                             if (filterType != ExplorerFilterType.ALL || isSelected) {
                                                 Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -1179,6 +1193,19 @@ fun FileExplorerScreen(
                                 }
                             )
                             DropdownMenuItem(
+                                text = { Text(if (viewModel.isPinned(item.path)) "Remove from Pinboard" else "Pin to Pinboard") },
+                                leadingIcon = {
+                                    Icon(
+                                        if (viewModel.isPinned(item.path)) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = {
+                                    viewModel.togglePinned(item)
+                                    activeMenuItem = null
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Rename") },
                                 leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null) },
                                 onClick = {
@@ -1214,6 +1241,19 @@ fun FileExplorerScreen(
                                     activeMenuItem = null
                                 }
                             )
+                            if (!item.isDirectory &&
+                                !item.mimeType.startsWith("image/") &&
+                                !item.mimeType.startsWith("video/")
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Run File AI") },
+                                    leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                                    onClick = {
+                                        viewModel.processFileAi(File(item.path))
+                                        activeMenuItem = null
+                                    }
+                                )
+                            }
                             if (!item.isDirectory) {
                                 DropdownMenuItem(
                                     text = { Text("Share") },
@@ -1246,7 +1286,8 @@ fun FileExplorerScreen(
                                 text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
                                 leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                                 onClick = {
-                                    viewModel.deleteFile(item.path, toTrash = true)
+                                    deletePaths = listOf(item.path)
+                                    showDeleteConfirm = true
                                     activeMenuItem = null
                                 }
                             )
@@ -1408,6 +1449,34 @@ fun FileExplorerScreen(
         )
     }
 
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Move to Trash?") },
+            text = {
+                Text(
+                    if (deletePaths.size == 1) {
+                        "Move this item to Trash? You can restore it later."
+                    } else {
+                        "Move " + deletePaths.size + " selected items to Trash? You can restore them later."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        viewModel.deletePathsAfterConfirmation(deletePaths, toTrash = true)
+                        deletePaths = emptyList()
+                    }
+                ) { Text("Move to Trash") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     // Dialog: Create Zip
     if (showZipDialog) {
         AlertDialog(
@@ -1441,6 +1510,14 @@ fun FileExplorerScreen(
             }
         )
     }
+    if (uiState.isRecycleBinOpen) {
+        RecycleBinDialog(
+            uiState = uiState,
+            viewModel = viewModel,
+            onDismiss = { viewModel.closeRecycleBin() }
+        )
+    }
+
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1784,4 +1861,5 @@ fun ExplorerTabSegmentedSwitcher(
             }
         }
     }
+
 }

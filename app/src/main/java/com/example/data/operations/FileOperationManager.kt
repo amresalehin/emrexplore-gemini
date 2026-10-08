@@ -30,7 +30,12 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 class FileOperationManager(
-    private val onFilesMutated: suspend (affectedPaths: List<String>) -> Unit
+    private val onFilesMutated: suspend (
+        relocatedPaths: List<Pair<String, String>>,
+        removedPaths: List<String>,
+        affectedPaths: List<String>
+    ) -> Unit,
+    private val deleteFile: suspend (path: String, toTrash: Boolean) -> Boolean
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var currentJob: Job? = null
@@ -113,8 +118,36 @@ class FileOperationManager(
                 }
             }
 
-            // 2. Pre-flight check: Disk space validation for COPY / MOVE
+            // 2. Pre-flight destination validation for COPY / MOVE.
+            // Do this before creating the destination directory so a descendant
+            // target cannot become part of the source tree during the operation.
             if (type == OperationType.COPY || type == OperationType.MOVE) {
+                if (targetDir.isBlank()) {
+                    _progress.update {
+                        it.copy(
+                            id = opId,
+                            type = type,
+                            status = OperationStatus.ERROR,
+                            errorMessage = "A destination folder is required."
+                        )
+                    }
+                    return@launch
+                }
+                for (src in validSources) {
+                    val destinationError = validateDestination(src, File(targetDir))
+                    if (destinationError != null) {
+                        _progress.update {
+                            it.copy(
+                                id = opId,
+                                type = type,
+                                status = OperationStatus.ERROR,
+                                errorMessage = destinationError
+                            )
+                        }
+                        return@launch
+                    }
+                }
+
                 val destDir = File(targetDir)
                 if (!destDir.exists()) destDir.mkdirs()
 
@@ -152,6 +185,8 @@ class FileOperationManager(
 
             val affectedDirectories = mutableSetOf<String>()
             if (targetDir.isNotBlank()) affectedDirectories.add(targetDir)
+            val relocatedPaths = mutableListOf<Pair<String, String>>()
+            val removedPaths = mutableListOf<String>()
 
             var processedFilesCount = 0
             var processedBytesSum = 0L
@@ -207,6 +242,7 @@ class FileOperationManager(
                                     }
                                 }
                             )
+                            relocatedPaths.add(src.absolutePath to dest.absolutePath)
                         }
 
                         OperationType.MOVE -> {
@@ -256,16 +292,17 @@ class FileOperationManager(
                                     throw IOException("Copied successfully but could not delete source")
                                 }
                             }
+                            relocatedPaths.add(src.absolutePath to dest.absolutePath)
                         }
 
                         OperationType.DELETE -> {
                             _progress.update { current -> current.copy(currentFileName = src.name) }
-                            if (src.isDirectory) {
-                                src.deleteRecursively()
-                            } else {
-                                src.delete()
+                            checkPausedOrCancelled()
+                            if (!deleteFile(src.absolutePath, toTrash)) {
+                                throw IOException("Could not delete " + src.name)
                             }
                             processedFilesCount++
+                            removedPaths.add(src.absolutePath)
                             _progress.update { current ->
                                 current.copy(filesProcessed = processedFilesCount)
                             }
@@ -285,7 +322,11 @@ class FileOperationManager(
                     )
                 }
 
-                onFilesMutated(affectedDirectories.toList())
+                onFilesMutated(
+                    relocatedPaths,
+                    removedPaths,
+                    affectedDirectories.toList()
+                )
 
             } catch (e: CancellationException) {
                 _progress.update {
@@ -295,7 +336,11 @@ class FileOperationManager(
                         estimatedRemainingTimeMs = 0L
                     )
                 }
-                onFilesMutated(affectedDirectories.toList())
+                onFilesMutated(
+                    relocatedPaths,
+                    removedPaths,
+                    affectedDirectories.toList()
+                )
             } catch (e: Exception) {
                 _progress.update {
                     it.copy(
@@ -304,11 +349,34 @@ class FileOperationManager(
                         speedBytesPerSec = 0L
                     )
                 }
-                onFilesMutated(affectedDirectories.toList())
+                onFilesMutated(
+                    relocatedPaths,
+                    removedPaths,
+                    affectedDirectories.toList()
+                )
             }
         }
     }
 
+    private suspend fun deleteRecursivelyWithProgress(
+        dir: File,
+        onFileDeleted: suspend (File) -> Unit
+    ) {
+        checkPausedOrCancelled()
+        val children = dir.listFiles() ?: throw IOException("Could not list " + dir.name)
+        for (child in children) {
+            checkPausedOrCancelled()
+            if (child.isDirectory) {
+                deleteRecursivelyWithProgress(child, onFileDeleted)
+            } else {
+                if (!child.delete()) throw IOException("Could not delete " + child.name)
+                onFileDeleted(child)
+            }
+        }
+        checkPausedOrCancelled()
+        if (!dir.delete()) throw IOException("Could not delete " + dir.name)
+        onFileDeleted(dir)
+    }
     private suspend fun copyRecursivelyWithProgress(
         src: File,
         dest: File,
@@ -365,6 +433,9 @@ class FileOperationManager(
 
     private suspend fun streamCopyFile(src: File, dest: File, onByteChunk: (Long) -> Unit) {
         withContext(Dispatchers.IO) {
+            if (src.canonicalFile == dest.canonicalFile) {
+                throw IOException("Source and destination are the same file.")
+            }
             val parent = dest.parentFile
             if (parent != null && !parent.exists()) parent.mkdirs()
 
@@ -466,6 +537,24 @@ class FileOperationManager(
 
     fun dismiss() {
         _progress.update { FileOperationProgress(status = OperationStatus.IDLE) }
+    }
+
+    private fun validateDestination(source: File, targetDir: File): String? {
+        return try {
+            val canonicalSource = source.canonicalFile
+            val canonicalTargetDir = targetDir.canonicalFile
+            val canonicalDestination = File(canonicalTargetDir, source.name).canonicalFile
+
+            when {
+                canonicalSource == canonicalDestination ->
+                    "Source and destination are the same path."
+                source.isDirectory && canonicalDestination.absolutePath.startsWith(canonicalSource.absolutePath + File.separator) ->
+                    "Cannot copy or move a folder into itself or one of its descendants."
+                else -> null
+            }
+        } catch (e: IOException) {
+            "Could not validate the destination path: ${e.localizedMessage ?: "I/O error"}"
+        }
     }
 
     private fun generateUniqueFile(file: File): File {

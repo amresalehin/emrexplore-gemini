@@ -15,6 +15,9 @@ android {
     versionCode = 1
     versionName = "1.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86") }
+    buildConfigField("int", "PERL5_ASSET_VERSION", "1")
   }
 
   signingConfigs {
@@ -59,6 +62,16 @@ android {
     includeInApk = false
     includeInBundle = true
   }
+
+  // ExifTool is shipped as an executable shared object per Android ABI.
+  // Android's linker installs jniLibs under applicationInfo.nativeLibraryDir,
+  // giving us an executable file without chmod/W^X workarounds.
+  sourceSets["main"].jniLibs.srcDir("src/main/jniLibs")
+  packaging { jniLibs { useLegacyPackaging = true } }
+}
+
+ksp {
+  arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -89,6 +102,8 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  implementation(libs.onnxruntime.android)
+  implementation(libs.mlkit.text.recognition)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)

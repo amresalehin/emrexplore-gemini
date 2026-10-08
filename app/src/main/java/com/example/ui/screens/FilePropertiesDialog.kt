@@ -27,7 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.FileItem
-import com.example.data.ai.ConnectedDotsItem
+import com.example.data.brain.ConnectedDotsItem
 import com.example.ui.components.ConnectedDotsCard
 import com.example.ui.components.formatDate
 import com.example.ui.components.formatFileSize

@@ -24,38 +24,15 @@ class MediaMetadataRepository(context: Context) {
         withContext(Dispatchers.IO) {
             val key = item.uri.toString()
             val cached = metadataDao.get(key)
-            val currentMtime = item.path.takeIf { it.isNotBlank() }?.let { File(it).lastModified() } ?: 0L
             if (cached != null &&
                 cached.size == item.size &&
-                cached.dateAdded == item.dateAdded &&
-                (cached.aiProcessedAt == 0L || cached.aiFileLastModified == 0L || cached.aiFileLastModified == currentMtime)
+                cached.dateAdded == item.dateAdded
             ) {
                 return@withContext cached
             }
             val extracted = readExif(item, requireOriginalLocation)
-            val merged = if (
-                cached != null &&
-                cached.aiProcessedAt > 0L &&
-                cached.aiFileLastModified > 0L &&
-                cached.aiFileLastModified == currentMtime
-            ) {
-                extracted.copy(
-                    aiCaption = cached.aiCaption,
-                    aiTagsJson = cached.aiTagsJson,
-                    aiEntitiesJson = cached.aiEntitiesJson,
-                    aiRelationsJson = cached.aiRelationsJson,
-                    aiModel = cached.aiModel,
-                    aiFileLastModified = cached.aiFileLastModified,
-                    aiProcessedAt = cached.aiProcessedAt,
-                    searchableText = listOfNotNull(extracted.searchableText, cached.aiCaption, cached.aiTagsJson)
-                        .filter { it.isNotBlank() }
-                        .joinToString(" ")
-                )
-            } else {
-                extracted
-            }
-            metadataDao.insertOrUpdate(merged)
-            merged
+            metadataDao.insertOrUpdate(extracted)
+            extracted
         }
 
     private fun readExif(item: MediaItem, requireOriginalLocation: Boolean): MediaMetadataEntity {
@@ -174,63 +151,6 @@ class MediaMetadataRepository(context: Context) {
     suspend fun getByPath(path: String): MediaMetadataEntity? = withContext(Dispatchers.IO) {
         if (path.isBlank()) return@withContext null
         metadataDao.getByPath(path)
-    }
-
-    suspend fun saveAiEnrichment(
-        item: MediaItem,
-        caption: String,
-        tagsJson: String,
-        entitiesJson: String,
-        relationsJson: String,
-        model: String
-    ): MediaMetadataEntity = withContext(Dispatchers.IO) {
-        val existing = metadataDao.get(item.uri.toString()) ?: readExif(item, requireOriginalLocation = false)
-        val tags = try {
-            org.json.JSONArray(tagsJson).let { array ->
-                (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) }
-            }
-        } catch (_: Exception) {
-            emptyList()
-        }
-        val searchable = listOf(
-            existing.searchableText,
-            caption,
-            tags.joinToString(" ")
-        ).filter { it.isNotBlank() }
-            .joinToString(" ")
-            .lowercase(Locale.US)
-
-        val updated = existing.copy(
-            path = item.path,
-            size = existing.size.takeIf { it > 0L } ?: item.size,
-            dateAdded = existing.dateAdded.takeIf { it > 0L } ?: item.dateAdded,
-            searchableText = searchable,
-            aiCaption = caption.trim().takeIf { it.isNotBlank() },
-            aiTagsJson = tagsJson,
-            aiEntitiesJson = entitiesJson,
-            aiRelationsJson = relationsJson,
-            aiModel = model,
-            aiFileLastModified = item.path.takeIf { it.isNotBlank() }?.let { java.io.File(it).lastModified() } ?: 0L,
-            aiProcessedAt = System.currentTimeMillis(),
-            indexedAt = System.currentTimeMillis()
-        )
-        metadataDao.insertOrUpdate(updated)
-        updated
-    }
-
-    suspend fun getFreshAiEnrichment(
-        path: String,
-        size: Long,
-        lastModified: Long,
-        model: String
-    ): MediaMetadataEntity? = withContext(Dispatchers.IO) {
-        val cached = metadataDao.getByPath(path) ?: return@withContext null
-        if (cached.aiProcessedAt > 0L &&
-            cached.aiModel == model &&
-            cached.size == size &&
-            cached.aiFileLastModified == lastModified &&
-            !cached.aiCaption.isNullOrBlank()
-        ) cached else null
     }
 
     @Suppress("DEPRECATION")

@@ -3,4 +3,9 @@
     <string name="nav_home">Home</string>
     <string name="nav_files">Files</string>
     <string name="nav_gallery">Gallery</string>
+    <string name="nav_brain">Brain</string>
+    <string name="nav_home_cd">Home</string>
+    <string name="nav_files_cd">Files</string>
+    <string name="nav_gallery_cd">Gallery</string>
+    <string name="nav_brain_cd">Brain</string>
 </resources>

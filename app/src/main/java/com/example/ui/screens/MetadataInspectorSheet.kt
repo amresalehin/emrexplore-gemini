@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,7 +36,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Clear
@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tune
@@ -57,6 +58,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -123,15 +126,15 @@ fun MetadataInspectorSheet(
     onDismiss: () -> Unit,
     onAskAiAboutFile: ((File) -> Unit)? = null
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val context = LocalContext.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        dragHandle = null,
         containerColor = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxSize()
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        modifier = Modifier.fillMaxWidth().fillMaxHeight(0.94f)
     ) {
         MetadataInspectorContent(
             report = report,
@@ -272,18 +275,16 @@ fun MetadataInspectorContent(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                var showMoreMenu by remember { mutableStateOf(false) }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close")
-                    }
-
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .padding(horizontal = 6.dp)
+                            .padding(start = 4.dp, end = 8.dp)
                     ) {
                         Text(
                             text = "Metadata Inspector",
@@ -299,30 +300,67 @@ fun MetadataInspectorContent(
                         )
                     }
 
-                    // Expand / Collapse all
-                    IconButton(onClick = { toggleExpandAll(true) }) {
-                        Icon(Icons.Default.UnfoldMore, contentDescription = "Expand All")
-                    }
-
-                    // Copy full report
-                    IconButton(onClick = { copyFullReport() }) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy Report")
-                    }
-
-                    // Share report
-                    IconButton(onClick = { shareFullReport() }) {
-                        Icon(Icons.Default.Share, contentDescription = "Share Report")
-                    }
-
-                    // Ask AI about file
-                    if (onAskAiAboutFile != null && report.filePath.isNotBlank()) {
-                        IconButton(onClick = { onAskAiAboutFile(File(report.filePath)) }) {
-                            Icon(
-                                Icons.Default.AutoAwesome,
-                                contentDescription = "Ask AI about this file",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                    Box {
+                        IconButton(onClick = { showMoreMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More actions")
                         }
+                        DropdownMenu(
+                            expanded = showMoreMenu,
+                            onDismissRequest = { showMoreMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Expand all") },
+                                leadingIcon = { Icon(Icons.Default.UnfoldMore, contentDescription = null) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    toggleExpandAll(true)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Collapse all") },
+                                leadingIcon = { Icon(Icons.Default.UnfoldLess, contentDescription = null) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    toggleExpandAll(false)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Copy report") },
+                                leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    copyFullReport()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Share report") },
+                                leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    shareFullReport()
+                                }
+                            )
+                            if (onAskAiAboutFile != null && report.filePath.isNotBlank()) {
+                                DropdownMenuItem(
+                                    text = { Text("Ask AI about file") },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        onAskAiAboutFile(File(report.filePath))
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Clear, contentDescription = "Close")
                     }
                 }
 

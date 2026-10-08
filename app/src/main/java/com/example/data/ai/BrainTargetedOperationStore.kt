@@ -4,15 +4,15 @@ import android.content.Context
 import org.json.JSONArray
 
 /**
- * Durable checkpoint for gallery AI processing.
+ * Durable checkpoint for gallery Brain processing.
  *
- * Completed paths are removed immediately after both AI enrichment and Brain indexing
- * succeed. Pausing/cancelling the WorkManager job therefore leaves the remaining
- * paths available for a later resume, even after process death.
+ * The pending path set is durable outside the ViewModel. A successful Brain run
+ * clears it; pausing/cancelling the WorkManager job leaves it available for resume,
+ * even after process death.
  */
-class GalleryAiOperationStore(context: Context) {
+class BrainTargetedOperationStore(context: Context) {
     companion object {
-        private const val PREFS_NAME = "gallery_ai_operation"
+        private const val PREFS_NAME = "gallery_brain_operation"
         private const val KEY_PATHS = "pending_paths"
         private const val KEY_FORCE_PATHS = "force_paths"
         private const val KEY_TOTAL = "total_count"
@@ -37,7 +37,7 @@ class GalleryAiOperationStore(context: Context) {
         val forcePaths = prefs.getStringSet(KEY_FORCE_PATHS, emptySet()).orEmpty().toMutableSet()
         if (force) forcePaths.addAll(clean)
 
-        val newOperation = !hadPendingWork && totalCount() == 0
+        val newOperation = !hadPendingWork && (totalCount() == 0 || completedCount() >= totalCount())
         val nextTotal = if (newOperation) newPaths.size else totalCount() + newPaths.size
         val nextCompleted = if (newOperation) 0 else completedCount()
 

@@ -1,7 +1,5 @@
 package com.example.data.ai
 
-import com.example.data.local.KgNodeEntity
-import com.example.data.local.RagChunkEntity
 
 enum class ProviderType(
     val displayName: String,
@@ -27,7 +25,7 @@ enum class ProviderType(
         displayName = "OpenAI-compatible",
         description = "NVIDIA NIM, OpenAI, Groq, or any compatible endpoint",
         defaultBaseUrl = "https://integrate.api.nvidia.com/v1",
-        defaultModel = "nvidia/nemotron-3-super-120b-a12b",
+        defaultModel = "nvidia/nemotron-3-super-120b",
         defaultVisionModel = "meta/llama-3.2-11b-vision-instruct",
         defaultTextEmbeddingModel = "nvidia/nv-embedqa-e5-v5",
         defaultMultimodalEmbeddingModel = "nvidia/llama-nemotron-embed-vl-1b-v2",
@@ -65,22 +63,152 @@ enum class ProviderType(
     ),
     GROQ(
         displayName = "Groq Cloud",
-        description = "Ultra-fast LPUs for instant document extraction & indexing",
-        defaultBaseUrl = "https://api.groq.com/openai/v1/",
-        defaultModel = "qwen/qwen3.8-27b",
-        defaultVisionModel = "qwen/qwen3.8-27b",
+        description = "Ultra-fast inference through an OpenAI-compatible endpoint",
+        defaultBaseUrl = "https://api.groq.com/openai/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
         defaultTextEmbeddingModel = "",
         defaultMultimodalEmbeddingModel = "",
         keyHint = "gsk_..."
+    ),
+    TOGETHER(
+        displayName = "Together AI",
+        description = "Large catalog of open-weight LLMs and VLMs",
+        defaultBaseUrl = "https://api.together.ai/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "API key"
+    ),
+    MISTRAL(
+        displayName = "Mistral AI",
+        description = "Mistral's OpenAI-compatible API with live model metadata",
+        defaultBaseUrl = "https://api.mistral.ai/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "API key"
+    ),
+    DEEPSEEK(
+        displayName = "DeepSeek",
+        description = "OpenAI-compatible DeepSeek API",
+        defaultBaseUrl = "https://api.deepseek.com/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "API key"
+    ),
+    XAI(
+        displayName = "xAI",
+        description = "Grok models through an OpenAI-compatible API",
+        defaultBaseUrl = "https://api.x.ai/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "xai-..."
+    ),
+    FIREWORKS(
+        displayName = "Fireworks AI",
+        description = "Open-weight models through an OpenAI-compatible endpoint",
+        defaultBaseUrl = "https://api.fireworks.ai/inference/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "API key"
+    ),
+    CEREBRAS(
+        displayName = "Cerebras",
+        description = "Fast inference for supported open models",
+        defaultBaseUrl = "https://api.cerebras.ai/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "API key"
+    ),
+    SAMBANOVA(
+        displayName = "SambaNova",
+        description = "Enterprise open-model inference through an OpenAI-compatible API",
+        defaultBaseUrl = "https://api.sambanova.ai/v1",
+        defaultModel = "",
+        defaultVisionModel = "",
+        defaultTextEmbeddingModel = "",
+        defaultMultimodalEmbeddingModel = "",
+        keyHint = "API key"
     );
 
     companion object {
         fun fromString(value: String): ProviderType {
-            return when (value.trim().uppercase()) {
-                OPENROUTER.name, GROQ.name, CUSTOM.name -> OPENAI_COMPATIBLE
-                else -> entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: GEMINI
-            }
+            return entries.firstOrNull { it.name.equals(value.trim(), ignoreCase = true) } ?: GEMINI
         }
+    }
+}
+
+enum class EmbeddingProviderType(
+    val displayName: String,
+    val description: String,
+    val defaultBaseUrl: String,
+    val defaultModel: String,
+    val defaultMultimodalEmbeddingModel: String,
+    val keyHint: String
+) {
+    OFFLINE(
+        "On-device Brain",
+        "Private local MiniLM embeddings. Nothing leaves the device.",
+        "",
+        "all-MiniLM-L6-v2-int8",
+        "",
+        "No key required"
+    ),
+    OLLAMA(
+        "Ollama",
+        "Local or LAN embeddings such as nomic-embed-text.",
+        "http://10.0.2.2:11434/v1/",
+        "nomic-embed-text:latest",
+        "",
+        "Optional"
+    ),
+    OPENAI_COMPATIBLE(
+        "OpenAI-compatible",
+        "OpenAI, NVIDIA NIM, LocalAI, or another compatible embedding endpoint.",
+        "https://api.openai.com/v1",
+        "text-embedding-3-small",
+        "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "API key"
+    ),
+    GEMINI(
+        "Google Gemini",
+        "Google's hosted embedding API.",
+        "https://generativelanguage.googleapis.com/",
+        "gemini-embedding-2",
+        "",
+        "AIzaSy..."
+    ),
+    OPENROUTER(
+        "OpenRouter",
+        "Hosted OpenAI-compatible embedding models.",
+        "https://openrouter.ai/api/v1/",
+        "openai/text-embedding-3-small",
+        "",
+        "sk-or-v1-..."
+    ),
+    CUSTOM(
+        "Custom embedding endpoint",
+        "Bring your own OpenAI-compatible embedding server.",
+        "",
+        "",
+        "",
+        "Optional for local endpoints"
+    );
+
+    companion object {
+        fun fromString(value: String): EmbeddingProviderType =
+            entries.firstOrNull { it.name.equals(value.trim(), ignoreCase = true) } ?: OFFLINE
     }
 }
 
@@ -110,55 +238,59 @@ data class ConnectionTestResult(
     val responseTimeMs: Long = 0L
 )
 
-data class RagAnswer(
-    val answer: String,
-    val sourceChunks: List<RagChunkEntity> = emptyList(),
-    val connectedNodes: List<KgNodeEntity> = emptyList(),
-    val isSuccessful: Boolean = true,
-    val latencyMs: Long = 0L
-)
-
-data class ConnectedDotsItem(
-    val fileNode: KgNodeEntity,
-    val relationship: String,
-    val targetNode: KgNodeEntity,
-    val snippet: String = ""
-)
-
-
 fun isKeylessAiConfig(config: com.example.data.local.AiProviderConfigEntity): Boolean {
     val provider = ProviderType.fromString(config.providerType)
     if (provider == ProviderType.OLLAMA) return true
-    if (provider != ProviderType.OPENAI_COMPATIBLE) return false
+    if (provider != ProviderType.OPENAI_COMPATIBLE && provider != ProviderType.CUSTOM) return false
     val url = config.baseUrl.trim().lowercase()
     return url.contains("localhost") || url.contains("127.0.0.1") || url.contains("10.0.2.2")
 }
 
+enum class ModelAvailability {
+    AVAILABLE,
+    UNAVAILABLE,
+    UNKNOWN
+}
+
 data class AvailableAiModel(
     val id: String,
+    val displayName: String = id,
+    val owner: String = "",
     val supportsChat: Boolean = true,
     val supportsVision: Boolean = false,
     val supportsEmbedding: Boolean = false,
     val supportsMultimodalEmbedding: Boolean = false,
+    val supportsTools: Boolean = false,
+    val supportsStreaming: Boolean = true,
+    val contextWindow: Long? = null,
+    val inputPricePerMillion: Double? = null,
+    val outputPricePerMillion: Double? = null,
     val isFree: Boolean = false,
-    val priceKnown: Boolean = false
+    val priceKnown: Boolean = false,
+    val availability: ModelAvailability = ModelAvailability.AVAILABLE,
+    val availabilityMessage: String = "Available from this endpoint"
 )
 
-data class AttachedAiFile(
-    val file: java.io.File,
-    val name: String = file.name,
-    val path: String = file.absolutePath,
-    val mimeType: String = "",
-    val size: Long = file.length(),
-    val isImage: Boolean = false
+enum class VectorDatabaseType(
+    val displayName: String,
+    val description: String,
+    val isLocal: Boolean,
+    val requiresEndpoint: Boolean
+) {
+    ROOM("Room — Local", "Built into the app. Vectors stay on this device.", true, false),
+    QDRANT("Qdrant", "Open-source vector database. Self-hosted or cloud.", false, true);
+
+    companion object {
+        fun fromString(value: String): VectorDatabaseType =
+            entries.firstOrNull { it.name.equals(value.trim(), ignoreCase = true) } ?: ROOM
+    }
+}
+
+data class BrainModelChoice(
+    val id: String,
+    val displayName: String,
+    val provider: ProviderType,
+    val isLocal: Boolean,
+    val description: String
 )
 
-data class AskAiChatMessage(
-    val id: String = java.util.UUID.randomUUID().toString(),
-    val isUser: Boolean,
-    val text: String,
-    val timestamp: Long = System.currentTimeMillis(),
-    val attachedFile: AttachedAiFile? = null,
-    val referencedNodes: List<KgNodeEntity> = emptyList(),
-    val isError: Boolean = false
-)

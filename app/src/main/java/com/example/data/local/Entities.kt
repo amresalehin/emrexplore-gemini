@@ -117,13 +117,6 @@ data class MediaMetadataEntity(
     val hasGps: Boolean = false,
     val capturedAt: Long? = null,
     val searchableText: String = "",
-    val aiCaption: String? = null,
-    val aiTagsJson: String = "[]",
-    val aiEntitiesJson: String = "[]",
-    val aiRelationsJson: String = "[]",
-    val aiModel: String? = null,
-    val aiFileLastModified: Long = 0L,
-    val aiProcessedAt: Long = 0L,
     val indexedAt: Long = System.currentTimeMillis()
 )
 
@@ -142,180 +135,22 @@ data class AiProviderConfigEntity(
     val providerType: String = "OPENAI_COMPATIBLE",
     val apiKey: String = "",
     val baseUrl: String = "https://integrate.api.nvidia.com/v1",
+    val embeddingProviderType: String = "OFFLINE",
+    val embeddingApiKey: String = "",
+    val embeddingBaseUrl: String = "",
     val chatModel: String = "nvidia/nemotron-3-super-120b-a12b",
     val visionModel: String = "meta/llama-3.2-11b-vision-instruct",
     val embeddingModel: String = "",
     val textEmbeddingModel: String = "nvidia/nv-embedqa-e5-v5",
     val multimodalEmbeddingModel: String = "nvidia/llama-nemotron-embed-vl-1b-v2",
+    val vectorDatabaseType: String = "ROOM",
+    val vectorDatabaseBaseUrl: String = "",
+    val vectorDatabaseApiKey: String = "",
+    val vectorDatabaseCollection: String = "emrexplore_brain",
+    val brainSetupCompleted: Boolean = false,
     val customHeadersJson: String = "{}",
     val temperature: Float = 0.2f,
     val isEnabled: Boolean = false,
     val autoSync: Boolean = false,
     val lastSyncTimestamp: Long = 0L
-)
-
-@Entity(
-    tableName = "brain_topics",
-    indices = [Index(value = ["updatedAt"])]
-)
-data class BrainTopicEntity(
-    @PrimaryKey val id: String,
-    val heading: String,
-    val description: String = "",
-    val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
-)
-
-@Entity(
-    tableName = "kg_nodes",
-    indices = [
-        Index(value = ["label"]),
-        Index(value = ["nodeType"]),
-        Index(value = ["sourceFilePath"])
-    ]
-)
-data class KgNodeEntity(
-    @PrimaryKey val id: String,
-    val label: String,
-    val nodeType: String,
-    val sourceFilePath: String? = null,
-    val thumbnailUri: String? = null,
-    val summary: String = "",
-    val degree: Int = 0,
-    val confidence: Float = 1.0f,
-    val updatedAt: Long = System.currentTimeMillis()
-)
-
-@Entity(
-    tableName = "kg_edges",
-    primaryKeys = ["sourceNodeId", "targetNodeId", "relation"],
-    indices = [
-        Index(value = ["sourceNodeId"]),
-        Index(value = ["targetNodeId"]),
-        Index(value = ["relation"])
-    ]
-)
-data class KgEdgeEntity(
-    val sourceNodeId: String,
-    val targetNodeId: String,
-    val relation: String,
-    val weight: Float = 1.0f,
-    val evidenceSnippet: String = "",
-    val evidenceSource: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
-)
-
-@Entity(
-    tableName = "kg_edge_evidence",
-    primaryKeys = ["sourceNodeId", "targetNodeId", "relation", "evidenceSource"],
-    indices = [
-        Index(value = ["evidenceSource"]),
-        Index(value = ["sourceNodeId", "targetNodeId", "relation"])
-    ]
-)
-data class KgEdgeEvidenceEntity(
-    val sourceNodeId: String,
-    val targetNodeId: String,
-    val relation: String,
-    val evidenceSource: String,
-    val evidenceSnippet: String = "",
-    val createdAt: Long = System.currentTimeMillis()
-)
-
-@Entity(
-    tableName = "rag_chunks",
-    indices = [
-        Index(value = ["filePath"]),
-        Index(value = ["fileType"]),
-        Index(value = ["indexedTimestamp"])
-    ]
-)
-data class RagChunkEntity(
-    @PrimaryKey val chunkId: String,
-    val filePath: String,
-    val fileType: String,
-    val chunkIndex: Int,
-    val content: String,
-    val tagsJson: String = "[]",
-    val embeddingJson: String? = null,
-    val embeddingModel: String? = null,
-    val contentHash: String = "",
-    val sectionPath: String = "",
-    val pageNumber: Int? = null,
-    val indexedTimestamp: Long = System.currentTimeMillis()
-)
-
-@Entity(
-    tableName = "memory_facts",
-    indices = [
-        Index(value = ["normalizedSubject"]),
-        Index(value = ["predicate"]),
-        Index(value = ["validFrom"]),
-        Index(value = ["validTo"]),
-        Index(value = ["confidence"])
-    ]
-)
-data class MemoryFactEntity(
-    @PrimaryKey val id: String,
-    val subject: String,
-    val normalizedSubject: String,
-    val predicate: String,
-    val objectValue: String,
-    val normalizedObject: String,
-    val confidence: Float = 0.5f,
-    val sourceType: String = "AI",
-    val evidence: String = "",
-    val sourceFilePath: String? = null,
-    val validFrom: Long? = null,
-    val validTo: Long? = null,
-    val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
-)
-
-@Entity(
-    tableName = "entity_mentions",
-    primaryKeys = ["entityId", "sourceFilePath", "chunkId"],
-    indices = [
-        Index(value = ["entityId"]),
-        Index(value = ["sourceFilePath"]),
-        Index(value = ["chunkId"])
-    ]
-)
-data class EntityMentionEntity(
-    val entityId: String,
-    val sourceFilePath: String,
-    val chunkId: String,
-    val mentionText: String,
-    val entityType: String,
-    val confidence: Float = 0.5f,
-    val createdAt: Long = System.currentTimeMillis()
-)
-
-@Entity(
-    tableName = "index_fingerprints",
-    indices = [Index(value = ["filePath"]), Index(value = ["contentHash"]), Index(value = ["modelVersion"])]
-)
-data class IndexFingerprintEntity(
-    @PrimaryKey val filePath: String,
-    val size: Long,
-    val lastModified: Long,
-    val contentHash: String,
-    val modelVersion: String,
-    val embeddingModel: String,
-    val indexedAt: Long = System.currentTimeMillis()
-)
-
-@Entity(
-    tableName = "model_runs",
-    indices = [Index(value = ["filePath"]), Index(value = ["startedAt"])]
-)
-data class ModelRunEntity(
-    @PrimaryKey val id: String,
-    val filePath: String?,
-    val operation: String,
-    val model: String,
-    val success: Boolean,
-    val error: String? = null,
-    val startedAt: Long,
-    val finishedAt: Long = System.currentTimeMillis()
 )

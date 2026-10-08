@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
+import com.example.ui.viewmodel.LocalMainTabVisible
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -66,11 +67,12 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ViewColumn
 import androidx.compose.material.icons.filled.ViewList
-import androidx.compose.material.icons.filled.VideogameAsset
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -153,7 +155,7 @@ fun getCategoryIcon(type: CategoryType): ImageVector = when (type) {
     CategoryType.AUDIO -> Icons.Default.AudioFile
     CategoryType.DOCUMENTS -> Icons.Default.Description
     CategoryType.ARCHIVES -> Icons.Default.Archive
-    CategoryType.APKS -> Icons.Default.VideogameAsset
+    CategoryType.APKS -> Icons.Default.Android
     CategoryType.DOWNLOADS -> Icons.Default.Download
 }
 
@@ -163,19 +165,9 @@ fun HomeScreen(
     viewModel: UnifiedViewModel,
     modifier: Modifier = Modifier
 ) {
-    // Back handler: if Home search query is active, clear search first
-    BackHandler(enabled = uiState.homeSearchQuery.isNotEmpty()) {
+    // Back handler: Home search query is cleared before higher-level navigation.
+    BackHandler(enabled = LocalMainTabVisible.current && uiState.homeSearchQuery.isNotEmpty()) {
         viewModel.clearHomeSearch()
-    }
-
-    // Back handler when inspecting Recycle Bin
-    BackHandler(enabled = uiState.isRecycleBinOpen && uiState.homeSearchQuery.isEmpty()) {
-        viewModel.closeRecycleBin()
-    }
-
-    // Back handler when inspecting a category
-    BackHandler(enabled = uiState.selectedCategory != null && uiState.homeSearchQuery.isEmpty() && !uiState.isRecycleBinOpen) {
-        viewModel.selectCategory(null)
     }
 
     // Home Page Quick Tiles & Dashboard State
@@ -219,6 +211,45 @@ fun HomeScreen(
     LaunchedEffect(uiState.isRecycleBinOpen) {
         recycleBinSearchQuery = ""
         recycleBinSearchExpanded = false
+    }
+
+    // Nested page Back priority: search -> page. Local search must not fall through to Home.
+    BackHandler(
+        enabled = LocalMainTabVisible.current &&
+            uiState.isRecycleBinOpen &&
+            (recycleBinSearchExpanded || recycleBinSearchQuery.isNotBlank())
+    ) {
+        recycleBinSearchQuery = ""
+        recycleBinSearchExpanded = false
+    }
+
+    BackHandler(
+        enabled = LocalMainTabVisible.current &&
+            uiState.isRecycleBinOpen &&
+            !recycleBinSearchExpanded &&
+            recycleBinSearchQuery.isBlank()
+    ) {
+        viewModel.closeRecycleBin()
+    }
+
+    BackHandler(
+        enabled = LocalMainTabVisible.current &&
+            uiState.selectedCategory != null &&
+            !uiState.isRecycleBinOpen &&
+            (categorySearchExpanded || categorySearchQuery.isNotBlank())
+    ) {
+        categorySearchQuery = ""
+        categorySearchExpanded = false
+    }
+
+    BackHandler(
+        enabled = LocalMainTabVisible.current &&
+            uiState.selectedCategory != null &&
+            !uiState.isRecycleBinOpen &&
+            !categorySearchExpanded &&
+            categorySearchQuery.isBlank()
+    ) {
+        viewModel.selectCategory(null)
     }
 
     // Home Search Results State
@@ -429,6 +460,16 @@ fun HomeScreen(
 
                     val categoryColor = getCategoryColor(uiState.selectedCategory)
 
+                    // Loading state is shown immediately after category changes so stale rows
+                    // from the previous category can never appear under the new title.
+                    if (uiState.isCategoryLoading) {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                        )
+                    }
+
                     // Category Header
                     Row(
                         modifier = Modifier
@@ -552,7 +593,8 @@ fun HomeScreen(
                     }
 
                     // Modern Category Filter & Sort Control Strip
-                    CategoryFilterChipsBar(
+                    if (!uiState.isCategoryLoading) {
+                        CategoryFilterChipsBar(
                         category = uiState.selectedCategory,
                         sortOption = categorySortOption,
                         onSortSelected = { categorySortOption = it },
@@ -576,6 +618,7 @@ fun HomeScreen(
                         }
                     )
                     Spacer(modifier = Modifier.height(2.dp))
+                    }
                 } else {
                     // Home Top Bar: Compact search bar + three-dot preferences menu beside it
                     var showHomeMenu by remember { mutableStateOf(false) }
@@ -644,20 +687,6 @@ fun HomeScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(4.dp))
-
-                        // Refresh button beside search bar
-                        IconButton(
-                            onClick = { viewModel.refreshHomeScreen() },
-                            modifier = Modifier.testTag("home_refresh_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Refresh counts",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
                         // Three-dot menu button beside search bar
                         Box {
                             IconButton(
@@ -702,6 +731,17 @@ fun HomeScreen(
                                         viewModel.setShowPreferencesDialog(true)
                                     },
                                     modifier = Modifier.testTag("menu_preferences")
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Refresh Home") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Refresh, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showHomeMenu = false
+                                        viewModel.refreshHomeScreen()
+                                    },
+                                    modifier = Modifier.testTag("home_refresh_btn")
                                 )
                             }
                         }
@@ -863,7 +903,26 @@ fun HomeScreen(
                 sortFiles(filtered, categorySortOption)
             }
 
-            if (filteredCategoryFiles.isEmpty()) {
+            if (uiState.isCategoryLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator()
+                        Text(
+                            text = "Loading " + uiState.selectedCategory.displayName + "…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else if (filteredCategoryFiles.isEmpty()) {
                 val categoryColor = getCategoryColor(uiState.selectedCategory)
                 val categoryIcon = getCategoryIcon(uiState.selectedCategory)
                 val isFiltered = categorySearchQuery.isNotBlank() ||
@@ -1097,6 +1156,130 @@ fun HomeScreen(
                             viewModel.jumpToFolder(viewModel.rootPath)
                         }
                     )
+                }
+
+                item(key = "home_pinboard") {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "Pinboard",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    if (uiState.pinnedItems.isEmpty()) "Keep important files one tap away"
+                                    else "${uiState.pinnedItems.size} pinned",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                Icons.Default.Bookmark,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        if (uiState.pinnedItems.isEmpty()) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Bookmark,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        "Pin files, photos, videos or folders from their More menu.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        } else {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                contentPadding = PaddingValues(end = 4.dp)
+                            ) {
+                                items(
+                                    items = uiState.pinnedItems.take(8),
+                                    key = { it.path }
+                                ) { pinned ->
+                                    val item = FileItem(
+                                        name = pinned.name,
+                                        path = pinned.path,
+                                        size = pinned.size,
+                                        lastModified = pinned.lastModified,
+                                        isDirectory = pinned.isDirectory,
+                                        mimeType = pinned.mimeType
+                                    )
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surface,
+                                        shape = RoundedCornerShape(14.dp),
+                                        modifier = Modifier
+                                            .width(178.dp)
+                                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
+                                            .clickable {
+                                                if (item.isDirectory) viewModel.jumpToFolder(item.path)
+                                                else viewModel.openFile(item)
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(48.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if ((item.isImage || item.isVideo) && item.path.isNotBlank()) {
+                                                    AsyncImage(
+                                                        model = File(item.path),
+                                                        contentDescription = null,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                } else {
+                                                    FileTypeIconBadge(item = item, modifier = Modifier.size(32.dp))
+                                                }
+                                            }
+                                            Spacer(Modifier.width(10.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Text(
+                                                    item.name,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    if (item.isDirectory) "Folder" else formatFileSize(item.size),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 item(key = "home_shortcuts") {

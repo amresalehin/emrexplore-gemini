@@ -58,7 +58,13 @@ data class PagedDirectoryResult(
     val hasMore: Boolean
 )
 
-class FileRepository(private val context: Context) {
+class FileRepository(
+    private val context: Context,
+    private val onBrainMutation: suspend (
+        relocatedPaths: List<Pair<String, String>>,
+        removedPaths: List<String>
+    ) -> Unit = { _, _ -> }
+) {
 
     private val db = AppDatabase.getDatabase(context)
     private val favoriteDao = db.favoriteDao()
@@ -83,11 +89,15 @@ class FileRepository(private val context: Context) {
 
     private val statCache = java.util.concurrent.ConcurrentHashMap<String, CachedStat>()
 
-    val operationManager = FileOperationManager { affectedPaths ->
-        for (dir in affectedPaths) {
-            invalidateFolderCache(dir)
-        }
-    }
+    val operationManager = FileOperationManager(
+        onFilesMutated = { relocatedPaths, removedPaths, affectedPaths ->
+            for (dir in affectedPaths) {
+                invalidateFolderCache(dir)
+            }
+            reconcileMutation(relocatedPaths, removedPaths)
+        },
+        deleteFile = { path, toTrash -> deleteFileInternal(path, toTrash) }
+    )
 
     fun invalidateFolderCache(dirPath: String? = null) {
         if (dirPath == null) {
@@ -96,6 +106,114 @@ class FileRepository(private val context: Context) {
         } else {
             folderCache.remove(dirPath)
             statCache.keys.removeIf { it.startsWith(dirPath) }
+        }
+    }
+
+    suspend fun reconcileMutation(
+        relocatedPaths: List<Pair<String, String>>,
+        removedPaths: List<String>
+    ) = withContext(Dispatchers.IO) {
+        for ((oldPath, newPath) in relocatedPaths) {
+            reconcileRelocation(oldPath, newPath)
+        }
+        for (oldPath in removedPaths.distinct()) {
+            removeIndexedPath(oldPath, fileIndexDao.getByPath(oldPath)?.isDirectory ?: File(oldPath).isDirectory)
+            removeDerivedPath(oldPath)
+        }
+        onBrainMutation(relocatedPaths, removedPaths)
+    }
+
+    private suspend fun reconcileRelocation(oldPath: String, newPath: String) {
+        val oldEntity = fileIndexDao.getByPath(oldPath)
+        val oldIsDirectory = oldEntity?.isDirectory ?: File(oldPath).isDirectory
+        val oldStillExists = File(oldPath).exists()
+
+        if (oldStillExists) {
+            copyDerivedPath(oldPath, newPath)
+        } else {
+            migrateDerivedPath(oldPath, newPath)
+            removeIndexedPath(oldPath, oldIsDirectory)
+        }
+
+        val destination = File(newPath)
+        if (destination.exists()) {
+            indexFileOrDir(destination)
+        }
+        invalidateFolderCache(File(oldPath).parent)
+        invalidateFolderCache(File(newPath).parent)
+    }
+
+    private suspend fun migrateDerivedPath(oldPath: String, newPath: String) {
+        val favorites = favoriteDao.getFavoritesUnderPath(oldPath, oldPath)
+        favorites.forEach { favorite ->
+            favoriteDao.removeFavorite(favorite.path)
+            favoriteDao.addFavorite(favorite.copy(path = mapMutationPath(favorite.path, oldPath, newPath), name = File(mapMutationPath(favorite.path, oldPath, newPath)).name))
+        }
+
+        val recents = recentDao.getRecentsUnderPath(oldPath, oldPath)
+        recents.forEach { recent ->
+            recentDao.removeRecent(recent.path)
+            recentDao.addRecent(recent.copy(path = mapMutationPath(recent.path, oldPath, newPath), name = File(mapMutationPath(recent.path, oldPath, newPath)).name))
+        }
+
+        val bookmarks = bookmarkDao.getBookmarksUnderPath(oldPath, oldPath)
+        bookmarks.forEach { bookmark ->
+            bookmarkDao.removeBookmark(bookmark.path)
+            bookmarkDao.addBookmark(bookmark.copy(path = mapMutationPath(bookmark.path, oldPath, newPath), name = File(mapMutationPath(bookmark.path, oldPath, newPath)).name))
+        }
+
+        val metadata = db.mediaMetadataDao().getByPathTree(oldPath, oldPath)
+        metadata.forEach { item ->
+            val mappedPath = mapMutationPath(item.path, oldPath, newPath)
+            db.mediaMetadataDao().insertOrUpdate(item.copy(path = mappedPath))
+        }
+    }
+
+    private suspend fun copyDerivedPath(oldPath: String, newPath: String) {
+        val favorites = favoriteDao.getFavoritesUnderPath(oldPath, oldPath)
+        favorites.forEach { favorite ->
+            val mappedPath = mapMutationPath(favorite.path, oldPath, newPath)
+            favoriteDao.addFavorite(favorite.copy(path = mappedPath, name = File(mappedPath).name))
+        }
+
+        val recents = recentDao.getRecentsUnderPath(oldPath, oldPath)
+        recents.forEach { recent ->
+            val mappedPath = mapMutationPath(recent.path, oldPath, newPath)
+            recentDao.addRecent(recent.copy(path = mappedPath, name = File(mappedPath).name))
+        }
+
+        val bookmarks = bookmarkDao.getBookmarksUnderPath(oldPath, oldPath)
+        bookmarks.forEach { bookmark ->
+            val mappedPath = mapMutationPath(bookmark.path, oldPath, newPath)
+            bookmarkDao.addBookmark(bookmark.copy(path = mappedPath, name = File(mappedPath).name))
+        }
+
+        val metadata = db.mediaMetadataDao().getByPathTree(oldPath, oldPath)
+        metadata.forEach { item ->
+            if (item.uri.startsWith("file:")) {
+                val mappedPath = mapMutationPath(item.path, oldPath, newPath)
+                db.mediaMetadataDao().insertOrUpdate(
+                    item.copy(
+                        uri = Uri.fromFile(File(mappedPath)).toString(),
+                        path = mappedPath
+                    )
+                )
+            }
+        }
+    }
+
+    private suspend fun removeDerivedPath(path: String) {
+        favoriteDao.getFavoritesUnderPath(path, path).forEach { favoriteDao.removeFavorite(it.path) }
+        recentDao.getRecentsUnderPath(path, path).forEach { recentDao.removeRecent(it.path) }
+        bookmarkDao.getBookmarksUnderPath(path, path).forEach { bookmarkDao.removeBookmark(it.path) }
+        db.mediaMetadataDao().getByPathTree(path, path).forEach { db.mediaMetadataDao().delete(it.uri) }
+    }
+
+    private fun mapMutationPath(path: String, oldPath: String, newPath: String): String {
+        return if (path == oldPath) {
+            newPath
+        } else {
+            newPath + path.removePrefix(oldPath)
         }
     }
 
@@ -388,6 +506,48 @@ class FileRepository(private val context: Context) {
 
     suspend fun indexFileOrDir(file: File) = withContext(Dispatchers.IO) {
         if (!file.exists()) return@withContext
+        if (file.isDirectory) reconcileIndexedDirectory(file) else indexSingleFileOrDirectory(file)
+    }
+
+    /**
+     * Reconciles a filesystem subtree into the canonical FileRepository index.
+     * Brain consumes this index; it never performs its own storage scan.
+     */
+    private suspend fun reconcileIndexedDirectory(root: File) {
+        if (!root.exists() || !root.isDirectory) return
+
+        val visited = mutableSetOf<String>()
+        val stack = ArrayDeque<File>()
+        stack.add(root)
+
+        while (stack.isNotEmpty()) {
+            val dir = stack.removeFirst()
+            val canonical = try { dir.canonicalPath } catch (_: Exception) { dir.absolutePath }
+            if (!visited.add(canonical)) continue
+
+            indexSingleFileOrDirectory(dir)
+            val children = dir.listFiles() ?: continue
+            val actualPaths = children.asSequence()
+                .filterNot { it.name.startsWith(".") }
+                .map { it.absolutePath }
+                .toSet()
+
+            for (indexed in fileIndexDao.getFilesByParent(dir.absolutePath)) {
+                if (indexed.path !in actualPaths) {
+                    fileIndexDao.deleteByPathTree(indexed.path, indexed.path)
+                }
+            }
+
+            for (child in children) {
+                if (child.name.startsWith(".")) continue
+                indexSingleFileOrDirectory(child)
+                if (child.isDirectory) stack.add(child)
+            }
+        }
+    }
+
+    private suspend fun indexSingleFileOrDirectory(file: File) {
+        if (!file.exists()) return
         val isDir = file.isDirectory
         val ext = if (isDir) "" else file.extension.lowercase()
         val mime = if (isDir) "inode/directory" else (MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: inferMime(ext))
@@ -537,14 +697,9 @@ class FileRepository(private val context: Context) {
                 val sorted = sortFileList(refreshed, sortOption)
                 val pagedItems: List<FileItem>
                 val hasMore: Boolean
-                if (sorted.size <= 300) {
-                    pagedItems = sorted
-                    hasMore = false
-                } else {
-                    val offset = page * pageSize
-                    pagedItems = if (offset >= sorted.size) emptyList() else sorted.subList(offset, minOf(offset + pageSize, sorted.size))
-                    hasMore = (offset + pageSize) < sorted.size
-                }
+                val offset = page * pageSize
+                pagedItems = if (offset >= sorted.size) emptyList() else sorted.subList(offset, minOf(offset + pageSize, sorted.size))
+                hasMore = (offset + pageSize) < sorted.size
                 val elapsed = System.currentTimeMillis() - startTimeMs
                 if (page == 0) PerformanceMonitor.recordFolderOpen(elapsed)
                 PerformanceMonitor.recordPagedLoad(elapsed)
@@ -1041,8 +1196,10 @@ class FileRepository(private val context: Context) {
         } else {
             fileIndexDao.searchFiles(q, limit = 150)
         }
-        entities.map { entity ->
+
+        entities.mapNotNull { entity ->
             val file = File(entity.path)
+            if (!file.exists() || file.isDirectory != entity.isDirectory) return@mapNotNull null
             FileItem(
                 name = entity.name,
                 path = entity.path,
@@ -1057,6 +1214,9 @@ class FileRepository(private val context: Context) {
             )
         }
     }
+
+    private fun escapeSqlLike(value: String): String =
+        value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     suspend fun searchExplorer(
         dirPath: String,
@@ -1160,6 +1320,11 @@ class FileRepository(private val context: Context) {
             }
 
             ExplorerSearchScope.SUBFOLDERS -> {
+                // Never broaden a dead requested path to the storage root.
+                if (!targetDir.exists() || !targetDir.isDirectory) {
+                    return@withContext emptyList()
+                }
+
                 val prefs = getPreferences()
                 var loadedFromRoom = false
                 if (prefs.enableFastRoomSearch) {
@@ -1173,50 +1338,51 @@ class FileRepository(private val context: Context) {
                         else -> null
                     }
                     val entities = if (catString != null) {
-                        fileIndexDao.searchFilesUnderPathByCategory(effectiveDir.absolutePath, q, catString, limit = 250)
-                    } else if (q.isNotEmpty()) {
-                        fileIndexDao.searchFilesUnderPath(effectiveDir.absolutePath, q, limit = 250)
+                        fileIndexDao.searchFilesUnderPathByCategory(
+                            targetDir.absolutePath,
+                            escapeSqlLike(targetDir.absolutePath + File.separator),
+                            q,
+                            catString,
+                            limit = 1000
+                        )
                     } else {
-                        fileIndexDao.getFilesByParent(effectiveDir.absolutePath)
+                        fileIndexDao.searchFilesUnderPath(
+                            targetDir.absolutePath,
+                            escapeSqlLike(targetDir.absolutePath + File.separator),
+                            q,
+                            limit = 1000
+                        )
                     }
-                    if (entities.isNotEmpty()) {
-                        entities.forEach { entity ->
-                            val item = FileItem(
-                                name = entity.name,
-                                path = entity.path,
-                                size = entity.size,
-                                lastModified = entity.lastModified,
-                                isDirectory = entity.isDirectory,
-                                mimeType = entity.mimeType,
-                                extension = entity.extension,
-                                isFavorite = favSet.contains(entity.path),
-                                childCount = entity.childCount,
-                                uri = Uri.fromFile(File(entity.path))
-                            )
-                            if (filterPredicate(item)) {
-                                rawItems.add(item)
-                            }
-                        }
-                        if (rawItems.isNotEmpty()) {
-                            loadedFromRoom = true
-                        }
+                    entities.forEach { entity ->
+                        val file = File(entity.path)
+                        if (!file.exists() || file.isDirectory != entity.isDirectory) return@forEach
+                        val item = FileItem(
+                            name = entity.name,
+                            path = entity.path,
+                            size = entity.size,
+                            lastModified = entity.lastModified,
+                            isDirectory = entity.isDirectory,
+                            mimeType = entity.mimeType,
+                            extension = entity.extension,
+                            isFavorite = favSet.contains(entity.path),
+                            childCount = entity.childCount,
+                            uri = Uri.fromFile(file)
+                        )
+                        if (filterPredicate(item)) rawItems.add(item)
                     }
+                    loadedFromRoom = rawItems.isNotEmpty()
                 }
 
                 if (!loadedFromRoom) {
-                    val targets = mutableListOf<File>()
-                    if (effectiveDir.exists() && effectiveDir.isDirectory) {
-                        targets.add(effectiveDir)
-                    }
-                    if (effectiveDir.absolutePath == rootPath || effectiveDir.absolutePath.isBlank() || (effectiveDir.listFiles()?.size ?: 0) <= 2) {
-                        if (baseWorkingDir.exists() && !targets.contains(baseWorkingDir)) {
-                            targets.add(baseWorkingDir)
-                        }
-                    }
-                    for (target in targets) {
-                        scanDirectoryRecursive(target, filterPredicate, favSet, rawItems, maxDepth = 5, currentDepth = 0)
-                        if (rawItems.size >= 250) break
-                    }
+                    scanDirectoryRecursive(
+                        targetDir,
+                        filterPredicate,
+                        favSet,
+                        rawItems,
+                        maxDepth = Int.MAX_VALUE,
+                        currentDepth = 0,
+                        maxResults = 1000
+                    )
                 }
             }
 
@@ -1284,12 +1450,16 @@ class FileRepository(private val context: Context) {
         favSet: Set<String>,
         outList: MutableList<FileItem>,
         maxDepth: Int,
-        currentDepth: Int
+        currentDepth: Int,
+        maxResults: Int = 1000,
+        visitedPaths: MutableSet<String> = mutableSetOf()
     ) {
-        if (currentDepth > maxDepth || !dir.exists() || !dir.isDirectory || outList.size >= 250) return
+        if (currentDepth > maxDepth || !dir.exists() || !dir.isDirectory || outList.size >= maxResults) return
+        val canonicalPath = runCatching { dir.canonicalFile.absolutePath }.getOrNull() ?: return
+        if (!visitedPaths.add(canonicalPath)) return
         val list = dir.listFiles() ?: return
         for (file in list) {
-            if (outList.size >= 250) return
+            if (outList.size >= maxResults) return
             val name = file.name
             if (name.startsWith(".") && name != ".trash") continue
             val item = toFileItem(file, favSet)
@@ -1297,14 +1467,14 @@ class FileRepository(private val context: Context) {
                 if (name == ".trash" || name == "cache") continue
                 if (name == "Android") {
                     if (baseWorkingDir.absolutePath.startsWith(file.absolutePath)) {
-                        scanDirectoryRecursive(baseWorkingDir, predicate, favSet, outList, maxDepth, currentDepth + 1)
+                        scanDirectoryRecursive(baseWorkingDir, predicate, favSet, outList, maxDepth, currentDepth + 1, maxResults, visitedPaths)
                     }
                     continue
                 }
                 if (predicate(item)) {
                     outList.add(item)
                 }
-                scanDirectoryRecursive(file, predicate, favSet, outList, maxDepth, currentDepth + 1)
+                scanDirectoryRecursive(file, predicate, favSet, outList, maxDepth, currentDepth + 1, maxResults, visitedPaths)
             } else {
                 if (predicate(item)) {
                     outList.add(item)
@@ -1485,6 +1655,7 @@ class FileRepository(private val context: Context) {
 
     // CRUD & File Operations
     suspend fun createFolder(parentPath: String, name: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidChildName(name)) return@withContext false
         val dir = File(parentPath, name)
         val created = if (!dir.exists()) dir.mkdirs() else false
         if (created) {
@@ -1495,40 +1666,52 @@ class FileRepository(private val context: Context) {
     }
 
     suspend fun createTextFile(parentPath: String, name: String, content: String = ""): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidChildName(name)) return@withContext false
         val file = File(parentPath, name)
         if (!file.exists()) {
             val created = file.createNewFile()
+            if (!created) return@withContext false
             if (content.isNotEmpty()) {
                 file.writeText(content)
             }
-            if (created) {
-                invalidateFolderCache(parentPath)
-                indexFileOrDir(file)
-            }
+            invalidateFolderCache(parentPath)
+            indexFileOrDir(file)
             true
         } else false
     }
 
     suspend fun renameFile(oldPath: String, newName: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidChildName(newName)) return@withContext false
         val oldFile = File(oldPath)
         if (!oldFile.exists()) return@withContext false
         val parent = oldFile.parent ?: ""
         val newFile = File(oldFile.parentFile, newName)
+        if (oldFile.canonicalFile == newFile.canonicalFile) return@withContext true
+        if (newFile.exists()) return@withContext false
         val isDir = oldFile.isDirectory
         val renamed = oldFile.renameTo(newFile)
         if (renamed) {
-            invalidateFolderCache(parent)
-            removeIndexedPath(oldPath, isDir)
-            indexFileOrDir(newFile)
-            if (isDir) {
-                val batch = mutableListOf<IndexedFileEntity>()
-                scanDirForIndexing(newFile, batch, Int.MAX_VALUE, 0, onBatchFlushed = {})
-                if (batch.isNotEmpty()) {
-                    fileIndexDao.insertAll(batch)
-                }
-            }
+            reconcileMutation(listOf(oldPath to newFile.absolutePath), emptyList())
         }
         renamed
+    }
+
+    private fun isUnsafeDestination(source: File, destination: File): Boolean {
+        return runCatching {
+            val canonicalSource = source.canonicalFile
+            val canonicalDestination = destination.canonicalFile
+            canonicalSource == canonicalDestination ||
+                (source.isDirectory && canonicalDestination.absolutePath.startsWith(canonicalSource.absolutePath + File.separator))
+        }.getOrDefault(true)
+    }
+
+    private fun isValidChildName(name: String): Boolean {
+        return name.isNotBlank() &&
+            name != "." &&
+            name != ".." &&
+            !File(name).isAbsolute &&
+            '/' !in name &&
+            '\\' !in name
     }
 
     private fun moveAcrossFilesystemsSafely(source: File, destination: File): Boolean {
@@ -1561,6 +1744,14 @@ class FileRepository(private val context: Context) {
         }
     }
     suspend fun deleteFile(path: String, toTrash: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val success = deleteFileInternal(path, toTrash)
+        if (success) {
+            reconcileMutation(emptyList(), listOf(path))
+        }
+        success
+    }
+
+    private suspend fun deleteFileInternal(path: String, toTrash: Boolean): Boolean = withContext(Dispatchers.IO) {
         val file = File(path)
         if (!file.exists()) return@withContext false
         val parent = file.parent ?: ""
@@ -1572,7 +1763,6 @@ class FileRepository(private val context: Context) {
             val success = moveAcrossFilesystemsSafely(file, targetTrashFile)
             if (success) {
                 invalidateFolderCache(parent)
-                removeIndexedPath(path, isDir)
                 trashDao.insertTrash(
                     TrashEntity(
                         originalPath = path,
@@ -1589,7 +1779,6 @@ class FileRepository(private val context: Context) {
             val deleted = if (file.isDirectory) file.deleteRecursively() else file.delete()
             if (deleted) {
                 invalidateFolderCache(parent)
-                removeIndexedPath(path, isDir)
             }
             deleted
         }
@@ -1606,24 +1795,25 @@ class FileRepository(private val context: Context) {
 
         if (success) {
             trashDao.deleteTrashById(trashEntity.id)
-            origFile.parent?.let { invalidateFolderCache(it) }
-            indexFileOrDir(origFile)
+            reconcileMutation(listOf(trashEntity.trashPath to trashEntity.originalPath), emptyList())
         }
         success
     }
 
     suspend fun permanentlyDeleteTrash(trashEntity: TrashEntity): Boolean = withContext(Dispatchers.IO) {
         val trashFile = File(trashEntity.trashPath)
-        if (trashFile.exists()) {
-            trashFile.deleteRecursively()
-        }
+        val deleted = !trashFile.exists() || trashFile.deleteRecursively()
+        if (!deleted) return@withContext false
+
         trashDao.deleteTrashById(trashEntity.id)
         true
     }
 
     suspend fun clearTrash(): Boolean = withContext(Dispatchers.IO) {
         val trashDir = File(baseWorkingDir, ".trash")
-        if (trashDir.exists()) trashDir.deleteRecursively()
+        val deleted = !trashDir.exists() || trashDir.deleteRecursively()
+        if (!deleted) return@withContext false
+
         trashDao.clearAllTrash()
         true
     }
@@ -1632,6 +1822,7 @@ class FileRepository(private val context: Context) {
         val src = File(sourcePath)
         val dest = File(targetDir, src.name)
         if (!src.exists()) return@withContext false
+        if (isUnsafeDestination(src, dest)) return@withContext false
 
         try {
             if (src.isDirectory) {
@@ -1639,13 +1830,7 @@ class FileRepository(private val context: Context) {
             } else {
                 src.copyTo(dest, overwrite = true)
             }
-            invalidateFolderCache(targetDir)
-            indexFileOrDir(dest)
-            if (dest.isDirectory) {
-                val batch = mutableListOf<IndexedFileEntity>()
-                scanDirForIndexing(dest, batch, Int.MAX_VALUE, 0, onBatchFlushed = {})
-                if (batch.isNotEmpty()) fileIndexDao.insertAll(batch)
-            }
+            reconcileMutation(listOf(sourcePath to dest.absolutePath), emptyList())
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1657,6 +1842,7 @@ class FileRepository(private val context: Context) {
         val src = File(sourcePath)
         val dest = File(targetDir, src.name)
         if (!src.exists()) return@withContext false
+        if (isUnsafeDestination(src, dest)) return@withContext false
         val parent = src.parent ?: ""
         val isDir = src.isDirectory
 
@@ -1664,15 +1850,7 @@ class FileRepository(private val context: Context) {
             val moved = moveAcrossFilesystemsSafely(src, dest)
             if (!moved) return@withContext false
 
-            invalidateFolderCache(parent)
-            invalidateFolderCache(targetDir)
-            removeIndexedPath(sourcePath, isDir)
-            indexFileOrDir(dest)
-            if (dest.isDirectory) {
-                val batch = mutableListOf<IndexedFileEntity>()
-                scanDirForIndexing(dest, batch, Int.MAX_VALUE, 0, onBatchFlushed = {})
-                if (batch.isNotEmpty()) fileIndexDao.insertAll(batch)
-            }
+            reconcileMutation(listOf(sourcePath to dest.absolutePath), emptyList())
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1683,6 +1861,14 @@ class FileRepository(private val context: Context) {
 
     suspend fun zipFiles(sourcePaths: List<String>, targetZipPath: String): Boolean = withContext(Dispatchers.IO) {
         val zipFile = File(targetZipPath)
+        val canonicalZip = runCatching { zipFile.canonicalFile }.getOrNull() ?: return@withContext false
+        val selfTargeted = sourcePaths.any { sourcePath ->
+            val source = File(sourcePath)
+            val canonicalSource = runCatching { source.canonicalFile }.getOrNull() ?: return@any true
+            canonicalSource == canonicalZip ||
+                (source.isDirectory && canonicalZip.absolutePath.startsWith(canonicalSource.absolutePath + File.separator))
+        }
+        if (selfTargeted) return@withContext false
         try {
             ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
                 for (path in sourcePaths) {

@@ -20,6 +20,7 @@ import androidx.compose.animation.AnimatedVisibility
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import androidx.activity.compose.BackHandler
+import com.example.ui.viewmodel.LocalMainTabVisible
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -70,6 +71,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.InputChip
@@ -123,6 +125,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import coil.request.ImageRequest
 import androidx.compose.ui.Alignment
@@ -138,10 +141,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.data.brain.OnDeviceBrainModelStatus
 import com.example.data.model.MediaAlbum
 import com.example.data.model.MediaItem
-import com.example.data.media.MediaAlbumRepository
-import com.example.data.media.MediaRepository
 import com.example.data.media.FullscreenMediaSource
 import com.example.ui.viewmodel.GallerySubTab
 import com.example.ui.viewmodel.GallerySortOption
@@ -156,6 +158,7 @@ fun GalleryScreen(
     uiState: UiState,
     viewModel: UnifiedViewModel,
     onRequestMediaLocationPermission: () -> Unit = {},
+    onOpenBrainSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -168,9 +171,10 @@ fun GalleryScreen(
     var filterMenuVisible by remember { mutableStateOf(false) }
     var sortMenuVisible by remember { mutableStateOf(false) }
     var groupMenuVisible by remember { mutableStateOf(false) }
-    var groupBy by remember { mutableStateOf("Month") }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    val groupBy = uiState.galleryGroupBy
 
-    val groupedPagingFlow: Flow<PagingData<GalleryGridItem>> = remember(groupBy) {
+    val groupedPagingFlow: Flow<PagingData<GalleryGridItem>> = remember(groupBy, selectedAlbumId) {
         viewModel.galleryPagingFlow.map { pagingData: PagingData<MediaItem> ->
             val mediaData: PagingData<GalleryGridItem> = pagingData.map { media -> GalleryGridItem.Media(media) }
             if (groupBy == "None") {
@@ -212,27 +216,48 @@ fun GalleryScreen(
             onRequestMediaLocationPermission()
         }
     }
-    var discoveredAlbums by remember { mutableStateOf(uiState.mediaAlbums) }
-
     LaunchedEffect(uiState.gallerySubTab) {
-        if (uiState.gallerySubTab == GallerySubTab.ALBUMS && discoveredAlbums.isEmpty()) {
-            discoveredAlbums = MediaAlbumRepository(context).getAlbums()
+        if (uiState.gallerySubTab == GallerySubTab.ALBUMS) {
+            viewModel.refreshGalleryAlbums()
         }
     }
 
     val albumPagedMedia = if (selectedAlbumId != null) {
-        val albumFlow: Flow<PagingData<GalleryGridItem>> = remember(selectedAlbumId) {
-            MediaRepository(context).albumPager(selectedAlbumId).map { pagingData: PagingData<MediaItem> ->
-                pagingData.map { media -> GalleryGridItem.Media(media) as GalleryGridItem }
-            }
-        }
-        albumFlow.collectAsLazyPagingItems()
+        remember(selectedAlbumId) {
+            viewModel.albumPagingFlow(selectedAlbumId)
+                .map { pagingData ->
+                    pagingData.map { media -> GalleryGridItem.Media(media) as GalleryGridItem }
+                }
+        }.collectAsLazyPagingItems()
     } else null
 
-    // If inside an album, handle back button
-    BackHandler(enabled = uiState.selectedAlbum != null) {
-        viewModel.selectAlbum(null)
+    // Gallery consumes Back while visible. Local state is unwound before any
+    // higher-level navigation: search -> selection -> album -> stay on Gallery.
+    BackHandler(enabled = LocalMainTabVisible.current) {
+        when {
+            uiState.gallerySearchActive || uiState.gallerySearchQuery.isNotBlank() ||
+                uiState.gallerySearchSubmittedQuery.isNotBlank() -> {
+                viewModel.clearGallerySearch()
+                keyboardController?.hide()
+            }
+            uiState.gallerySelection.isNotEmpty() -> {
+                viewModel.clearGallerySelection()
+            }
+            uiState.selectedAlbum != null -> {
+                viewModel.selectAlbum(null)
+            }
+            else -> Unit
+        }
     }
+
+    val hasMediaPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+        context,
+        android.Manifest.permission.READ_MEDIA_IMAGES
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+        androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.READ_EXTERNAL_STORAGE
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
     Column(modifier = modifier.fillMaxSize()) {
 
@@ -423,6 +448,15 @@ fun GalleryScreen(
 
                                 Spacer(modifier = Modifier.weight(1f))
 
+                                // Gallery AI settings
+                                IconButton(onClick = onOpenBrainSettings) {
+                                    Icon(
+                                        Icons.Default.AutoAwesome,
+                                        contentDescription = "Gallery AI settings",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+
                                 // Search button
                                 val hasSearchQuery = uiState.gallerySearchQuery.isNotBlank()
                                 IconButton(onClick = { viewModel.setGallerySearchActive(true) }) {
@@ -511,7 +545,7 @@ fun GalleryScreen(
                                                         }
                                                     },
                                                     onClick = {
-                                                        groupBy = option
+                                                        viewModel.setGalleryGroupBy(option)
                                                         groupMenuVisible = false
                                                     }
                                                 )
@@ -599,38 +633,57 @@ fun GalleryScreen(
         }
 
         if (uiState.isGalleryAiProcessing || uiState.isGalleryAiPaused) {
-            Column(
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
+            ) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Gallery Brain", fontWeight = FontWeight.SemiBold)
+                            Text(uiState.galleryAiStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                        Text((uiState.galleryAiProgress.coerceIn(0f, 1f) * 100).toInt().toString() + "%", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
+                    LinearProgressIndicator(
+                        progress = { uiState.galleryAiProgress.coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(7.dp)
+                    )
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("AI enrichment uses the configured VLM and embedding models.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { if (uiState.isGalleryAiPaused) viewModel.resumeGalleryAi() else viewModel.pauseGalleryAi() }) {
+                            Text(if (uiState.isGalleryAiPaused) "Resume" else "Pause")
+                        }
+                        TextButton(onClick = { viewModel.cancelGalleryAi() }) { Text("Stop") }
+                    }
+                }
+            }
+        }
+
+        // Gallery AI is backed by the same Brain engine. Surface its dependency here so
+        // a disabled action never looks like a broken/no-op button.
+        if (uiState.gallerySelection.isNotEmpty() && uiState.onDeviceBrainModel.status != OnDeviceBrainModelStatus.READY) {
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                LinearProgressIndicator(
-                    progress = { uiState.galleryAiProgress },
-                    modifier = Modifier.fillMaxWidth()
-                )
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
                     Text(
-                        uiState.galleryAiStatus,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        text = "Gallery AI: VLM → saved profile → offline embedding.",
+                        style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.weight(1f)
                     )
-                    TextButton(
-                        onClick = {
-                            if (uiState.isGalleryAiPaused) {
-                                viewModel.resumeGalleryAi()
-                            } else {
-                                viewModel.pauseGalleryAi()
-                            }
-                        }
-                    ) {
-                        Text(if (uiState.isGalleryAiPaused) "Resume" else "Pause")
-                    }
+                    TextButton(onClick = onOpenBrainSettings) { Text("Set up") }
                 }
             }
         }
@@ -642,6 +695,7 @@ fun GalleryScreen(
                 onClear = { viewModel.clearGallerySelection() },
                 onFavorite = { viewModel.favoriteGallerySelection() },
                 onAiProcess = { viewModel.processGalleryAiSelection() },
+                aiReady = uiState.onDeviceBrainModel.status == OnDeviceBrainModelStatus.READY && uiState.aiConfig.isEnabled && (com.example.data.ai.isKeylessAiConfig(uiState.aiConfig) || uiState.aiConfig.apiKey.isNotBlank()) && uiState.aiConfig.visionModel.isNotBlank(),
                 onShare = {
                     val uris = ArrayList(uiState.gallerySelection.map { it.uri })
                     try {
@@ -655,7 +709,7 @@ fun GalleryScreen(
                         viewModel.showMessage("No app available to share these items")
                     }
                 },
-                onDelete = { viewModel.deleteGallerySelection() }
+                onDelete = { showDeleteConfirm = true }
             )
         }
 
@@ -685,17 +739,29 @@ fun GalleryScreen(
                         }
                     },
                     onItemLongClick = { item -> viewModel.toggleGallerySelection(item) },
-                    selectedPaths = uiState.gallerySelection.map { it.path }.toSet()
+                    selectedPaths = uiState.gallerySelection.map { it.path }.toSet(),
+                    onRetry = { viewModel.refreshGalleryAlbums() }
                 )
             }
         } else {
             when (uiState.gallerySubTab) {
                 GallerySubTab.TIMELINE -> {
-                    PagedMediaGrid(
-                        items = pagedMedia,
-                        gridState = galleryGridState,
-                        columns = uiState.galleryColumns,
-                        onItemClick = { item ->
+                    if (pagedMedia.itemCount == 0 && pagedMedia.loadState.refresh is LoadState.NotLoading) {
+                        EmptyGalleryMessage(
+                            if (!hasMediaPermission) {
+                                "Photo access is not granted. Allow media access to show Gallery photos."
+                            } else if (uiState.gallerySearchQuery.isNotBlank()) {
+                                "No photos match your search."
+                            } else {
+                                "No photos or videos found on this device."
+                            }
+                        )
+                    } else {
+                        PagedMediaGrid(
+                            items = pagedMedia,
+                            gridState = galleryGridState,
+                            columns = uiState.galleryColumns,
+                            onItemClick = { item ->
                             if (uiState.gallerySelection.isNotEmpty()) viewModel.toggleGallerySelection(item)
                             else {
                             val loaded = pagedMedia.itemSnapshotList.items.filterIsInstance<GalleryGridItem.Media>().map { it.item }
@@ -718,16 +784,17 @@ fun GalleryScreen(
                             )
                             }
                         },
-                        onItemLongClick = { item -> viewModel.toggleGallerySelection(item) },
-                        selectedPaths = uiState.gallerySelection.map { it.path }.toSet()
-                    )
+                            onItemLongClick = { item -> viewModel.toggleGallerySelection(item) },
+                            selectedPaths = uiState.gallerySelection.map { it.path }.toSet()
+                        )
+                    }
                 }
                 GallerySubTab.ALBUMS -> {
-                    if (discoveredAlbums.isEmpty()) {
+                    if (uiState.mediaAlbums.isEmpty()) {
                         EmptyGalleryMessage("No albums detected")
                     } else {
                         AlbumsGrid(
-                            albums = discoveredAlbums,
+                            albums = uiState.mediaAlbums,
                             onAlbumClick = { album -> viewModel.selectAlbum(album) }
                         )
                     }
@@ -735,10 +802,37 @@ fun GalleryScreen(
             }
         }
     }
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Move to Trash?") },
+            text = {
+                Text(
+                    "Move " + uiState.gallerySelection.size +
+                        " selected item(s) to the Recycle Bin? You can restore them later."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        viewModel.deleteGallerySelection(toTrash = true)
+                    }
+                ) {
+                    Text("Move to Trash")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            },
+            modifier = Modifier.testTag("gallery_delete_confirm_dialog")
+        )
+    }
+
 }
-
-
-private sealed interface GalleryGridItem {
+sealed interface GalleryGridItem {
     data class Media(val item: MediaItem) : GalleryGridItem
     data class Header(val title: String) : GalleryGridItem
 }
@@ -761,7 +855,8 @@ private fun PagedMediaGrid(
     columns: Int,
     onItemClick: (MediaItem) -> Unit,
     onItemLongClick: (MediaItem) -> Unit = {},
-    selectedPaths: Set<String> = emptySet()
+    selectedPaths: Set<String> = emptySet(),
+    onRetry: () -> Unit = {}
 ) {
     LazyVerticalGrid(
         state = gridState,
@@ -847,7 +942,27 @@ private fun PagedMediaGrid(
     }
 
     if (items.itemCount == 0 && items.loadState.refresh is LoadState.Error) {
-        EmptyGalleryMessage("Could not load media. Pull to refresh.")
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            EmptyGalleryMessage("Could not load media.")
+            Spacer(modifier = Modifier.height(16.dp))
+            FilledTonalButton(
+                onClick = {
+                    items.refresh()
+                    onRetry()
+                },
+                modifier = Modifier.testTag("gallery_retry_button")
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Retry")
+            }
+        }
     }
 }
 
@@ -1414,6 +1529,7 @@ private fun MediaGridThumbnail(
 @Composable
 private fun GallerySelectionBar(
     count: Int,
+    aiReady: Boolean,
     onClear: () -> Unit,
     onFavorite: () -> Unit,
     onAiProcess: () -> Unit,
@@ -1428,7 +1544,9 @@ private fun GallerySelectionBar(
             IconButton(onClick = onClear) { Icon(Icons.Default.Close, contentDescription = "Clear selection") }
             Text("$count selected", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             IconButton(onClick = onFavorite) { Icon(Icons.Default.Star, contentDescription = "Favorite selected") }
-            IconButton(onClick = onAiProcess) { Icon(Icons.Default.AutoAwesome, contentDescription = "AI process selected") }
+            IconButton(onClick = onAiProcess, enabled = aiReady) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = if (aiReady) "Run Gallery AI" else "Set up Gallery AI")
+            }
             IconButton(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = "Share selected") }
             IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Delete selected") }
         }

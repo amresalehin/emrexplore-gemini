@@ -90,10 +90,21 @@ class ExampleRobolectricTest {
     fun database_initializes_and_opens_successfully() {
         val db = com.example.data.local.AppDatabase.getDatabase(context)
         assertNotNull(db)
-        assertNotNull(db.ragDao())
+        assertNotNull(db.brainChunkDao())
+        assertNotNull(db.brainNodeDao())
+        assertNotNull(db.brainEdgeDao())
+        assertNotNull(db.brainEdgeEvidenceDao())
+        assertNotNull(db.brainDocumentDao())
         assertNotNull(db.brainTopicDao())
-        assertNotNull(db.kgDao())
         val writableDb = db.openHelper.writableDatabase
         assertNotNull(writableDb)
+
+        val columns = mutableSetOf<String>()
+        writableDb.query("PRAGMA table_info(brain_chunks)").use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            while (cursor.moveToNext()) columns += cursor.getString(nameIndex)
+        }
+        assertTrue(columns.contains("embeddingJson"))
+        assertTrue(!columns.contains("offlineEmbeddingJson"))
     }
 }

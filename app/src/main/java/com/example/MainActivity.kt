@@ -1,6 +1,7 @@
 package com.example
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -9,10 +10,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -21,6 +18,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
@@ -38,8 +38,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -60,17 +61,21 @@ import com.example.ui.components.getRequiredStoragePermissions
 import com.example.ui.components.isAllFilesAccessGranted
 import com.example.ui.components.launchAllFilesAccessSettings
 import com.example.ui.screens.AiSettingsScreen
+import com.example.ui.screens.BrainSetupScreen
+import com.example.ui.screens.BrainScreen
 import com.example.ui.screens.FileExplorerScreen
 import com.example.ui.screens.FilePropertiesDialog
 import com.example.ui.screens.FullscreenMediaViewer
 import com.example.ui.screens.GalleryScreen
 import com.example.ui.screens.HomeScreen
-import com.example.ui.screens.KnowledgeGraphScreen
 import com.example.ui.screens.MetadataInspectorSheet
+import com.example.ui.screens.RecycleBinDialog
 import com.example.ui.screens.TextEditorScreen
 import com.example.ui.screens.ZipViewerDialog
 import com.example.ui.theme.EmrExploreTheme
 import com.example.ui.viewmodel.MainTab
+import com.example.ui.viewmodel.LocalMainTabVisible
+import com.example.data.ai.isKeylessAiConfig
 import com.example.ui.viewmodel.UnifiedViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -166,48 +171,49 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
         mediaLocationGranted = granted
     }
 
+    var lastAllFilesAccessGranted by remember { mutableStateOf(allFilesAccessGranted) }
+
     val allFilesLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
-        val granted = isAllFilesAccessGranted()
-        allFilesAccessGranted = granted
-        if (granted) {
-            viewModel.onPermissionsGranted()
-        }
+        allFilesAccessGranted = isAllFilesAccessGranted()
+        showAllFilesDialog = false
     }
 
-    // Automatically check and refresh when the activity resumes (e.g. returning from system settings)
+    // Reconcile storage access whenever the user returns from system settings.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         val granted = isAllFilesAccessGranted()
-        allFilesAccessGranted = granted
-        if (granted) {
-            viewModel.onPermissionsGranted()
+        if (granted != lastAllFilesAccessGranted) {
+            if (granted) viewModel.onPermissionsGranted() else viewModel.onPermissionsRevoked()
         }
+        allFilesAccessGranted = granted
+        lastAllFilesAccessGranted = granted
     }
 
     // Accompanist Permissions setup for reading and writing files to external storage
     val storagePermissions = remember { getRequiredStoragePermissions() }
     val storagePermissionsState = rememberMultiplePermissionsState(
         permissions = storagePermissions
-    ) { permissionsResultMap ->
-        val anyGranted = permissionsResultMap.values.any { it }
-        if (anyGranted) {
-            viewModel.onPermissionsGranted()
-        }
+    )
+
+    var lastRuntimePermissionsGranted by remember {
+        mutableStateOf(storagePermissionsState.allPermissionsGranted)
     }
 
-    // Auto-prompt permissions on initial start if not granted
-    LaunchedEffect(Unit) {
-        if (!storagePermissionsState.allPermissionsGranted) {
+    // First-run surfaces are sequenced: finish the All Files Access prompt before the
+    // runtime media permission sheet. This prevents overlapping permission surfaces.
+    LaunchedEffect(showAllFilesDialog, allFilesAccessGranted, storagePermissionsState.allPermissionsGranted) {
+        val runtimeGranted = storagePermissionsState.allPermissionsGranted
+        if (!showAllFilesDialog &&
+            (allFilesAccessGranted || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) &&
+            !runtimeGranted
+        ) {
             storagePermissionsState.launchMultiplePermissionRequest()
         }
-    }
-
-    // Reactively refresh data when permissions are newly granted
-    LaunchedEffect(storagePermissionsState.allPermissionsGranted) {
-        if (storagePermissionsState.allPermissionsGranted && uiState.files.isEmpty()) {
-            viewModel.onPermissionsGranted()
+        if (runtimeGranted != lastRuntimePermissionsGranted) {
+            if (runtimeGranted) viewModel.onPermissionsGranted() else viewModel.onPermissionsRevoked()
         }
+        lastRuntimePermissionsGranted = runtimeGranted
     }
 
     // At a tab root, Back returns to Home. Content-level handlers (folders/viewers/editors)
@@ -242,15 +248,19 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                     .windowInsetsPadding(WindowInsets.navigationBars)
             ) {
                 // Decoupled Background File Operation Progress Banner & Controls
-                FileOperationBanner(
-                    progress = uiState.fileOperationProgress,
-                    onPause = { viewModel.pauseFileOperation() },
-                    onResume = { viewModel.resumeFileOperation() },
-                    onCancel = { viewModel.cancelFileOperation() },
-                    onRetry = { viewModel.retryFileOperation() },
-                    onDismiss = { viewModel.dismissFileOperation() },
-                    onResolveConflict = { resolution -> viewModel.resolveFileConflict(resolution) }
-                )
+                // Keep transient chrome bounded: an active operation gets the priority slot;
+                // the permission prompt returns as soon as the operation is idle.
+                if (uiState.fileOperationProgress.status != com.example.data.model.OperationStatus.IDLE) {
+                    FileOperationBanner(
+                        progress = uiState.fileOperationProgress,
+                        onPause = { viewModel.pauseFileOperation() },
+                        onResume = { viewModel.resumeFileOperation() },
+                        onCancel = { viewModel.cancelFileOperation() },
+                        onRetry = { viewModel.retryFileOperation() },
+                        onDismiss = { viewModel.dismissFileOperation() },
+                        onResolveConflict = { resolution -> viewModel.resolveFileConflict(resolution) }
+                    )
+                }
 
                 // Audio mini-player bar above navigation
                 AudioMiniPlayer(
@@ -272,130 +282,50 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
                     NavigationBarItem(
                         selected = uiState.currentTab == MainTab.HOME,
                         onClick = { viewModel.setTab(MainTab.HOME) },
-                        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                        label = { Text("Home") },
+                        icon = { Icon(Icons.Default.Home, contentDescription = stringResource(com.example.R.string.nav_home_cd)) },
+                        label = { Text(stringResource(com.example.R.string.nav_home)) },
                         modifier = Modifier.testTag("nav_item_home")
                     )
                     NavigationBarItem(
                         selected = uiState.currentTab == MainTab.FILES,
                         onClick = { viewModel.setTab(MainTab.FILES) },
-                        icon = { Icon(Icons.Default.Folder, contentDescription = "Files") },
-                        label = { Text("Files") },
+                        icon = { Icon(Icons.Default.Folder, contentDescription = stringResource(com.example.R.string.nav_files_cd)) },
+                        label = { Text(stringResource(com.example.R.string.nav_files)) },
                         modifier = Modifier.testTag("nav_item_files")
                     )
                     NavigationBarItem(
                         selected = uiState.currentTab == MainTab.GALLERY,
                         onClick = { viewModel.setTab(MainTab.GALLERY) },
-                        icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = "Gallery") },
-                        label = { Text("Gallery") },
+                        icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = stringResource(com.example.R.string.nav_gallery_cd)) },
+                        label = { Text(stringResource(com.example.R.string.nav_gallery)) },
                         modifier = Modifier.testTag("nav_item_gallery")
                     )
                     NavigationBarItem(
                         selected = uiState.currentTab == MainTab.BRAIN,
                         onClick = { viewModel.setTab(MainTab.BRAIN) },
-                        icon = { Icon(Icons.Default.Psychology, contentDescription = "Brain & Graph") },
-                        label = { Text("Brain") },
+                        icon = { Icon(Icons.Default.Psychology, contentDescription = stringResource(com.example.R.string.nav_brain_cd)) },
+                        label = { Text(stringResource(com.example.R.string.nav_brain)) },
                         modifier = Modifier.testTag("nav_item_brain")
                     )
                 }
             }
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            // Permissions Banner for external storage & All Files Access
-            StoragePermissionBanner(
-                permissionsState = storagePermissionsState,
-                allFilesAccessGranted = allFilesAccessGranted,
-                onGrantAllFilesAccess = {
-                    launchAllFilesAccessSettings(context, allFilesLauncher)
-                }
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f)
-            ) {
-                AnimatedContent(
-                    targetState = uiState.currentTab,
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                    label = "TabContent"
-                ) { targetTab ->
-                    key(targetTab) {
-                        when (targetTab) {
-                        MainTab.HOME -> HomeScreen(
-                            uiState = uiState,
-                            viewModel = viewModel
-                        )
-                        MainTab.FILES -> FileExplorerScreen(
-                            uiState = uiState,
-                            viewModel = viewModel
-                        )
-                        MainTab.GALLERY -> GalleryScreen(
-                            uiState = uiState,
-                            viewModel = viewModel,
-                            onRequestMediaLocationPermission = {
-                                if (
-                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                                    !mediaLocationGranted
-                                ) {
-                                    mediaLocationLauncher.launch(
-                                        Manifest.permission.ACCESS_MEDIA_LOCATION
-                                    )
-                                }
-                            }
-                        )
-                        MainTab.BRAIN -> KnowledgeGraphScreen(
-                            nodes = uiState.kgNodes,
-                            edges = uiState.kgEdges,
-                            nodeCount = uiState.kgNodeCount,
-                            edgeCount = uiState.kgEdgeCount,
-                            aiConfig = uiState.aiConfig,
-                            apiConfigured = uiState.aiConfigLoaded && uiState.aiConfig.isEnabled,
-                            isIndexing = uiState.isKgIndexing,
-                            indexingProgress = uiState.kgIndexingProgress,
-                            indexingStatus = uiState.kgIndexingStatus,
-                            ragAnswer = uiState.ragAnswer,
-                            isRagQuerying = uiState.isRagQuerying,
-                            smartSuggestions = uiState.kgSmartSuggestions,
-                            askAiMessages = uiState.askAiMessages,
-                            attachedAiFile = uiState.attachedAiFile,
-                            onAttachFile = { viewModel.attachAiFile(it) },
-                            onDetachFile = { viewModel.detachAiFile() },
-                            onClearChat = { viewModel.clearAskAiChat() },
-                            onQueryRag = { viewModel.queryRag(it) },
-                            onIndexAllFiles = { viewModel.indexAllFilesForKnowledgeGraph() },
-                            onAskAiForFile = { node ->
-                                val path = node.sourceFilePath
-                                if (path != null) {
-                                    val file = File(path)
-                                    if (file.exists()) {
-                                        viewModel.attachAiFile(file)
-                                    }
-                                }
-                                viewModel.queryRag("Tell me about this file: ${node.label}")
-                            },
-                            brainTopics = uiState.brainTopics,
-                            selectedBrainTopic = uiState.brainTopics.firstOrNull { it.id == uiState.selectedBrainTopicId },
-                            brainTopicRelevantFiles = uiState.brainTopicRelevantFiles,
-                            isBrainTopicLoading = uiState.isBrainTopicLoading,
-                            brainTopicStatus = uiState.brainTopicStatus,
-                            onSelectBrainTopic = { viewModel.selectBrainTopic(it) },
-                            onSaveBrainTopic = { heading, description, existingId ->
-                                viewModel.saveBrainTopic(heading, description, existingId)
-                            },
-                            onDeleteBrainTopic = { viewModel.deleteBrainTopic(it) },
-                            onOpenAiSettings = { viewModel.setShowAiSettings(true) },
-                            onOpenFile = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false)) },
-                            onOpenImage = { file -> viewModel.openFile(com.example.data.model.FileItem(name = file.name, path = file.absolutePath, size = file.length(), lastModified = file.lastModified(), isDirectory = false, mimeType = "image/jpeg")) }
-                        )
-                    }
-                    }
-                }
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            if (uiState.fileOperationProgress.status == com.example.data.model.OperationStatus.IDLE && !showAllFilesDialog) {
+                StoragePermissionBanner(
+                    permissionsState = storagePermissionsState,
+                    allFilesAccessGranted = allFilesAccessGranted,
+                    onGrantAllFilesAccess = { launchAllFilesAccessSettings(context, allFilesLauncher) }
+                )
+            }
+            Box(modifier = Modifier.fillMaxSize().weight(1f)) {
+                PersistentTabHost(
+                    uiState = uiState,
+                    viewModel = viewModel,
+                    mediaLocationGranted = mediaLocationGranted,
+                    mediaLocationLauncher = mediaLocationLauncher
+                )
             }
         }
     }
@@ -412,9 +342,48 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             onClose = { viewModel.closeFullscreenMedia() },
             onIndexChange = { newIdx -> viewModel.moveFullscreenMedia(newIdx) },
             onToggleFavorite = { fileItem -> viewModel.toggleFavorite(fileItem) },
+            onTogglePin = { mediaItem ->
+                viewModel.togglePinned(com.example.data.model.FileItem(
+                    name = mediaItem.name,
+                    path = mediaItem.path,
+                    size = mediaItem.size,
+                    lastModified = mediaItem.dateAdded,
+                    isDirectory = false,
+                    mimeType = mediaItem.mimeType
+                ))
+            },
+            isPinned = { mediaItem -> mediaItem.path.isNotBlank() && viewModel.isPinned(mediaItem.path) },
             onInspectMetadata = { mediaItem -> viewModel.inspectMetadata(mediaItem) },
-            onLoadAiMetadata = { mediaItem -> viewModel.getAiMetadata(mediaItem) },
-            onReAnalyzeAi = { mediaItem -> viewModel.reAnalyzeGalleryImage(mediaItem) }
+            onLoadBrainNode = { mediaItem -> viewModel.getBrainNode(mediaItem) },
+            onReindexWithBrain = { mediaItem -> viewModel.reAnalyzeGalleryImage(mediaItem) },
+            onAskAiAboutFile = { mediaItem ->
+                viewModel.closeFullscreenMedia()
+                if (mediaItem.path.isNotBlank()) {
+                    viewModel.askAiAboutFile(File(mediaItem.path))
+                }
+            },
+            onEdit = { mediaItem ->
+                val editIntent = Intent(Intent.ACTION_EDIT).apply {
+                    setDataAndType(
+                        mediaItem.uri,
+                        mediaItem.mimeType.ifBlank { if (mediaItem.isVideo) "video/*" else "image/*" }
+                    )
+                    addFlags(
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                    clipData = android.content.ClipData.newRawUri("media", mediaItem.uri)
+                }
+                runCatching {
+                    context.startActivity(Intent.createChooser(editIntent, "Edit " + mediaItem.name))
+                }.onFailure {
+                    viewModel.showMessage("No compatible editor is installed for this file")
+                }
+            },
+            onDelete = { mediaItem ->
+                viewModel.deleteFile(mediaItem.path, toTrash = true)
+                viewModel.closeFullscreenMedia()
+            }
         )
     }
 
@@ -427,7 +396,10 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
             onContentChange = { viewModel.updateTextContent(it) },
             onToggleEdit = { viewModel.toggleTextEditing(it) },
             onSave = { viewModel.saveTextFile() },
-            onClose = { viewModel.closeTextEditor() }
+            onSaveAndClose = { viewModel.saveTextFile(closeWhenDone = true) },
+            onDiscard = { viewModel.discardTextChanges() },
+            onClose = { viewModel.closeTextEditor() },
+            isDirty = uiState.textFileContent != uiState.savedTextFileContent
         )
     }
 
@@ -479,6 +451,15 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
         )
     }
 
+    // Recycle Bin is a modal overlay so Files/Home context is preserved.
+    if (uiState.isRecycleBinOpen) {
+        RecycleBinDialog(
+            uiState = uiState,
+            viewModel = viewModel,
+            onDismiss = { viewModel.closeRecycleBin() }
+        )
+    }
+
     // 5. Initial All Files Access Prompt Dialog
     if (showAllFilesDialog && !allFilesAccessGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         AllFilesAccessDialog(
@@ -494,25 +475,110 @@ fun MainAppRoot(viewModel: UnifiedViewModel) {
 
     // 6. Dedicated AI & BYOK Provider Settings Screen
     if (uiState.isAiSettingsScreenOpen) {
-        AiSettingsScreen(
-            currentConfig = uiState.aiConfig,
-            nodeCount = uiState.kgNodeCount,
-            edgeCount = uiState.kgEdgeCount,
-            chunkCount = uiState.kgChunkCount,
-            isTestingConnection = uiState.isTestingAiConnection,
-            testResult = uiState.aiTestResult,
-            onSaveConfig = { viewModel.saveAiConfig(it) },
-            onTestConnection = { viewModel.testAiConnection(it) },
-            availableModels = uiState.aiModels,
-            availableVisionModels = uiState.aiVisionModels,
-            availableEmbeddingModels = uiState.aiEmbeddingModels,
-            availableMultimodalEmbeddingModels = uiState.aiMultimodalEmbeddingModels,
-            isFetchingModels = uiState.isFetchingAiModels,
-            modelFetchError = uiState.aiModelFetchError,
-            onFetchModels = { viewModel.fetchAiModels(it) },
-            onReindexAll = { viewModel.indexAllFilesForKnowledgeGraph() },
-            onClearGraph = { viewModel.clearKnowledgeGraph() },
-            onNavigateBack = { viewModel.setShowAiSettings(false) }
-        )
+        if (!uiState.aiConfig.brainSetupCompleted) {
+            BrainSetupScreen(
+                currentConfig = uiState.aiConfig,
+                offlineModels = uiState.offlineBrainModels,
+                availableModels = uiState.aiModels,
+                availableVisionModels = uiState.aiVisionModels,
+                availableEmbeddingModels = uiState.aiEmbeddingModels,
+                availableMultimodalEmbeddingModels = uiState.aiMultimodalEmbeddingModels,
+                isFetchingModels = uiState.isFetchingAiModels,
+                modelFetchError = uiState.aiModelFetchError,
+                onFetchModels = { viewModel.fetchAiModels(it) },
+                onFetchEmbeddingModels = { viewModel.fetchEmbeddingModels(it) },
+                onDownloadOllamaModel = { config, model -> viewModel.downloadOllamaModel(config, model) },
+                isDownloadingOllamaModel = uiState.isDownloadingOllamaModel,
+                ollamaDownloadProgress = uiState.ollamaDownloadProgress,
+                ollamaDownloadStatus = uiState.ollamaDownloadStatus,
+                onSelectOfflineModel = { viewModel.selectOnDeviceBrainModel(it) },
+                onSaveConfig = { viewModel.saveAiConfig(it) },
+                onNavigateBack = { viewModel.setShowAiSettings(false) }
+            )
+        } else {
+            AiSettingsScreen(
+                currentConfig = uiState.aiConfig,
+                isTestingConnection = uiState.isTestingAiConnection,
+                testResult = uiState.aiTestResult,
+                onSaveConfig = { viewModel.saveAiConfig(it) },
+                onTestConnection = { viewModel.testAiConnection(it) },
+                availableModels = uiState.aiModels,
+                availableVisionModels = uiState.aiVisionModels,
+                availableEmbeddingModels = uiState.aiEmbeddingModels,
+                availableMultimodalEmbeddingModels = uiState.aiMultimodalEmbeddingModels,
+                offlineBrainModels = uiState.offlineBrainModels,
+                selectedOfflineBrainModelId = uiState.onDeviceBrainModel.modelId,
+                onSelectOfflineBrainModel = { viewModel.selectOnDeviceBrainModel(it) },
+                isFetchingModels = uiState.isFetchingAiModels,
+                modelFetchError = uiState.aiModelFetchError,
+                onFetchModels = { viewModel.fetchAiModels(it) },
+                onFetchEmbeddingModels = { viewModel.fetchEmbeddingModels(it) },
+                onDownloadOllamaModel = { config, model -> viewModel.downloadOllamaModel(config, model) },
+                isDownloadingOllamaModel = uiState.isDownloadingOllamaModel,
+                ollamaDownloadProgress = uiState.ollamaDownloadProgress,
+                ollamaDownloadStatus = uiState.ollamaDownloadStatus,
+                onTestEmbeddingConnection = { viewModel.testEmbeddingConnection(it) },
+                embeddingTestResult = uiState.embeddingTestResult,
+                onDeviceBrainModel = uiState.onDeviceBrainModel,
+                onDownloadOnDeviceBrainModel = { viewModel.downloadOnDeviceBrainModel() },
+                onDeleteOnDeviceBrainModel = { viewModel.deleteOnDeviceBrainModel() },
+                onNavigateBack = { viewModel.setShowAiSettings(false) }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+private fun PersistentTabHost(
+    uiState: com.example.ui.viewmodel.UiState,
+    viewModel: UnifiedViewModel,
+    mediaLocationGranted: Boolean,
+    mediaLocationLauncher: androidx.activity.result.ActivityResultLauncher<String>
+) {
+    Box(Modifier.fillMaxSize()) {
+        when (uiState.currentTab) {
+            MainTab.HOME -> {
+                CompositionLocalProvider(LocalMainTabVisible provides true) {
+                    HomeScreen(uiState, viewModel)
+                }
+            }
+            MainTab.FILES -> {
+                CompositionLocalProvider(LocalMainTabVisible provides true) {
+                    FileExplorerScreen(uiState, viewModel)
+                }
+            }
+            MainTab.GALLERY -> {
+                CompositionLocalProvider(LocalMainTabVisible provides true) {
+                    GalleryScreen(
+                        uiState = uiState,
+                        viewModel = viewModel,
+                        onOpenBrainSettings = { viewModel.setShowAiSettings(true) },
+                        onRequestMediaLocationPermission = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !mediaLocationGranted) {
+                                mediaLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+                            }
+                        }
+                    )
+                }
+            }
+            MainTab.BRAIN -> {
+                CompositionLocalProvider(LocalMainTabVisible provides true) {
+                    BrainScreen(
+                        aiConfig = uiState.aiConfig,
+                        ragAnswer = uiState.ragAnswer,
+                        isRagQuerying = uiState.isRagQuerying,
+                        askAiMessages = uiState.askAiMessages,
+                        attachedAiFile = uiState.attachedAiFile,
+                        onAttachFile = viewModel::attachAiFile,
+                        onDetachFile = viewModel::detachAiFile,
+                        onClearChat = viewModel::clearAskAiChat,
+                        onQueryRag = viewModel::queryRag,
+                        onCancelRag = viewModel::cancelRagQuery,
+                        onOpenAiSettings = { viewModel.setShowAiSettings(true) }
+                    )
+                }
+            }
+        }
     }
 }

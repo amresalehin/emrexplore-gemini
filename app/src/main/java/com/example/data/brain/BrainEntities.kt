@@ -1,0 +1,196 @@
+package com.example.data.brain
+
+import androidx.room.Entity
+import androidx.room.Index
+import androidx.room.PrimaryKey
+
+object BrainIndexStates {
+    const val READY = "READY"
+    const val FAILED = "FAILED"
+}
+
+@Entity(
+    tableName = "brain_documents",
+    indices = [
+        Index(value = ["lastModified"]),
+        Index(value = ["state"]),
+        Index(value = ["modelSignature"])
+    ]
+)
+data class BrainDocumentEntity(
+    @PrimaryKey val path: String,
+    val name: String,
+    val mimeType: String = "",
+    val size: Long = 0L,
+    val lastModified: Long = 0L,
+    val contentHash: String = "",
+    // File AI owns these persisted semantics. Brain only consumes them.
+    val aiSummary: String = "",
+    val aiTagsJson: String = "[]",
+    val aiEntitiesJson: String = "[]",
+    val aiRelationsJson: String = "[]",
+    val aiModel: String = "",
+    val aiUpdatedAt: Long = 0L,
+    val modelSignature: String = "",
+    val state: String = BrainIndexStates.READY,
+    val error: String? = null,
+    val indexedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "brain_chunks",
+    indices = [
+        Index(value = ["filePath"]),
+        Index(value = ["embeddingModel"]),
+        Index(value = ["indexedAt"])
+    ]
+)
+data class BrainChunkEntity(
+    @PrimaryKey val id: String,
+    val filePath: String,
+    val chunkIndex: Int,
+    val content: String,
+    val embeddingJson: String,
+    val embeddingModel: String,
+    val imageEmbeddingJson: String = "",
+    val imageEmbeddingModel: String = "",
+    val locator: String = "",
+    val pageNumber: Int? = null,
+    val indexedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "brain_image_profiles",
+    indices = [Index(value = ["visionModel"]), Index(value = ["updatedAt"])]
+)
+data class BrainImageProfileEntity(
+    @PrimaryKey val filePath: String,
+    val fileName: String,
+    val ocrText: String = "",
+    val metadataSummary: String = "",
+    val description: String = "",
+    val tagsJson: String = "[]",
+    val entitiesJson: String = "[]",
+    val relationsJson: String = "[]",
+    val visionModel: String = "",
+    val imageEmbeddingModel: String = "",
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "brain_nodes",
+    indices = [
+        Index(value = ["label"]),
+        Index(value = ["nodeType"]),
+        Index(value = ["sourceFilePath"])
+    ]
+)
+data class BrainNodeEntity(
+    @PrimaryKey val id: String,
+    val label: String,
+    val nodeType: String,
+    val sourceFilePath: String? = null,
+    val thumbnailUri: String? = null,
+    val summary: String = "",
+    val degree: Int = 0,
+    val confidence: Float = 1.0f,
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "brain_edges",
+    primaryKeys = ["sourceNodeId", "targetNodeId", "relation"],
+    indices = [
+        Index(value = ["sourceNodeId"]),
+        Index(value = ["targetNodeId"]),
+        Index(value = ["relation"]),
+        Index(value = ["evidenceSource"])
+    ]
+)
+data class BrainEdgeEntity(
+    val sourceNodeId: String,
+    val targetNodeId: String,
+    val relation: String,
+    val weight: Float = 1.0f,
+    val evidenceSnippet: String = "",
+    val evidenceSource: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "brain_edge_evidence",
+    primaryKeys = ["sourceNodeId", "targetNodeId", "relation", "evidenceSource"],
+    indices = [
+        Index(value = ["evidenceSource"]),
+        Index(value = ["sourceNodeId", "targetNodeId", "relation"])
+    ]
+)
+data class BrainEdgeEvidenceEntity(
+    val sourceNodeId: String,
+    val targetNodeId: String,
+    val relation: String,
+    val evidenceSource: String,
+    val evidenceSnippet: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "brain_topics",
+    indices = [Index(value = ["updatedAt"])]
+)
+data class BrainTopicEntity(
+    @PrimaryKey val id: String,
+    val heading: String,
+    val description: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "brain_runs",
+    indices = [
+        Index(value = ["filePath"]),
+        Index(value = ["startedAt"])
+    ]
+)
+data class BrainRunEntity(
+    @PrimaryKey val id: String,
+    val filePath: String? = null,
+    val operation: String,
+    val success: Boolean,
+    val error: String? = null,
+    val startedAt: Long,
+    val finishedAt: Long = System.currentTimeMillis()
+)
+
+
+object BrainVectorSyncStates {
+    const val PENDING = "PENDING"
+    const val IN_FLIGHT = "IN_FLIGHT"
+    const val FAILED = "FAILED"
+    const val COMPLETED = "COMPLETED"
+}
+
+object BrainVectorSyncOperations {
+    const val UPSERT = "UPSERT"
+    const val DELETE = "DELETE"
+    const val CLEAR = "CLEAR"
+}
+
+@Entity(
+    tableName = "brain_vector_sync_operations",
+    indices = [
+        Index(value = ["state", "createdAt"]),
+        Index(value = ["chunkId", "createdAt"])
+    ]
+)
+data class BrainVectorSyncOperationEntity(
+    @PrimaryKey val id: String,
+    val operation: String,
+    val chunkId: String? = null,
+    val state: String = BrainVectorSyncStates.PENDING,
+    val attempts: Int = 0,
+    val lastError: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)

@@ -1,14 +1,19 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.Manifest
+import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.ExplorerPreferencesEntity
 import com.example.data.local.FavoriteEntity
+import com.example.data.local.PinboardStore
 import com.example.data.local.IndexStatusEntity
 import com.example.data.local.RecentEntity
 import com.example.data.local.TrashEntity
@@ -29,25 +34,32 @@ import com.example.data.media.MediaRepository
 import com.example.data.media.FullscreenMediaSource
 import com.example.data.media.MediaViewerWindow
 import com.example.data.media.MediaMetadataRepository
-import com.example.data.ai.KnowledgeGraphRepository
-import com.example.data.ai.GalleryAiOperationStore
+import com.example.data.media.MediaAlbumRepository
+import com.example.data.ai.BrainTargetedOperationStore
+import com.example.data.brain.BrainRepository
 import com.example.data.ai.AvailableAiModel
-import com.example.data.ai.ConnectedDotsItem
+import com.example.data.ai.EmbeddingProviderType
+import com.example.data.brain.ConnectedDotsItem
 import com.example.data.ai.ConnectionTestResult
-import com.example.data.ai.RagAnswer
-import com.example.data.ai.AttachedAiFile
-import com.example.data.ai.AskAiChatMessage
+import com.example.data.brain.RagAnswer
+import com.example.data.brain.AttachedAiFile
+import com.example.data.brain.AskAiChatMessage
 import com.example.data.local.AiProviderConfigEntity
-import com.example.data.local.BrainTopicEntity
-import com.example.data.local.KgEdgeEntity
-import com.example.data.local.KgNodeEntity
+import com.example.data.brain.BrainTopicEntity
+import com.example.data.brain.BrainEdgeEntity
+import com.example.data.brain.BrainNodeEntity
 import com.example.data.local.MediaMetadataEntity
 import com.example.data.metadata.MetadataExtractor
 import com.example.data.metadata.MetadataReport
-import com.example.data.ai.BrainTopicFile
+import com.example.data.brain.BrainTopicFile
+import com.example.data.brain.BrainModelDownloadWorker
+import com.example.data.brain.OnDeviceBrainModelStatus
+import com.example.data.brain.OnDeviceBrainModelUiState
+import com.example.data.brain.OnDeviceBrainModelSpec
 import com.example.data.model.ConflictResolution
 import com.example.data.model.FileOperationProgress
 import com.example.data.model.OperationStatus
+import com.example.data.model.OperationType
 import com.example.data.performance.PerformanceMetrics
 import com.example.data.performance.PerformanceMonitor
 import com.example.data.repository.FileRepository
@@ -69,7 +81,11 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import androidx.paging.PagingData
+import androidx.paging.map
 import androidx.paging.cachedIn
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.BackoffPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -77,6 +93,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 enum class MainTab {
     HOME,
@@ -132,10 +149,8 @@ data class UiState(
     val currentTab: MainTab = MainTab.HOME,
     // File Explorer
     val currentPath: String = "",
-    val explorerTabs: List<ExplorerTab> = listOf(
-        ExplorerTab(id = "default_tab", title = "Storage", path = "/storage/emulated/0")
-    ),
-    val activeExplorerTabId: String = "default_tab",
+    val explorerTabs: List<ExplorerTab> = emptyList(),
+    val activeExplorerTabId: String = "",
     val files: List<FileItem> = emptyList(),
     val searchQuery: String = "",
     val sortOption: SortOption = SortOption.NAME_ASC,
@@ -178,8 +193,7 @@ data class UiState(
     val gallerySearchSubmittedQuery: String = "",
     val gallerySearchActive: Boolean = false,
     val galleryRecentSearches: List<String> = emptyList(),
-    val allMediaItems: List<MediaItem> = emptyList(),
-    val mediaItems: List<MediaItem> = emptyList(),
+    val galleryGroupBy: String = "Month",
     val mediaAlbums: List<MediaAlbum> = emptyList(),
     val selectedAlbum: MediaAlbum? = null,
     val galleryColumns: Int = 3,
@@ -190,6 +204,7 @@ data class UiState(
     // Browse / Categories
     val selectedCategory: CategoryType? = null,
     val categoryFiles: List<FileItem> = emptyList(),
+    val isCategoryLoading: Boolean = false,
     val categoryCounts: Map<CategoryType, Int> = emptyMap(),
     val categorySizes: Map<CategoryType, Long> = emptyMap(),
 
@@ -205,6 +220,7 @@ data class UiState(
     val fullscreenLoading: Boolean = false,
     val activeTextFile: FileItem? = null,
     val textFileContent: String = "",
+    val savedTextFileContent: String = "",
     val isEditingText: Boolean = false,
     val activeZipFile: FileItem? = null,
     val zipEntries: List<String> = emptyList(),
@@ -224,6 +240,7 @@ data class UiState(
     val isRecycleBinOpen: Boolean = false,
     val favoritesList: List<FavoriteEntity> = emptyList(),
     val recentsList: List<RecentEntity> = emptyList(),
+    val pinnedItems: List<com.example.data.local.PinnedItem> = emptyList(),
 
     // Home Tab Search
     val homeSearchQuery: String = "",
@@ -236,29 +253,30 @@ data class UiState(
     val performanceMetrics: PerformanceMetrics = PerformanceMetrics(),
 
     // Knowledge Graph & RAG State
-    val kgNodes: List<KgNodeEntity> = emptyList(),
-    val kgEdges: List<KgEdgeEntity> = emptyList(),
-    val kgNodeCount: Int = 0,
-    val kgEdgeCount: Int = 0,
-    val kgChunkCount: Int = 0,
+    val brainNodes: List<BrainNodeEntity> = emptyList(),
+    val brainEdges: List<BrainEdgeEntity> = emptyList(),
+    val brainNodeCount: Int = 0,
+    val brainEdgeCount: Int = 0,
+    val brainChunkCount: Int = 0,
     val aiConfig: AiProviderConfigEntity = AiProviderConfigEntity(),
     val isTestingAiConnection: Boolean = false,
     val aiTestResult: ConnectionTestResult? = null,
     val isAiSettingsScreenOpen: Boolean = false,
     val aiConfigLoaded: Boolean = false,
-    val isKgIndexing: Boolean = false,
+    val isBrainIndexing: Boolean = false,
+    val isBrainIndexingPaused: Boolean = false,
     val isGalleryAiProcessing: Boolean = false,
     val isGalleryAiPaused: Boolean = false,
     val galleryAiProgress: Float = 0f,
     val galleryAiStatus: String = "Ready",
-    val kgIndexingProgress: Float = 0f,
-    val kgIndexingStatus: String = "Ready",
+    val brainIndexingProgress: Float = 0f,
+    val brainIndexingStatus: String = "Ready",
     val ragAnswer: RagAnswer? = null,
     val isRagQuerying: Boolean = false,
     val askAiMessages: List<AskAiChatMessage> = emptyList(),
     val attachedAiFile: AttachedAiFile? = null,
     val activeFileConnectedDots: List<ConnectedDotsItem> = emptyList(),
-    val kgSmartSuggestions: List<String> = emptyList(),
+    val brainSmartSuggestions: List<String> = emptyList(),
     val brainTopics: List<BrainTopicEntity> = emptyList(),
     val selectedBrainTopicId: String? = null,
     val brainTopicRelevantFiles: List<BrainTopicFile> = emptyList(),
@@ -268,8 +286,15 @@ data class UiState(
     val aiVisionModels: List<AvailableAiModel> = emptyList(),
     val aiEmbeddingModels: List<AvailableAiModel> = emptyList(),
     val aiMultimodalEmbeddingModels: List<AvailableAiModel> = emptyList(),
+    val offlineBrainModels: List<OnDeviceBrainModelSpec> = emptyList(),
     val isFetchingAiModels: Boolean = false,
     val aiModelFetchError: String? = null,
+    val embeddingTestResult: ConnectionTestResult? = null,
+    val isDownloadingOllamaModel: Boolean = false,
+    val ollamaDownloadModel: String = "",
+    val ollamaDownloadProgress: Float = 0f,
+    val ollamaDownloadStatus: String = "",
+    val onDeviceBrainModel: OnDeviceBrainModelUiState = OnDeviceBrainModelUiState(),
 
     // User Feedback
     val userMessage: String? = null
@@ -277,18 +302,29 @@ data class UiState(
 
 class UnifiedViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = FileRepository(application)
+    private val brainRepository = BrainRepository(application)
+    private val repository = FileRepository(application) { relocatedPaths, removedPaths ->
+        brainRepository.reconcileMutation(relocatedPaths, removedPaths)
+    }
     private val metadataExtractor = MetadataExtractor(application.applicationContext)
     private val mediaRepository = MediaRepository(application)
+    private val mediaAlbumRepository = MediaAlbumRepository(application.applicationContext)
     private val mediaMetadataRepository = MediaMetadataRepository(application.applicationContext)
-    private val kgRepository = KnowledgeGraphRepository(application)
-    private val galleryAiStore = GalleryAiOperationStore(application.applicationContext)
+    private val galleryAiStore = BrainTargetedOperationStore(application.applicationContext)
     private val galleryFilterFlow = MutableStateFlow<MediaFilter?>(MediaFilter.ALL)
     private val galleryDateFilterFlow = MutableStateFlow(GalleryDateFilter.ALL)
     private val galleryLocationFilterFlow = MutableStateFlow(GalleryLocationFilter.ALL)
     private val galleryRefreshFlow = MutableStateFlow(0L)
     private val gallerySearchFlow = MutableStateFlow("")
     private val gallerySortFlow = MutableStateFlow(GallerySortOption.DATE_DESC)
+
+    fun setGalleryGroupBy(groupBy: String) {
+        _uiState.update { it.copy(galleryGroupBy = groupBy) }
+    }
+
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+    fun albumPagingFlow(albumId: String): Flow<PagingData<MediaItem>> =
+        mediaRepository.albumPager(albumId, _uiState.value.gallerySortOption)
 
     private fun todayDateString(): String =
         java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
@@ -348,7 +384,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     sort = sort
                 )
             } else if (filter == null) {
-                mediaRepository.favoritesPager()
+                mediaRepository.favoritesPager(sort)
             } else {
                 mediaRepository.pager(filter, sort)
             }
@@ -362,14 +398,29 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     private var loadFilesJob: Job? = null
     private var fullscreenLoadJob: Job? = null
     private var explorerSearchJob: Job? = null
+    private var ragQueryJob: Job? = null
+    private var ragRequestId: Long = 0L
+    private var permissionRefreshJob: Job? = null
+    private var categoryLoadJob: Job? = null
+    private val pinboardStore = PinboardStore(getApplication())
 
     init {
+        // Brain is a consumer now. Cancel any pre-refactor Brain indexing work left by an older app build.
+        WorkManager.getInstance(getApplication<Application>())
+            .cancelUniqueWork(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
+
         // Collect decoupled file operations progress
         viewModelScope.launch {
             repository.operationManager.progress.collect { progress ->
                 _uiState.update { it.copy(fileOperationProgress = progress) }
                 if (progress.status == OperationStatus.COMPLETED) {
+                    if (progress.type == OperationType.COPY || progress.type == OperationType.MOVE) {
+                        _uiState.update { state ->
+                            if (state.clipboard != null) state.copy(clipboard = null) else state
+                        }
+                    }
                     loadFiles()
+                    refreshGallery()
                     loadStorageStats()
                 }
             }
@@ -407,7 +458,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
             // File indexing may continue, but Brain/AI indexing is strictly opt-in.
             launch(Dispatchers.IO) {
-                if (prefs.autoIndexOnStart && repository.totalIndexedCount() == 0) {
+                if (prefs.autoIndexOnStart && hasStorageAccess() && repository.totalIndexedCount() == 0) {
                     repository.indexStorage(force = false)
                 }
             }
@@ -416,8 +467,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         // Collect Room Database Flows
         // Suggestions are stable during a sync; refresh once at startup and again after indexing completes.
         viewModelScope.launch(Dispatchers.IO) {
-            val suggestions = try { kgRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
-            _uiState.update { it.copy(kgSmartSuggestions = suggestions) }
+            val suggestions = try { brainRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
+            _uiState.update { it.copy(brainSmartSuggestions = suggestions) }
         }
         viewModelScope.launch {
             repository.preferencesFlow.collectLatest { prefs ->
@@ -447,12 +498,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
-        // Gallery AI is WorkManager-backed and its queue/checkpoint is durable outside
+        // Gallery Brain processing is WorkManager-backed and its queue/checkpoint is durable outside
         // the ViewModel. Reattaching here keeps the UI accurate after process death.
         _uiState.update { it.copy(isGalleryAiPaused = galleryAiStore.isPaused()) }
         viewModelScope.launch {
             WorkManager.getInstance(getApplication<Application>())
-                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
+                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.GalleryVlmWorker.UNIQUE_NAME)
                 .collectLatest { works ->
                     val work = works.firstOrNull() ?: run {
                         if (galleryAiStore.isPaused()) {
@@ -463,7 +514,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                     isGalleryAiProcessing = false,
                                     isGalleryAiPaused = true,
                                     galleryAiProgress = if (total > 0) completed.toFloat() / total else 0f,
-                                    galleryAiStatus = "AI processing paused"
+                                    galleryAiStatus = "Gallery AI paused"
                                 )
                             }
                         }
@@ -482,17 +533,23 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                 isGalleryAiProcessing = true,
                                 isGalleryAiPaused = false,
                                 galleryAiProgress = if (total > 0) current.toFloat() / total else 0f,
-                                galleryAiStatus = if (path.isBlank()) "Processing gallery AI..." else "AI: " + File(path).name + " ($current/$total)"
+                                galleryAiStatus = if (path.isBlank()) {
+                                    "Gallery AI: analyzing → offline embedding"
+                                } else {
+                                    val visionModel = _uiState.value.aiConfig.visionModel.ifBlank { "VLM" }
+                                    "Gallery AI: " + File(path).name + " ($current/$total) · " + visionModel + " → offline embedding"
+                                }
                             )
                         }
                         androidx.work.WorkInfo.State.SUCCEEDED -> {
-                            val processed = work.outputData.getInt("processed", current)
+                            val processed = work.outputData.getInt("indexed", current)
+                            galleryAiStore.clear()
                             _uiState.update {
                                 it.copy(
                                     isGalleryAiProcessing = false,
                                     isGalleryAiPaused = false,
                                     galleryAiProgress = 1f,
-                                    galleryAiStatus = "AI enrichment complete ($processed processed)"
+                                    galleryAiStatus = "Gallery AI complete ($processed processed)"
                                 )
                             }
                             refreshGallery()
@@ -500,11 +557,16 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                         }
                         androidx.work.WorkInfo.State.FAILED -> {
                             val hasPending = galleryAiStore.hasPendingWork()
+                            val error = work.outputData.getString("error")
                             _uiState.update {
                                 it.copy(
                                     isGalleryAiProcessing = false,
                                     isGalleryAiPaused = hasPending,
-                                    galleryAiStatus = if (hasPending) "AI stopped — Resume to retry" else "AI processing failed"
+                                    galleryAiStatus = if (hasPending) {
+                                        "Gallery AI stopped — Resume to retry" + (error?.let { ": $it" } ?: "")
+                                    } else {
+                                        error ?: "Brain processing failed"
+                                    }
                                 )
                             }
                         }
@@ -517,7 +579,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                                     isGalleryAiProcessing = false,
                                     isGalleryAiPaused = paused,
                                     galleryAiProgress = if (total > 0) completed.toFloat() / total else 0f,
-                                    galleryAiStatus = if (paused) "AI processing paused" else "AI processing cancelled"
+                                    galleryAiStatus = if (paused) "Gallery AI paused" else "Gallery AI cancelled"
                                 )
                             }
                         }
@@ -527,46 +589,68 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
 
 
-        // Brain indexing is WorkManager-backed. Reattach the UI to the durable
-        // unique work after process recreation instead of relying on ViewModel state.
+        // Brain no longer owns indexing. Legacy Brain indexing work is cancelled below; File AI and Gallery AI own enrichment.
+        // On-device semantic model download is durable and independent of Brain indexing.
+        viewModelScope.launch(Dispatchers.IO) {
+            val specs = brainRepository.getOnDeviceBrainModelSpecs()
+            _uiState.update {
+                it.copy(
+                    offlineBrainModels = specs,
+                    onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState()
+                )
+            }
+        }
         viewModelScope.launch {
             WorkManager.getInstance(getApplication<Application>())
-                .getWorkInfosForUniqueWorkFlow(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
+                .getWorkInfosForUniqueWorkFlow(BrainModelDownloadWorker.UNIQUE_NAME)
                 .collectLatest { works ->
                     val work = works.firstOrNull() ?: return@collectLatest
                     val progress = work.progress
-                    val total = progress.getInt("total", 0)
-                    val current = progress.getInt("current", 0)
-                    val path = progress.getString("path").orEmpty()
                     when (work.state) {
-                        androidx.work.WorkInfo.State.RUNNING -> _uiState.update {
-                            it.copy(
-                                isKgIndexing = true,
-                                kgIndexingProgress = if (total > 0) current.toFloat() / total else 0f,
-                                kgIndexingStatus = if (path.isBlank()) "Indexing Brain..." else "Indexing " + File(path).name + " ($current/$total)"
-                            )
-                        }
-                        androidx.work.WorkInfo.State.ENQUEUED -> _uiState.update {
-                            it.copy(isKgIndexing = true, kgIndexingStatus = "Brain indexing queued...")
-                        }
-                        androidx.work.WorkInfo.State.SUCCEEDED -> {
+                        androidx.work.WorkInfo.State.ENQUEUED,
+                        androidx.work.WorkInfo.State.RUNNING -> {
+                            val p = progress.getFloat("progress", 0f).coerceIn(0f, 1f)
+                            val downloaded = progress.getLong("downloadedBytes", 0L)
+                            val total = progress.getLong("totalBytes", 0L)
+                            val spec = brainRepository.getOnDeviceBrainModelSpec()
                             _uiState.update {
                                 it.copy(
-                                    isKgIndexing = false,
-                                    kgIndexingProgress = 1f
+                                    onDeviceBrainModel = OnDeviceBrainModelUiState(
+                                        status = OnDeviceBrainModelStatus.DOWNLOADING,
+                                        modelId = spec.id,
+                                        displayName = spec.displayName,
+                                        sizeLabel = spec.sizeLabel,
+                                        progress = p,
+                                        downloadedBytes = downloaded,
+                                        totalBytes = total
+                                    )
                                 )
                             }
-                            refreshBrainTopicFiles(_uiState.value.selectedBrainTopicId)
                         }
-                        else -> _uiState.update {
-                            it.copy(
-                                isKgIndexing = false,
-                                kgIndexingProgress = it.kgIndexingProgress
-                            )
+                        androidx.work.WorkInfo.State.SUCCEEDED -> {
+                            val ready = brainRepository.getOnDeviceBrainModelState()
+                            _uiState.update { it.copy(onDeviceBrainModel = ready) }
+                            // BrainModelDownloadWorker enqueues the unique Brain index work
+                            // after the model is installed. Do not start a second indexing job
+                            // from the ViewModel; WorkManager is the single owner of that handoff.
                         }
+                        androidx.work.WorkInfo.State.FAILED -> {
+                            val error = work.outputData.getString("error") ?: "Model download failed"
+                            _uiState.update {
+                                it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(error))
+                            }
+                        }
+                        androidx.work.WorkInfo.State.CANCELLED -> {
+                            // Cancellation is a terminal unavailable state, not a download error.
+                            _uiState.update {
+                                it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState())
+                            }
+                        }
+                        else -> Unit
                     }
                 }
         }
+
         viewModelScope.launch {
             repository.favoritesFlow.collectLatest { favs ->
                 _uiState.update { it.copy(favoritesList = favs) }
@@ -582,20 +666,21 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.update { it.copy(recentsList = recents) }
             }
         }
+        _uiState.update { it.copy(pinnedItems = pinboardStore.getAll()) }
 
         // Collect Knowledge Graph and AI config flows
         viewModelScope.launch {
-            kgRepository.allNodesFlow.collectLatest { nodes ->
-                _uiState.update { it.copy(kgNodes = nodes) }
+            brainRepository.allNodesFlow.collectLatest { nodes ->
+                _uiState.update { it.copy(brainNodes = nodes) }
             }
         }
         viewModelScope.launch {
-            kgRepository.allEdgesFlow.collectLatest { edges ->
-                _uiState.update { it.copy(kgEdges = edges) }
+            brainRepository.allEdgesFlow.collectLatest { edges ->
+                _uiState.update { it.copy(brainEdges = edges) }
             }
         }
         viewModelScope.launch {
-            kgRepository.brainTopicsFlow.collectLatest { topics ->
+            brainRepository.brainTopicsFlow.collectLatest { topics ->
                 val previousId = _uiState.value.selectedBrainTopicId
                 val selectedId = previousId?.takeIf { id -> topics.any { it.id == id } }
                     ?: topics.firstOrNull()?.id
@@ -612,7 +697,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
 
         viewModelScope.launch {
-            kgRepository.aiConfigFlow.collectLatest { config ->
+            brainRepository.aiConfigFlow.collectLatest { config ->
                 val selectedTopicId = _uiState.value.selectedBrainTopicId
                 _uiState.update {
                     it.copy(
@@ -626,18 +711,18 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         viewModelScope.launch {
-            kgRepository.chunkCountFlow.collectLatest { count ->
-                _uiState.update { it.copy(kgChunkCount = count) }
+            brainRepository.chunkCountFlow.collectLatest { count ->
+                _uiState.update { it.copy(brainChunkCount = count) }
             }
         }
         viewModelScope.launch {
-            kgRepository.nodeCountFlow.collectLatest { count ->
-                _uiState.update { it.copy(kgNodeCount = count) }
+            brainRepository.nodeCountFlow.collectLatest { count ->
+                _uiState.update { it.copy(brainNodeCount = count) }
             }
         }
         viewModelScope.launch {
-            kgRepository.edgeCountFlow.collectLatest { count ->
-                _uiState.update { it.copy(kgEdgeCount = count) }
+            brainRepository.edgeCountFlow.collectLatest { count ->
+                _uiState.update { it.copy(brainEdgeCount = count) }
             }
         }
 
@@ -647,8 +732,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(currentTab = tab) }
         when (tab) {
             MainTab.HOME -> {
-                loadStorageStats()
-                calculateCategoryCounts()
+                // Home is state-backed; switching tabs must not re-query storage or
+                // flash/scroll-reset the dashboard. Mutations refresh these values explicitly.
             }
             MainTab.FILES -> {
                 if (_uiState.value.files.isEmpty()) {
@@ -677,7 +762,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun openNewExplorerTab(path: String = repository.rootPath) {
+    fun openNewExplorerTab(path: String = _uiState.value.currentPath.ifBlank { repository.rootPath }) {
         val targetPath = if (path.isNotBlank() && File(path).exists()) path else repository.rootPath
         val title = resolveTabTitle(targetPath)
         val newTab = ExplorerTab(
@@ -707,6 +792,12 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 activeExplorerTabId = tabId,
                 currentPath = targetTab.path,
                 searchQuery = "",
+                explorerSearchActive = false,
+                explorerSearchResults = emptyList(),
+                explorerFilterType = ExplorerFilterType.ALL,
+                explorerDateFilter = ExplorerDateFilter.ALL,
+                explorerSizeFilter = ExplorerSizeFilter.ALL,
+                explorerFilterBarVisible = false,
                 isSelectionMode = false,
                 selectedPaths = emptySet()
             )
@@ -767,7 +858,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             val cached = repository.getCachedFiles(path, _uiState.value.showHidden)
             if (!cached.isNullOrEmpty()) {
                 val sorted = sortFiles(cached, _uiState.value.sortOption)
-                val initialItems = if (sorted.size <= 300) sorted else sorted.take(120)
+                val initialItems = sorted.take(120)
                 val hasMore = sorted.size > initialItems.size
                 _uiState.update {
                     it.copy(
@@ -859,19 +950,53 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         } else false
     }
 
-    fun onPermissionsGranted() {
-        val root = repository.rootPath
-        val current = _uiState.value.currentPath
-        val filesDir = getApplication<Application>().filesDir.absolutePath
-        val shouldNavigateToRoot = (current == filesDir || !File(current).exists() || !File(current).canRead()) && root != filesDir
-        if (shouldNavigateToRoot) {
-            navigateToDirectory(root)
-        } else {
-            loadFiles()
+    private fun hasStorageAccess(): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Environment.isExternalStorageManager()
+            } else {
+                val app = getApplication<Application>()
+                val readGranted = ContextCompat.checkSelfPermission(
+                    app,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                ) == PackageManager.PERMISSION_GRANTED
+                val writeGranted = Build.VERSION.SDK_INT > Build.VERSION_CODES.P ||
+                    ContextCompat.checkSelfPermission(
+                        app,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                    ) == PackageManager.PERMISSION_GRANTED
+                readGranted && writeGranted
+            }
+        } catch (_: Throwable) {
+            false
         }
-        loadStorageStats()
-        calculateCategoryCounts()
-        // Storage permission alone must never start Brain/AI indexing.
+    }
+
+    fun onPermissionsGranted() {
+        if (permissionRefreshJob?.isActive == true || !hasStorageAccess()) return
+        permissionRefreshJob = viewModelScope.launch {
+            try {
+                val root = repository.rootPath
+                val current = _uiState.value.currentPath
+                val filesDir = getApplication<Application>().filesDir.absolutePath
+                val shouldNavigateToRoot = (current == filesDir || !File(current).exists() || !File(current).canRead()) && root != filesDir
+                if (shouldNavigateToRoot) {
+                    navigateToDirectory(root)
+                } else {
+                    loadFiles()
+                }
+                loadStorageStats()
+                calculateCategoryCounts()
+                refreshGallery()
+            } finally {
+                permissionRefreshJob = null
+            }
+        }
+    }
+
+    fun onPermissionsRevoked() {
+        permissionRefreshJob?.cancel()
+        permissionRefreshJob = null
     }
 
     fun loadFiles(path: String = _uiState.value.currentPath) {
@@ -1263,12 +1388,31 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun selectAll() {
-        val allPaths = _uiState.value.files.map { it.path }.toSet()
+        val state = _uiState.value
+        val queryOrFilterActive =
+            state.searchQuery.isNotBlank() ||
+                state.explorerSearchActive ||
+                state.explorerFilterType != ExplorerFilterType.ALL ||
+                state.explorerDateFilter != ExplorerDateFilter.ALL ||
+                state.explorerSizeFilter != ExplorerSizeFilter.ALL
+
+        if (!queryOrFilterActive) {
+            viewModelScope.launch {
+                val all = repository.getFiles(state.currentPath, state.showHidden)
+                _uiState.update { current ->
+                    current.copy(
+                        selectedPaths = all.map { it.path }.toSet(),
+                        isSelectionMode = all.isNotEmpty()
+                    )
+                }
+            }
+            return
+        }
+
+        val source = if (queryOrFilterActive) state.explorerSearchResults else state.files
+        val allPaths = source.map { it.path }.toSet()
         _uiState.update {
-            it.copy(
-                selectedPaths = allPaths,
-                isSelectionMode = allPaths.isNotEmpty()
-            )
+            it.copy(selectedPaths = allPaths, isSelectionMode = allPaths.isNotEmpty())
         }
     }
 
@@ -1325,12 +1469,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             repository.operationManager.startMove(clip.sourcePaths, targetDir)
         }
 
-        _uiState.update {
-            it.copy(
-                clipboard = null,
-                userMessage = "$actionName operation started in background"
-            )
-        }
+        _uiState.update { it.copy(userMessage = "$actionName operation started in background") }
     }
 
     // File Operation Controls
@@ -1388,7 +1527,6 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val ok = repository.renameFile(oldPath, newName.trim())
             if (ok) {
-                kgRepository.removeIndexedSource(oldPath)
                 showMessage("Renamed to '$newName'")
                 loadFiles()
                 refreshGallery()
@@ -1399,36 +1537,24 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun deleteFile(path: String, toTrash: Boolean = true) {
-        viewModelScope.launch {
-            val ok = repository.deleteFile(path, toTrash)
-            if (ok) {
-                kgRepository.removeIndexedSource(path)
-                showMessage(if (toTrash) "Moved to Recycle Bin" else "Permanently deleted")
-                loadFiles()
-                refreshGallery()
-                loadStorageStats()
-            } else {
-                showMessage("Delete failed")
-            }
+        repository.operationManager.startDelete(listOf(path), toTrash)
+        _uiState.update {
+            it.copy(userMessage = if (toTrash) "Delete operation started" else "Permanent delete started")
+        }
+    }
+
+    fun deletePathsAfterConfirmation(paths: List<String>, toTrash: Boolean = true) {
+        val selected = paths.distinct().filter { it.isNotBlank() }
+        if (selected.isEmpty()) return
+        repository.operationManager.startDelete(selected, toTrash)
+        clearSelection()
+        _uiState.update {
+            it.copy(userMessage = if (toTrash) "Delete operation started" else "Permanent delete started")
         }
     }
 
     fun deleteSelected(toTrash: Boolean = true) {
-        val selected = _uiState.value.selectedPaths.toList()
-        viewModelScope.launch {
-            var count = 0
-            for (p in selected) {
-                if (repository.deleteFile(p, toTrash)) {
-                    kgRepository.removeIndexedSource(p)
-                    count++
-                }
-            }
-            clearSelection()
-            showMessage(if (toTrash) "Moved $count items to Recycle Bin" else "Deleted $count items")
-            loadFiles()
-            refreshGallery()
-            loadStorageStats()
-        }
+        deletePathsAfterConfirmation(_uiState.value.selectedPaths.toList(), toTrash)
     }
 
     fun zipSelected(zipName: String) {
@@ -1555,6 +1681,15 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun refreshGallery() {
         galleryRefreshFlow.value = System.currentTimeMillis()
+        refreshGalleryAlbums()
+    }
+
+    fun refreshGalleryAlbums() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!hasStorageAccess()) return@launch
+            val albums = runCatching { mediaAlbumRepository.getAlbums() }.getOrElse { emptyList() }
+            _uiState.update { it.copy(mediaAlbums = albums) }
+        }
     }
 
     // Gallery selection is intentionally bounded to items the user explicitly selects.
@@ -1586,10 +1721,9 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     fun processGalleryAiSelection() {
         val selected = _uiState.value.gallerySelection.filter { !it.isVideo }
         if (selected.isEmpty()) return
-        val config = _uiState.value.aiConfig
-        if (!isBrainAiConfigured(config)) {
-            _uiState.update { it.copy(isAiSettingsScreenOpen = true) }
-            showMessage("Configure and save an AI provider before processing gallery images")
+        val brainConfig = _uiState.value.aiConfig
+        if (EmbeddingProviderType.fromString(brainConfig.embeddingProviderType) == EmbeddingProviderType.OFFLINE && !brainRepository.isOnDeviceBrainModelReady()) {
+            showMessage("Download the selected on-device text embedding model before Brain processing")
             return
         }
 
@@ -1599,7 +1733,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         if (paths.size > 80) {
-            showMessage("AI processing is limited to 80 selected images per action")
+            showMessage("Brain processing is limited to 80 selected images per action")
             return
         }
 
@@ -1620,25 +1754,35 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 isGalleryAiProcessing = true,
                 isGalleryAiPaused = false,
                 galleryAiProgress = if (total > 0) completed.toFloat() / total else 0f,
-                galleryAiStatus = "AI processing queued..."
+                galleryAiStatus = "Gallery AI queued..."
             )
         }
 
-        enqueueGalleryAiWorker()
+        enqueueGalleryBrainWorker()
     }
 
-    private fun enqueueGalleryAiWorker() {
-        val workRequest = OneTimeWorkRequestBuilder<com.example.data.ai.GalleryAiWorker>().build()
+    private fun enqueueGalleryBrainWorker() {
+        val paths = galleryAiStore.pendingPaths()
+        if (paths.isEmpty()) return
+        val forcePaths = paths.filter { galleryAiStore.isForce(it) }
+        val request = OneTimeWorkRequestBuilder<com.example.data.ai.GalleryVlmWorker>()
+            .setInputData(
+                androidx.work.workDataOf(
+                    "paths" to paths.toTypedArray(),
+                    "forcePaths" to forcePaths.toTypedArray()
+                )
+            )
+            .build()
         WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
-            com.example.data.ai.GalleryAiWorker.UNIQUE_NAME,
-            ExistingWorkPolicy.KEEP,
-            workRequest
+            com.example.data.ai.GalleryVlmWorker.UNIQUE_NAME,
+            ExistingWorkPolicy.REPLACE,
+            request
         )
     }
 
     fun pauseGalleryAi() {
         if (!galleryAiStore.hasPendingWork()) {
-            showMessage("No gallery AI processing is active")
+            showMessage("No Gallery AI processing is active")
             return
         }
         galleryAiStore.setPaused(true)
@@ -1646,11 +1790,26 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             it.copy(
                 isGalleryAiProcessing = false,
                 isGalleryAiPaused = true,
-                galleryAiStatus = "Pausing AI processing..."
+                galleryAiStatus = "Pausing Brain processing..."
             )
         }
         WorkManager.getInstance(getApplication<Application>())
-            .cancelUniqueWork(com.example.data.ai.GalleryAiWorker.UNIQUE_NAME)
+            .cancelUniqueWork(com.example.data.ai.GalleryVlmWorker.UNIQUE_NAME)
+    }
+
+    fun cancelGalleryAi() {
+        val hadWork = galleryAiStore.hasPendingWork() || galleryAiStore.isPaused()
+        WorkManager.getInstance(getApplication<Application>())
+            .cancelUniqueWork(com.example.data.ai.GalleryVlmWorker.UNIQUE_NAME)
+        galleryAiStore.clear()
+        _uiState.update {
+            it.copy(
+                isGalleryAiProcessing = false,
+                isGalleryAiPaused = false,
+                galleryAiProgress = 0f,
+                galleryAiStatus = if (hadWork) "Brain processing cancelled" else "Ready"
+            )
+        }
     }
 
     fun resumeGalleryAi() {
@@ -1667,44 +1826,49 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             showMessage("No pending gallery AI work")
             return
         }
-        val config = _uiState.value.aiConfig
-        if (!isBrainAiConfigured(config)) {
-            _uiState.update { it.copy(isAiSettingsScreenOpen = true) }
-            showMessage("Configure and save an AI provider before resuming gallery AI")
+        val brainConfig = _uiState.value.aiConfig
+        if (EmbeddingProviderType.fromString(brainConfig.embeddingProviderType) == EmbeddingProviderType.OFFLINE && !brainRepository.isOnDeviceBrainModelReady()) {
+            showMessage("Download the selected on-device text embedding model before Brain processing")
             return
         }
+
         galleryAiStore.setPaused(false)
         _uiState.update {
             it.copy(
                 isGalleryAiProcessing = true,
                 isGalleryAiPaused = false,
-                galleryAiStatus = "Resuming AI processing..."
+                galleryAiStatus = "Resuming Gallery AI..."
             )
         }
-        enqueueGalleryAiWorker()
+        enqueueGalleryBrainWorker()
     }
 
     fun reAnalyzeGalleryImage(item: MediaItem) {
         if (item.isVideo || item.path.isBlank()) return
-        val config = _uiState.value.aiConfig
-        if (!isBrainAiConfigured(config)) {
-            _uiState.update { it.copy(isAiSettingsScreenOpen = true) }
-            showMessage("Configure and save an AI provider before re-analyzing")
+        val brainConfig = _uiState.value.aiConfig
+        if (EmbeddingProviderType.fromString(brainConfig.embeddingProviderType) == EmbeddingProviderType.OFFLINE && !brainRepository.isOnDeviceBrainModelReady()) {
+            showMessage("Download the selected on-device text embedding model before Brain processing")
             return
         }
+
         startGalleryAiProcessing(listOf(item.path), force = true)
-        showMessage("Re-analysis queued for ${item.name}")
+        showMessage("Gallery AI re-analysis queued for ${item.name}")
     }
 
-    suspend fun getAiMetadata(item: MediaItem): MediaMetadataEntity? =
-        mediaMetadataRepository.getByPath(item.path)
+    suspend fun getBrainNode(item: MediaItem): BrainNodeEntity? =
+        brainRepository.getBrainNode(item.path)
 
     fun deleteGallerySelection(toTrash: Boolean = true) {
         val selected = _uiState.value.gallerySelection
         if (selected.isEmpty()) return
         viewModelScope.launch {
             var count = 0
-            selected.forEach { media -> if (repository.deleteFile(media.path, toTrash)) count++ }
+            selected.forEach { media ->
+                if (repository.deleteFile(media.path, toTrash)) {
+                    brainRepository.removeIndexedSource(media.path)
+                    count++
+                }
+            }
             clearGallerySelection()
             refreshGallery()
             loadStorageStats()
@@ -1760,7 +1924,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                         query = effectiveQuery,
                         filter = filter,
                         favoritesOnly = searchFavoriteOnly,
-                        radius = 2
+                        radius = 2,
+                        sort = stateBeforeOpen.gallerySortOption
                     )
                     _uiState.update {
                         it.copy(
@@ -1775,12 +1940,18 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 }
 
                 val resolvedSource = effectiveSource ?: FullscreenMediaSource.ALL
-                val absoluteIndex = mediaRepository.viewerPosition(item, resolvedSource, albumId)
+                val absoluteIndex = mediaRepository.viewerPosition(
+                    item,
+                    resolvedSource,
+                    albumId,
+                    stateBeforeOpen.gallerySortOption
+                )
                 val window = mediaRepository.loadViewerWindow(
                     resolvedSource,
                     absoluteIndex,
                     radius = 2,
-                    albumId = albumId
+                    albumId = albumId,
+                    sort = stateBeforeOpen.gallerySortOption
                 )
                 _uiState.update {
                     it.copy(
@@ -1864,7 +2035,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                         query = state.fullscreenSearchQuery,
                         filter = filter,
                         favoritesOnly = state.fullscreenSearchFavoriteOnly,
-                        radius = 2
+                        radius = 2,
+                        sort = state.gallerySortOption
                     )
                     _uiState.update {
                         it.copy(
@@ -1882,7 +2054,8 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     source,
                     targetIndex,
                     radius = 2,
-                    albumId = state.fullscreenAlbumId
+                    albumId = state.fullscreenAlbumId,
+                    sort = state.gallerySortOption
                 )
                 _uiState.update {
                     it.copy(
@@ -1913,15 +2086,40 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     // --- Browse / Categories Actions ---
 
     fun selectCategory(category: CategoryType?) {
-        _uiState.update { it.copy(selectedCategory = category, isRecycleBinOpen = false) }
-        if (category != null) {
-            viewModelScope.launch {
-                val list = repository.getFilesByCategory(category)
-                _uiState.update { it.copy(categoryFiles = list) }
+        categoryLoadJob?.cancel()
+        if (category == null) {
+            _uiState.update {
+                it.copy(
+                    selectedCategory = null,
+                    categoryFiles = emptyList(),
+                    isCategoryLoading = false,
+                    isRecycleBinOpen = false
+                )
             }
-        } else {
             calculateCategoryCounts()
             loadStorageStats()
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                selectedCategory = category,
+                categoryFiles = emptyList(),
+                isCategoryLoading = true,
+                isRecycleBinOpen = false
+            )
+        }
+
+        categoryLoadJob = viewModelScope.launch(Dispatchers.IO) {
+            val list = repository.getFilesByCategory(category)
+            if (isActive && _uiState.value.selectedCategory == category) {
+                _uiState.update {
+                    it.copy(
+                        categoryFiles = list,
+                        isCategoryLoading = false
+                    )
+                }
+            }
         }
     }
 
@@ -1989,6 +2187,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 it.copy(
                     activeTextFile = fileItem,
                     textFileContent = text,
+                    savedTextFileContent = text,
                     isEditingText = false
                 )
             }
@@ -1996,10 +2195,27 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun closeTextEditor() {
+        val state = _uiState.value
+        if (state.activeTextFile != null && state.textFileContent != state.savedTextFileContent) {
+            showMessage("Unsaved changes — save or discard them before closing.")
+            return
+        }
         _uiState.update {
             it.copy(
                 activeTextFile = null,
                 textFileContent = "",
+                savedTextFileContent = "",
+                isEditingText = false
+            )
+        }
+    }
+
+    fun discardTextChanges() {
+        _uiState.update {
+            it.copy(
+                activeTextFile = null,
+                textFileContent = "",
+                savedTextFileContent = "",
                 isEditingText = false
             )
         }
@@ -2013,17 +2229,20 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(textFileContent = newContent) }
     }
 
-    fun saveTextFile() {
+    fun saveTextFile(closeWhenDone: Boolean = false) {
         val file = _uiState.value.activeTextFile ?: return
         val content = _uiState.value.textFileContent
         viewModelScope.launch {
             val ok = repository.writeText(file.path, content)
             if (ok) {
-                showMessage("Saved changes to ${file.name}")
-                _uiState.update { it.copy(isEditingText = false) }
+                showMessage("Saved changes to " + file.name + ". Run File AI to update its AI data and embedding.")
+                _uiState.update {
+                    it.copy(isEditingText = false, savedTextFileContent = content)
+                }
                 loadFiles()
+                if (closeWhenDone) closeTextEditor()
             } else {
-                showMessage("Failed to save ${file.name}")
+                showMessage("Failed to save " + file.name)
             }
         }
     }
@@ -2180,6 +2399,17 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // Favorites & Recents
+    fun togglePinned(fileItem: FileItem) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val pinned = pinboardStore.toggle(fileItem)
+            val items = pinboardStore.getAll()
+            _uiState.update { it.copy(pinnedItems = items) }
+            showMessage(if (pinned) "Pinned to Pinboard" else "Removed from Pinboard")
+        }
+    }
+
+    fun isPinned(path: String): Boolean = pinboardStore.isPinned(path)
+
     fun toggleFavorite(fileItem: FileItem) {
         viewModelScope.launch {
             val isNowFav = repository.toggleFavorite(fileItem)
@@ -2202,6 +2432,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             if (ok) {
                 showMessage("Restored ${trashEntity.name}")
                 loadFiles()
+                refreshGallery()
                 loadStorageStats()
             } else {
                 showMessage("Could not restore ${trashEntity.name}")
@@ -2228,7 +2459,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun openRecycleBin() {
-        _uiState.update { it.copy(isRecycleBinOpen = true, selectedCategory = null, currentTab = MainTab.HOME) }
+        _uiState.update { it.copy(isRecycleBinOpen = true, selectedCategory = null) }
     }
 
     fun closeRecycleBin() {
@@ -2243,13 +2474,25 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun saveAiConfig(config: AiProviderConfigEntity) {
         viewModelScope.launch {
+            val canonicalTextEmbedding = config.textEmbeddingModel.trim().ifBlank { config.embeddingModel.trim() }
             val saved = config.copy(
                 apiKey = config.apiKey.trim(),
-                baseUrl = config.baseUrl.trim()
+                baseUrl = config.baseUrl.trim(),
+                embeddingApiKey = config.embeddingApiKey.trim(),
+                embeddingBaseUrl = config.embeddingBaseUrl.trim(),
+                embeddingProviderType = EmbeddingProviderType.fromString(config.embeddingProviderType).name,
+                textEmbeddingModel = canonicalTextEmbedding,
+                // Keep legacy + new fields synchronized for existing databases.
+                embeddingModel = canonicalTextEmbedding,
+                multimodalEmbeddingModel = config.multimodalEmbeddingModel.trim(),
+                vectorDatabaseType = com.example.data.ai.VectorDatabaseType.fromString(config.vectorDatabaseType).name,
+                vectorDatabaseBaseUrl = config.vectorDatabaseBaseUrl.trim(),
+                vectorDatabaseApiKey = config.vectorDatabaseApiKey.trim(),
+                vectorDatabaseCollection = config.vectorDatabaseCollection.trim().ifBlank { "emrexplore_brain" }
             )
-            kgRepository.saveAiConfig(saved)
+            brainRepository.saveAiConfig(saved)
             _uiState.update { it.copy(aiConfig = saved, aiConfigLoaded = true) }
-            showMessage("AI settings saved")
+            showMessage("AI settings saved. Existing File AI and Gallery AI embeddings are kept.")
         }
     }
 
@@ -2257,13 +2500,15 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _uiState.update { it.copy(isFetchingAiModels = true, aiModelFetchError = null) }
             try {
-                val all = kgRepository.listAiModels(config)
+                val all = brainRepository.listAiModels(config)
                 _uiState.update {
                     it.copy(
-                        aiModels = all.filter { model -> model.supportsChat },
-                        aiVisionModels = all.filter { model -> model.supportsChat && model.supportsVision },
-                        aiEmbeddingModels = all.filter { model -> model.supportsEmbedding && !model.supportsMultimodalEmbedding },
-                        aiMultimodalEmbeddingModels = all.filter { model -> model.supportsMultimodalEmbedding },
+                        // Keep the complete endpoint catalog in every model list. The UI applies
+                        // role-specific capability filters, so discovery never silently discards models.
+                        aiModels = all,
+                        aiVisionModels = all,
+                        aiEmbeddingModels = all,
+                        aiMultimodalEmbeddingModels = all,
                         isFetchingAiModels = false
                     )
                 }
@@ -2274,43 +2519,137 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun fetchEmbeddingModels(config: AiProviderConfigEntity) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isFetchingAiModels = true, aiModelFetchError = null) }
+            try {
+                val all = brainRepository.listEmbeddingModels(config)
+                _uiState.update {
+                    it.copy(
+                        aiEmbeddingModels = all,
+                        aiMultimodalEmbeddingModels = all,
+                        isFetchingAiModels = false
+                    )
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isFetchingAiModels = false, aiModelFetchError = e.message ?: "Could not fetch embedding models") }
+            }
+        }
+    }
+
+    fun downloadOllamaModel(config: AiProviderConfigEntity, modelId: String) {
+        val model = modelId.trim()
+        if (model.isBlank() || _uiState.value.isDownloadingOllamaModel) return
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isDownloadingOllamaModel = true,
+                    ollamaDownloadModel = model,
+                    ollamaDownloadProgress = 0f,
+                    ollamaDownloadStatus = "Starting download…"
+                )
+            }
+            try {
+                brainRepository.pullOllamaModel(config, model) { completed, total, status ->
+                    _uiState.update {
+                        it.copy(
+                            ollamaDownloadProgress = if (total > 0L) (completed.toFloat() / total.toFloat()).coerceIn(0f, 1f) else it.ollamaDownloadProgress,
+                            ollamaDownloadStatus = status
+                        )
+                    }
+                }
+                _uiState.update {
+                    it.copy(
+                        isDownloadingOllamaModel = false,
+                        ollamaDownloadProgress = 1f,
+                        ollamaDownloadStatus = "Download complete"
+                    )
+                }
+                fetchAiModels(config.copy(chatModel = model))
+                showMessage("Ollama model downloaded: $model")
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                _uiState.update {
+                    it.copy(
+                        isDownloadingOllamaModel = false,
+                        ollamaDownloadStatus = error.message ?: "Ollama download failed"
+                    )
+                }
+                showMessage(error.message ?: "Could not download Ollama model")
+            }
+        }
+    }
+
+    fun testEmbeddingConnection(config: AiProviderConfigEntity) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(embeddingTestResult = null) }
+            val result = brainRepository.testEmbeddingConnection(config)
+            _uiState.update { it.copy(embeddingTestResult = result) }
+        }
+    }
+
     fun testAiConnection(config: AiProviderConfigEntity) {
         viewModelScope.launch {
             _uiState.update { it.copy(isTestingAiConnection = true, aiTestResult = null) }
-            val result = kgRepository.testConnection(config)
+            val result = brainRepository.testConnection(config)
             _uiState.update { it.copy(isTestingAiConnection = false, aiTestResult = result) }
         }
     }
 
-    fun clearKnowledgeGraph() {
+    fun clearBrainIndex() {
         viewModelScope.launch {
-            kgRepository.clearGraph()
+            brainRepository.clearGraph()
             _uiState.update { it.copy(ragAnswer = null, activeFileConnectedDots = emptyList()) }
             showMessage("Knowledge Graph cleared")
         }
     }
 
-    fun attachAiFile(file: File) {
+    fun attachAiFile(file: File): AttachedAiFile {
         val ext = file.extension.lowercase()
         val isImg = ext in setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp")
-        val mime = if (isImg) "image/$ext" else if (ext == "pdf") "application/pdf" else "application/octet-stream"
-        _uiState.update {
-            it.copy(
-                attachedAiFile = AttachedAiFile(
-                    file = file,
-                    name = file.name,
-                    path = file.absolutePath,
-                    mimeType = mime,
-                    size = file.length(),
-                    isImage = isImg
-                )
-            )
+        val mime = if (isImg) "image/" + if (ext == "jpg") "jpeg" else ext else if (ext == "pdf") "application/pdf" else "application/octet-stream"
+        val attached = AttachedAiFile(
+            file = file,
+            name = file.name,
+            path = file.absolutePath,
+            mimeType = mime,
+            size = file.length(),
+            isImage = isImg
+        )
+        _uiState.update { it.copy(attachedAiFile = attached) }
+        return attached
+    }
+
+    fun processFileAi(file: File) {
+        if (file.isDirectory) return
+        if (file.extension.lowercase() in setOf("jpg","jpeg","png","webp","gif","heic","heif","mp4","mov","mkv","webm")) {
+            showMessage("Images belong to Gallery AI. Open Gallery and run Gallery AI.")
+            return
         }
+        if (!brainRepository.isOnDeviceBrainModelReady()) {
+            showMessage("Download an offline embedding model before running File AI.")
+            return
+        }
+        val work = OneTimeWorkRequestBuilder<com.example.data.ai.FileAiWorker>()
+            .setInputData(androidx.work.workDataOf("paths" to arrayOf(file.absolutePath)))
+            .build()
+        WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
+            "file-ai-" + file.absolutePath.hashCode(),
+            ExistingWorkPolicy.REPLACE,
+            work
+        )
+        showMessage("File AI started for " + file.name)
     }
 
     fun askAiAboutFile(file: File) {
-        attachAiFile(file)
+        if (!file.exists() || !file.isFile || !file.canRead()) {
+            showMessage("This file is no longer readable.")
+            return
+        }
+        val attached = attachAiFile(file)
         setTab(MainTab.BRAIN)
+        queryRag("Tell me about this file: ${file.name}", attachedOverride = attached)
     }
 
     fun detachAiFile() {
@@ -2321,16 +2660,39 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(askAiMessages = emptyList(), ragAnswer = null) }
     }
 
+    fun cancelRagQuery() {
+        ragQueryJob?.cancel()
+        ragQueryJob = null
+        _uiState.update { it.copy(isRagQuerying = false) }
+    }
+
     fun queryRag(question: String, attachedOverride: AttachedAiFile? = null) {
-        if (question.isBlank()) return
+        val cleanQuestion = question.trim()
+        if (cleanQuestion.isBlank()) {
+            _uiState.update { it.copy(ragAnswer = RagAnswer("Please enter a question.", isSuccessful = false)) }
+            showMessage("Please enter a question")
+            return
+        }
+        if (cleanQuestion.length > 4000) {
+            val message = "Question is too long. Please keep it under 4,000 characters."
+            _uiState.update { it.copy(ragAnswer = RagAnswer(message, isSuccessful = false)) }
+            showMessage(message)
+            return
+        }
+
+        ragQueryJob?.cancel()
+        val requestId = ++ragRequestId
         val attached = attachedOverride ?: _uiState.value.attachedAiFile
+        val priorHistory = _uiState.value.askAiMessages
+            .filter { !it.isError }
+            .filter { message ->
+                if (attached != null) message.attachedFile?.path == attached.path
+                else message.attachedFile == null
+            }
+            .takeLast(8)
+            .map { if (it.isUser) "User" to it.text else "AI" to it.text }
 
-        val userMsg = AskAiChatMessage(
-            isUser = true,
-            text = question.trim(),
-            attachedFile = attached
-        )
-
+        val userMsg = AskAiChatMessage(isUser = true, text = cleanQuestion, attachedFile = attached)
         _uiState.update {
             it.copy(
                 isRagQuerying = true,
@@ -2338,17 +2700,22 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
             )
         }
 
-        viewModelScope.launch {
-            val history = _uiState.value.askAiMessages
-                .filter { !it.isError }
-                .takeLast(8)
-                .map { if (it.isUser) "User" to it.text else "AI" to it.text }
-
-            val answer = if (attached != null && attached.file.exists()) {
-                kgRepository.queryFileSpecifically(attached.file, question.trim(), history)
-            } else {
-                kgRepository.queryRag(question.trim(), history)
+        ragQueryJob = viewModelScope.launch {
+            val answer = try {
+                if (attached != null) {
+                    brainRepository.queryFileSpecifically(attached.file, cleanQuestion, priorHistory)
+                } else {
+                    brainRepository.queryRag(cleanQuestion, priorHistory)
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                RagAnswer(
+                    answer = "Brain query failed: " + (error.message ?: "unknown error"),
+                    isSuccessful = false
+                )
             }
+
+            if (!isActive) return@launch
 
             val aiMsg = AskAiChatMessage(
                 isUser = false,
@@ -2357,13 +2724,15 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 referencedNodes = answer.connectedNodes,
                 isError = !answer.isSuccessful
             )
-
             _uiState.update {
                 it.copy(
                     isRagQuerying = false,
                     ragAnswer = answer,
                     askAiMessages = it.askAiMessages + aiMsg
                 )
+            }
+            if (ragRequestId == requestId) {
+                ragQueryJob = null
             }
         }
     }
@@ -2385,7 +2754,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     fun saveBrainTopic(heading: String, description: String, existingId: String?) {
         viewModelScope.launch {
             try {
-                val saved = kgRepository.saveBrainTopic(existingId, heading, description)
+                val saved = brainRepository.saveBrainTopic(existingId, heading, description)
                 _uiState.update {
                     it.copy(
                         selectedBrainTopicId = saved.id,
@@ -2402,7 +2771,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
 
     fun deleteBrainTopic(topicId: String) {
         viewModelScope.launch {
-            kgRepository.deleteBrainTopic(topicId)
+            brainRepository.deleteBrainTopic(topicId)
             val remaining = _uiState.value.brainTopics.filterNot { it.id == topicId }
             val nextId = remaining.firstOrNull()?.id
             _uiState.update {
@@ -2442,16 +2811,16 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                 )
             }
             try {
-                val files = kgRepository.getRelevantFilesForBrainTopic(topic, _uiState.value.aiConfig, 12)
+                val files = brainRepository.getRelevantFilesForBrainTopic(topic, _uiState.value.aiConfig, 12)
                 val config = _uiState.value.aiConfig
                 _uiState.update {
                     it.copy(
                         brainTopicRelevantFiles = files,
                         isBrainTopicLoading = false,
-                        brainTopicStatus = when {
-                            files.isNotEmpty() -> "${files.size} relevant files found"
-                            !config.isEnabled || config.embeddingModel.isBlank() -> "Set an enabled embedding model to find files semantically"
-                            else -> "No semantic matches found"
+                        brainTopicStatus = if (files.isNotEmpty()) {
+                            "${files.size} relevant files found"
+                        } else {
+                            "No Brain matches found"
                         }
                     )
                 }
@@ -2461,7 +2830,7 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(
                         brainTopicRelevantFiles = emptyList(),
                         isBrainTopicLoading = false,
-                        brainTopicStatus = "Semantic matching unavailable: ${error.message ?: "embedding failed"}"
+                        brainTopicStatus = "Brain topic search failed: ${error.message ?: "unknown error"}"
                     )
                 }
             }
@@ -2469,80 +2838,144 @@ class UnifiedViewModel(application: Application) : AndroidViewModel(application)
     }
     fun loadConnectedDotsForFile(filePath: String) {
         viewModelScope.launch {
-            val dots = kgRepository.getConnectedDotsForFile(filePath)
+            val dots = brainRepository.getConnectedDotsForFile(filePath)
             _uiState.update { it.copy(activeFileConnectedDots = dots) }
         }
     }
 
-    private fun isBrainAiConfigured(config: AiProviderConfigEntity): Boolean {
-        val provider = com.example.data.ai.ProviderType.fromString(config.providerType)
-        val keylessProvider = provider in setOf(
-            com.example.data.ai.ProviderType.OLLAMA,
-            com.example.data.ai.ProviderType.OPENAI_COMPATIBLE,
-            com.example.data.ai.ProviderType.CUSTOM
-        )
-        return config.isEnabled && (keylessProvider || config.apiKey.isNotBlank())
+    fun selectOnDeviceBrainModel(modelId: String) {
+        if (_uiState.value.onDeviceBrainModel.status == OnDeviceBrainModelStatus.DOWNLOADING) return
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                brainRepository.selectOnDeviceBrainModel(modelId)
+                brainRepository.getOnDeviceBrainModelState()
+            }.onSuccess { state ->
+                _uiState.update { it.copy(onDeviceBrainModel = state) }
+                showMessage("Offline embedding model selected. Existing AI data and embeddings are unchanged; rerun File AI or Gallery AI explicitly to regenerate vectors.")
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(error.message))
+                }
+                showMessage(error.message ?: "Could not select offline Brain model")
+            }
+        }
     }
 
-    fun indexAllFilesForKnowledgeGraph() {
-        if (_uiState.value.isKgIndexing) return
-        val config = _uiState.value.aiConfig
-        if (!isBrainAiConfigured(config)) {
-            _uiState.update { it.copy(kgIndexingStatus = "Configure and save an AI provider first") }
-            return
-        }
+    fun downloadOnDeviceBrainModel() {
+        val state = _uiState.value.onDeviceBrainModel
+        if (state.status == OnDeviceBrainModelStatus.DOWNLOADING) return
+
+        val request = OneTimeWorkRequestBuilder<BrainModelDownloadWorker>()
+            .setInputData(
+                androidx.work.workDataOf(
+                    BrainModelDownloadWorker.KEY_MODEL_ID to state.modelId
+                )
+            )
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+            .build()
+
         _uiState.update {
             it.copy(
-                isKgIndexing = true,
-                kgIndexingProgress = 0f,
-                kgIndexingStatus = "Brain indexing queued..."
+                onDeviceBrainModel = it.onDeviceBrainModel.copy(
+                    status = OnDeviceBrainModelStatus.DOWNLOADING,
+                    progress = 0f,
+                    downloadedBytes = 0L,
+                    totalBytes = 0L,
+                    error = null
+                )
             )
         }
-        val request = OneTimeWorkRequestBuilder<com.example.data.ai.BrainIndexWorker>()
-            .setInputData(androidx.work.workDataOf("manual" to true))
-            .build()
+
         WorkManager.getInstance(getApplication<Application>()).enqueueUniqueWork(
-            com.example.data.ai.BrainIndexWorker.UNIQUE_NAME,
+            BrainModelDownloadWorker.UNIQUE_NAME,
             ExistingWorkPolicy.REPLACE,
             request
         )
-        viewModelScope.launch {
-            WorkManager.getInstance(getApplication<Application>())
-                .getWorkInfoByIdFlow(request.id)
-                .collectLatest { info ->
-                    if (info == null) return@collectLatest
-                    val progress = info.progress
-                    val total = progress.getInt("total", 0)
-                    val current = progress.getInt("current", 0)
-                    val path = progress.getString("path").orEmpty()
-                    when (info.state) {
-                        androidx.work.WorkInfo.State.RUNNING -> _uiState.update { state ->
-                            state.copy(
-                                isKgIndexing = true,
-                                kgIndexingProgress = if (total > 0) current.toFloat() / total else 0f,
-                                kgIndexingStatus = if (path.isBlank()) "Indexing Brain..." else "Connecting dots: ${File(path).name} ($current/$total)"
-                            )
-                        }
-                        androidx.work.WorkInfo.State.SUCCEEDED -> {
-                            val suggestions = try { kgRepository.getSmartSuggestions() } catch (_: Exception) { emptyList() }
-                            _uiState.update { state ->
-                                state.copy(isKgIndexing = false, kgIndexingProgress = 1f, kgIndexingStatus = "Brain indexing complete", kgSmartSuggestions = suggestions)
-                            }
-                            return@collectLatest
-                        }
-                        androidx.work.WorkInfo.State.FAILED -> {
-                            val error = info.outputData.getString("error") ?: "Brain indexing failed"
-                            _uiState.update { state -> state.copy(isKgIndexing = false, kgIndexingStatus = error) }
-                            return@collectLatest
-                        }
-                        androidx.work.WorkInfo.State.CANCELLED -> {
-                            _uiState.update { state -> state.copy(isKgIndexing = false, kgIndexingStatus = "Brain indexing cancelled") }
-                            return@collectLatest
-                        }
-                        else -> Unit
-                    }
-                }
+    }
+
+    fun deleteOnDeviceBrainModel() {
+        val workManager = WorkManager.getInstance(getApplication<Application>())
+        workManager.cancelUniqueWork(BrainModelDownloadWorker.UNIQUE_NAME)
+        workManager.cancelUniqueWork(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
+        workManager.cancelUniqueWork(com.example.data.ai.FileAiWorker.UNIQUE_NAME)
+        workManager.cancelUniqueWork(com.example.data.ai.GalleryVlmWorker.UNIQUE_NAME)
+
+        // Reflect the capability loss immediately; disk cleanup happens off the main thread.
+        val spec = brainRepository.getOnDeviceBrainModelSpec()
+        val unavailable = OnDeviceBrainModelUiState(
+            status = OnDeviceBrainModelStatus.NOT_INSTALLED,
+            modelId = spec.id,
+            displayName = spec.displayName,
+            sizeLabel = spec.sizeLabel
+        )
+        _uiState.update {
+            it.copy(
+                onDeviceBrainModel = unavailable,
+                isBrainIndexing = false,
+                brainIndexingProgress = 0f,
+                brainIndexingStatus = "Brain model unavailable"
+            )
         }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                brainRepository.deleteOnDeviceBrainModel()
+                _uiState.update {
+                    it.copy(
+                        onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(),
+                        isBrainIndexing = false,
+                        brainIndexingProgress = 0f,
+                        brainIndexingStatus = "Brain model unavailable"
+                    )
+                }
+                showMessage("On-device Brain model removed")
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                _uiState.update {
+                    it.copy(
+                        onDeviceBrainModel = brainRepository.getOnDeviceBrainModelState(error.message),
+                        isBrainIndexing = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun indexAllFilesForBrain(force: Boolean = false) {
+        showMessage("Brain does not index files. Use File AI for documents or Gallery AI for images.")
+    }
+
+    fun pauseBrainIndexing() {
+        if (!_uiState.value.isBrainIndexing) return
+        _uiState.update {
+            it.copy(
+                isBrainIndexingPaused = true,
+                brainIndexingStatus = "Pausing Brain indexing…"
+            )
+        }
+        WorkManager.getInstance(getApplication<Application>())
+            .cancelUniqueWork(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
+    }
+
+    fun resumeBrainIndexing() {
+        if (_uiState.value.isBrainIndexing || !_uiState.value.isBrainIndexingPaused) return
+        indexAllFilesForBrain(force = false)
+    }
+
+    fun cancelBrainIndexing() {
+        _uiState.update {
+            it.copy(
+                isBrainIndexingPaused = false,
+                brainIndexingStatus = "Cancelling Brain indexing…"
+            )
+        }
+        WorkManager.getInstance(getApplication<Application>())
+            .cancelUniqueWork(com.example.data.ai.BrainIndexWorker.UNIQUE_NAME)
     }
 
     fun loadStorageStats() {

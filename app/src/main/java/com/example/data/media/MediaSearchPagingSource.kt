@@ -127,7 +127,7 @@ class MediaSearchPagingSource(
             val placeholders = paths.joinToString(",") { "?" }
             val selection = "(" + baseSelection + ") AND " +
                 MediaStore.Files.FileColumns.DATA + " IN ($placeholders)"
-            val args = paths + baseArgs
+            val args = baseArgs + paths
 
             val rows = queryProvider(
                 projection,
@@ -151,8 +151,7 @@ class MediaSearchPagingSource(
             baseArgs.toTypedArray(),
             offset,
             limit,
-            MediaStore.Files.FileColumns.DATE_ADDED + " DESC, " +
-                MediaStore.Files.FileColumns._ID + " DESC"
+            sortOrder()
         )
 
         return QueryPage(rows, rows.size, rows.size < limit)

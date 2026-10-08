@@ -20,6 +20,9 @@ interface FavoriteDao {
     @Query("SELECT path FROM favorites")
     suspend fun getAllFavoritePathsSync(): List<String>
 
+    @Query("SELECT * FROM favorites WHERE path = :root OR path LIKE :prefix || '/%'")
+    suspend fun getFavoritesUnderPath(root: String, prefix: String): List<FavoriteEntity>
+
     @Query("SELECT path FROM favorites ORDER BY timestamp DESC, path ASC LIMIT :limit OFFSET :offset")
     suspend fun getFavoritePathsPage(limit: Int, offset: Int): List<String>
 
@@ -62,6 +65,9 @@ interface RecentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addRecent(recent: RecentEntity)
 
+    @Query("SELECT * FROM recents WHERE path = :root OR path LIKE :prefix || '/%'")
+    suspend fun getRecentsUnderPath(root: String, prefix: String): List<RecentEntity>
+
     @Query("DELETE FROM recents WHERE path = :path")
     suspend fun removeRecent(path: String)
 
@@ -77,6 +83,9 @@ interface BookmarkDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addBookmark(bookmark: BookmarkEntity)
 
+    @Query("SELECT * FROM bookmarks WHERE path = :root OR path LIKE :prefix || '/%'")
+    suspend fun getBookmarksUnderPath(root: String, prefix: String): List<BookmarkEntity>
+
     @Query("DELETE FROM bookmarks WHERE path = :path")
     suspend fun removeBookmark(path: String)
 }
@@ -87,18 +96,28 @@ data class CategoryStatTuple(
     val totalSize: Long?
 )
 
-data class RagEmbeddingRow(
-    val chunkId: String,
-    val embeddingJson: String?
-)
-
 @Dao
 interface FileIndexDao {
     @Query("SELECT * FROM indexed_files ORDER BY lastModified DESC LIMIT 100")
     fun getAllIndexedFiles(): Flow<List<IndexedFileEntity>>
 
-    @Query("SELECT * FROM indexed_files WHERE isDirectory = 0")
-    suspend fun getAllIndexedFilesForBrain(): List<IndexedFileEntity>
+
+    @Query("SELECT COUNT(*) FROM indexed_files WHERE isDirectory = 0 AND extension IN (:extensions)")
+    suspend fun getBrainCandidateCount(extensions: List<String>): Int
+
+    @Query("""
+        SELECT * FROM indexed_files
+        WHERE isDirectory = 0
+          AND extension IN (:extensions)
+          AND path > :afterPath
+        ORDER BY path ASC
+        LIMIT :limit
+    """)
+    suspend fun getBrainCandidatesPage(
+        extensions: List<String>,
+        afterPath: String,
+        limit: Int
+    ): List<IndexedFileEntity>
 
     @Query("SELECT * FROM indexed_files WHERE name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
     suspend fun searchFiles(query: String, limit: Int = 100): List<IndexedFileEntity>
@@ -106,11 +125,14 @@ interface FileIndexDao {
     @Query("SELECT * FROM indexed_files WHERE category = :category AND name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
     suspend fun searchFilesByCategory(query: String, category: String, limit: Int = 100): List<IndexedFileEntity>
 
-    @Query("SELECT * FROM indexed_files WHERE (path LIKE :parentPath || '/%' OR parentPath = :parentPath) AND name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
-    suspend fun searchFilesUnderPath(parentPath: String, query: String, limit: Int = 150): List<IndexedFileEntity>
+    @Query("SELECT * FROM indexed_files WHERE (path = :root OR path LIKE :escapedPrefix || '%' ESCAPE '\\') AND LOWER(name) LIKE '%' || LOWER(:query) || '%' ESCAPE '\\' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
+    suspend fun searchFilesUnderPath(root: String, escapedPrefix: String, query: String, limit: Int = 1000): List<IndexedFileEntity>
 
-    @Query("SELECT * FROM indexed_files WHERE (path LIKE :parentPath || '/%' OR parentPath = :parentPath) AND category = :category AND name LIKE '%' || :query || '%' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
-    suspend fun searchFilesUnderPathByCategory(parentPath: String, query: String, category: String, limit: Int = 150): List<IndexedFileEntity>
+    @Query("SELECT * FROM indexed_files WHERE (path = :root OR path LIKE :escapedPrefix || '%' ESCAPE '\\') AND category = :category AND LOWER(name) LIKE '%' || LOWER(:query) || '%' ESCAPE '\\' ORDER BY isDirectory DESC, name ASC LIMIT :limit")
+    suspend fun searchFilesUnderPathByCategory(root: String, escapedPrefix: String, query: String, category: String, limit: Int = 1000): List<IndexedFileEntity>
+
+    @Query("SELECT * FROM indexed_files WHERE path = :root OR path LIKE :escapedPrefix || '%' ESCAPE '\\' ORDER BY isDirectory DESC, name ASC")
+    suspend fun getFilesRecursively(root: String, escapedPrefix: String): List<IndexedFileEntity>
 
     @Query("SELECT * FROM indexed_files WHERE category = :category ORDER BY lastModified DESC LIMIT :limit")
     suspend fun getFilesByCategory(category: String, limit: Int = 300): List<IndexedFileEntity>
@@ -156,6 +178,15 @@ interface FileIndexDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(files: List<IndexedFileEntity>)
+
+    @Query("SELECT * FROM indexed_files WHERE path = :path LIMIT 1")
+    suspend fun getByPath(path: String): IndexedFileEntity?
+
+    @Query("SELECT * FROM indexed_files WHERE path IN (:paths)")
+    suspend fun getByPaths(paths: List<String>): List<IndexedFileEntity>
+
+    @Query("SELECT * FROM indexed_files WHERE path = :path OR path LIKE :pathPrefix || '/%' ORDER BY path ASC")
+    suspend fun getFilesUnderPath(path: String, pathPrefix: String): List<IndexedFileEntity>
 
     @Query("DELETE FROM indexed_files WHERE path = :path")
     suspend fun deleteByPath(path: String)
@@ -223,6 +254,9 @@ interface MediaMetadataDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(metadata: MediaMetadataEntity)
 
+    @Query("SELECT * FROM media_metadata WHERE path = :root OR path LIKE :prefix || '/%'")
+    suspend fun getByPathTree(root: String, prefix: String): List<MediaMetadataEntity>
+
     @Query("DELETE FROM media_metadata WHERE uri = :uri")
     suspend fun delete(uri: String)
 }
@@ -248,230 +282,3 @@ interface AiProviderConfigDao {
     suspend fun saveConfig(config: AiProviderConfigEntity)
 }
 
-@Dao
-interface BrainTopicDao {
-    @Query("SELECT * FROM brain_topics ORDER BY updatedAt DESC")
-    fun getAllFlow(): Flow<List<BrainTopicEntity>>
-
-    @Query("SELECT * FROM brain_topics WHERE id = :id LIMIT 1")
-    suspend fun get(id: String): BrainTopicEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertOrUpdate(topic: BrainTopicEntity)
-
-    @Query("DELETE FROM brain_topics WHERE id = :id")
-    suspend fun delete(id: String)
-}
-
-@Dao
-interface KgDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertNodes(nodes: List<KgNodeEntity>)
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertEdges(edges: List<KgEdgeEntity>)
-
-    // The Brain canvas is a preview, not a database dump. Keep large libraries from
-    // materializing thousands of nodes/edges into Compose state on every change.
-    @Query("SELECT * FROM kg_nodes ORDER BY degree DESC, updatedAt DESC LIMIT 240")
-    fun getAllNodesFlow(): Flow<List<KgNodeEntity>>
-
-    @Query("""
-        SELECT e.* FROM kg_edges e
-        INNER JOIN kg_nodes s ON s.id = e.sourceNodeId
-        INNER JOIN kg_nodes t ON t.id = e.targetNodeId
-        ORDER BY e.weight DESC
-        LIMIT 500
-    """)
-    fun getAllEdgesFlow(): Flow<List<KgEdgeEntity>>
-
-    @Query("SELECT * FROM kg_nodes WHERE id = :id LIMIT 1")
-    suspend fun getNode(id: String): KgNodeEntity?
-
-    @Query("SELECT * FROM kg_nodes WHERE sourceFilePath = :path LIMIT 1")
-    suspend fun getNodeByFilePath(path: String): KgNodeEntity?
-
-    @Query("SELECT * FROM kg_nodes WHERE sourceFilePath IN (:paths)")
-    suspend fun getNodesByFilePaths(paths: List<String>): List<KgNodeEntity>
-
-    @Query("SELECT * FROM kg_nodes WHERE id IN (:ids)")
-    suspend fun getNodes(ids: List<String>): List<KgNodeEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertEdgeEvidence(items: List<KgEdgeEvidenceEntity>)
-
-    @Query("DELETE FROM kg_edge_evidence WHERE evidenceSource = :sourceFilePath")
-    suspend fun deleteEdgeEvidenceBySource(sourceFilePath: String)
-
-    @Query("""
-        DELETE FROM kg_edges
-        WHERE evidenceSource IS NOT NULL
-          AND NOT EXISTS (
-              SELECT 1 FROM kg_edge_evidence e
-              WHERE e.sourceNodeId = kg_edges.sourceNodeId
-                AND e.targetNodeId = kg_edges.targetNodeId
-                AND e.relation = kg_edges.relation
-          )
-    """)
-    suspend fun deleteSourcedEdgesWithoutEvidence()
-
-    @Query("DELETE FROM kg_nodes WHERE nodeType NOT IN ('DOCUMENT', 'IMAGE') AND id NOT IN (SELECT sourceNodeId FROM kg_edges UNION SELECT targetNodeId FROM kg_edges)")
-    suspend fun deleteOrphanedNonFileNodes()
-
-    @Query("UPDATE kg_nodes SET degree = (SELECT COUNT(*) FROM kg_edges WHERE sourceNodeId = kg_nodes.id OR targetNodeId = kg_nodes.id)")
-    suspend fun recomputeDegrees()
-
-    @Query("SELECT * FROM kg_edges WHERE sourceNodeId = :nodeId OR targetNodeId = :nodeId")
-    suspend fun getEdgesForNode(nodeId: String): List<KgEdgeEntity>
-
-    @Query("SELECT * FROM kg_edges WHERE sourceNodeId IN (:nodeIds) OR targetNodeId IN (:nodeIds)")
-    suspend fun getEdgesForNodes(nodeIds: List<String>): List<KgEdgeEntity>
-
-    @Query("SELECT * FROM kg_nodes WHERE label LIKE '%' || :query || '%' OR summary LIKE '%' || :query || '%'")
-    suspend fun searchNodes(query: String): List<KgNodeEntity>
-
-    @Query("SELECT * FROM kg_nodes WHERE nodeType = :nodeType ORDER BY degree DESC LIMIT :limit")
-    suspend fun getNodesByType(nodeType: String, limit: Int = 20): List<KgNodeEntity>
-
-    @Query("SELECT * FROM kg_nodes ORDER BY updatedAt DESC LIMIT :limit")
-    suspend fun getRecentNodes(limit: Int = 20): List<KgNodeEntity>
-
-    @Query("SELECT * FROM kg_nodes WHERE nodeType IN ('DOCUMENT', 'IMAGE') ORDER BY updatedAt DESC LIMIT :limit")
-    suspend fun getRecentFileNodes(limit: Int = 10): List<KgNodeEntity>
-
-    @Query("SELECT DISTINCT nodeType FROM kg_nodes")
-    suspend fun getDistinctNodeTypes(): List<String>
-
-    @Query("SELECT COUNT(*) FROM kg_nodes")
-    fun getNodeCountFlow(): Flow<Int>
-
-    @Query("SELECT COUNT(*) FROM kg_edges")
-    fun getEdgeCountFlow(): Flow<Int>
-
-    @Query("DELETE FROM kg_nodes WHERE sourceFilePath = :filePath")
-    suspend fun deleteNodeByFilePath(filePath: String)
-
-    @Query("DELETE FROM kg_nodes WHERE id IN (SELECT sourceNodeId FROM kg_edges WHERE targetNodeId IN (SELECT id FROM kg_nodes WHERE sourceFilePath = :filePath)) OR id IN (SELECT targetNodeId FROM kg_edges WHERE sourceNodeId IN (SELECT id FROM kg_nodes WHERE sourceFilePath = :filePath))")
-    suspend fun deleteOrphanedRelatedNodesForFile(filePath: String)
-
-    @Query("DELETE FROM kg_edges WHERE sourceNodeId = :nodeId OR targetNodeId = :nodeId")
-    suspend fun deleteEdgesForNode(nodeId: String)
-
-    @Query("SELECT COUNT(*) FROM kg_edges WHERE sourceNodeId = :nodeId OR targetNodeId = :nodeId")
-    suspend fun getDegree(nodeId: String): Int
-
-    @Query("DELETE FROM kg_nodes")
-    suspend fun clearAllNodes()
-
-    @Query("DELETE FROM kg_edges")
-    suspend fun clearAllEdges()
-
-    @Query("DELETE FROM kg_edge_evidence")
-    suspend fun clearAllEdgeEvidence()
-}
-
-@Dao
-interface RagDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertChunks(chunks: List<RagChunkEntity>)
-
-    @Query("SELECT * FROM rag_chunks WHERE filePath = :filePath ORDER BY chunkIndex ASC")
-    suspend fun getChunksForFile(filePath: String): List<RagChunkEntity>
-
-    @Query("SELECT COUNT(*) FROM rag_chunks WHERE filePath = :filePath")
-    suspend fun getChunkCountForFile(filePath: String): Int
-
-    @Query("""
-        SELECT COUNT(*) FROM rag_chunks
-        WHERE filePath = :filePath
-          AND (embeddingJson IS NULL OR embeddingModel != :embeddingModel)
-    """)
-    suspend fun getChunksMissingEmbeddings(filePath: String, embeddingModel: String): Int
-
-    @Query("""
-        SELECT chunkId, embeddingJson FROM rag_chunks
-        WHERE embeddingModel = :embeddingModel AND embeddingJson IS NOT NULL
-        ORDER BY indexedTimestamp DESC
-        LIMIT :limit OFFSET :offset
-    """)
-    suspend fun getEmbeddedChunksPage(embeddingModel: String, limit: Int, offset: Int): List<RagEmbeddingRow>
-    @Query("SELECT * FROM rag_chunks WHERE chunkId IN (:ids)")
-    suspend fun getChunksByIds(ids: List<String>): List<RagChunkEntity>
-
-    @Query("SELECT * FROM rag_chunks WHERE content LIKE '%' || :query || '%' OR tagsJson LIKE '%' || :query || '%' LIMIT :limit")
-    suspend fun searchChunks(query: String, limit: Int = 20): List<RagChunkEntity>
-
-    @Query("SELECT COUNT(*) FROM rag_chunks")
-    fun getChunkCountFlow(): Flow<Int>
-
-    @Query("DELETE FROM rag_chunks WHERE filePath = :filePath")
-    suspend fun deleteChunksForFile(filePath: String)
-
-    @Query("DELETE FROM rag_chunks")
-    suspend fun clearAllChunks()
-}
-
-
-
-@Dao
-interface MemoryFactDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(fact: MemoryFactEntity)
-
-    @Query("SELECT * FROM memory_facts WHERE normalizedSubject = :subject OR normalizedObject = :subject ORDER BY confidence DESC LIMIT :limit")
-    suspend fun findByEntity(subject: String, limit: Int = 50): List<MemoryFactEntity>
-
-    @Query("SELECT * FROM memory_facts ORDER BY confidence DESC, updatedAt DESC LIMIT :limit")
-    suspend fun getTopFacts(limit: Int = 100): List<MemoryFactEntity>
-
-    @Query("DELETE FROM memory_facts WHERE sourceFilePath = :path")
-    suspend fun deleteForFile(path: String)
-
-    @Query("DELETE FROM memory_facts")
-    suspend fun clearAll()
-}
-
-@Dao
-interface EntityMentionDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(items: List<EntityMentionEntity>)
-
-    @Query("DELETE FROM entity_mentions WHERE sourceFilePath = :path")
-    suspend fun deleteForFile(path: String)
-
-    @Query("SELECT * FROM entity_mentions WHERE entityId = :entityId ORDER BY confidence DESC")
-    suspend fun getForEntity(entityId: String): List<EntityMentionEntity>
-
-    @Query("SELECT DISTINCT sourceFilePath FROM entity_mentions WHERE entityId = :entityId")
-    suspend fun getSourceFiles(entityId: String): List<String>
-
-    @Query("DELETE FROM entity_mentions")
-    suspend fun clearAll()
-}
-
-@Dao
-interface IndexFingerprintDao {
-    @Query("SELECT * FROM index_fingerprints WHERE filePath = :path LIMIT 1")
-    suspend fun get(path: String): IndexFingerprintEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(item: IndexFingerprintEntity)
-
-    @Query("DELETE FROM index_fingerprints WHERE filePath = :path")
-    suspend fun delete(path: String)
-
-    @Query("DELETE FROM index_fingerprints")
-    suspend fun clearAll()
-}
-
-@Dao
-interface ModelRunDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(item: ModelRunEntity)
-
-    @Query("SELECT * FROM model_runs WHERE filePath = :path ORDER BY startedAt DESC LIMIT :limit")
-    suspend fun getForFile(path: String, limit: Int = 20): List<ModelRunEntity>
-
-    @Query("DELETE FROM model_runs")
-    suspend fun clearAll()
-}

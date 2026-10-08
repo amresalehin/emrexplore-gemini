@@ -14,7 +14,8 @@ import kotlinx.coroutines.CancellationException
 
 class MediaStoreAlbumPagingSource(
     context: Context,
-    private val bucketId: String
+    private val bucketId: String,
+    private val sort: com.example.ui.viewmodel.GallerySortOption = com.example.ui.viewmodel.GallerySortOption.DATE_DESC
 ) : PagingSource<Int, MediaItem>() {
     private val resolver: ContentResolver = context.applicationContext.contentResolver
 
@@ -60,8 +61,20 @@ class MediaStoreAlbumPagingSource(
             bucketId
         )
         val uri = MediaStore.Files.getContentUri("external")
-        val sortOrder = MediaStore.Files.FileColumns.DATE_ADDED + " DESC, " +
-            MediaStore.Files.FileColumns._ID + " DESC"
+        val sortOrder = when (sort) {
+            com.example.ui.viewmodel.GallerySortOption.DATE_DESC ->
+                MediaStore.Files.FileColumns.DATE_ADDED + " DESC, " + MediaStore.Files.FileColumns._ID + " DESC"
+            com.example.ui.viewmodel.GallerySortOption.DATE_ASC ->
+                MediaStore.Files.FileColumns.DATE_ADDED + " ASC, " + MediaStore.Files.FileColumns._ID + " ASC"
+            com.example.ui.viewmodel.GallerySortOption.NAME_ASC ->
+                MediaStore.Files.FileColumns.DISPLAY_NAME + " COLLATE NOCASE ASC, " + MediaStore.Files.FileColumns._ID + " ASC"
+            com.example.ui.viewmodel.GallerySortOption.NAME_DESC ->
+                MediaStore.Files.FileColumns.DISPLAY_NAME + " COLLATE NOCASE DESC, " + MediaStore.Files.FileColumns._ID + " DESC"
+            com.example.ui.viewmodel.GallerySortOption.SIZE_DESC ->
+                MediaStore.Files.FileColumns.SIZE + " DESC, " + MediaStore.Files.FileColumns._ID + " DESC"
+            com.example.ui.viewmodel.GallerySortOption.SIZE_ASC ->
+                MediaStore.Files.FileColumns.SIZE + " ASC, " + MediaStore.Files.FileColumns._ID + " ASC"
+        }
 
         val queryArgs = Bundle().apply {
             putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
