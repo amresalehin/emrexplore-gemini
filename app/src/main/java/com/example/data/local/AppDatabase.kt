@@ -39,7 +39,7 @@ import com.example.data.brain.BrainVectorSyncOperationEntity
         BrainVectorSyncOperationEntity::class
     ],
     version = 20,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun favoriteDao(): FavoriteDao
@@ -388,7 +388,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        private val MIGRATION_14_15 = object : Migration(14, 15) {
+        internal val MIGRATION_14_15 = object : Migration(14, 15) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Brain owns semantic/media intelligence now. Drop the obsolete
                 // Gallery-AI cache columns while preserving EXIF/media metadata.
@@ -435,7 +435,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        private val MIGRATION_13_14 = object : Migration(13, 14) {
+        internal val MIGRATION_13_14 = object : Migration(13, 14) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `brain_chunks_new` (
