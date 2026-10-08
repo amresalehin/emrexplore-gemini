@@ -39,6 +39,19 @@ internal object BrainLexicalScorer {
             .distinct()
             .toList()
 
+    fun isSignificantQuery(tokens: List<String>): Boolean =
+        tokens.size >= 2 || tokens.singleOrNull()?.length?.let { it >= 5 } == true
+
+    fun coverage(query: String, tokens: List<String>, content: String, filePath: String): Float {
+        if (tokens.isEmpty()) return 0f
+        val normalizedContent = content.lowercase(Locale.US)
+        val normalizedPath = filePath.lowercase(Locale.US)
+        val contentTokens = tokenPattern.findAll(normalizedContent).map { it.value }.toSet()
+        val pathTokens = tokenPattern.findAll(normalizedPath).map { it.value }.toSet()
+        val matches = tokens.count { it in contentTokens || it in pathTokens }
+        return matches.toFloat() / tokens.size
+    }
+
     fun score(query: String, tokens: List<String>, content: String, filePath: String): Float {
         if (tokens.isEmpty()) return 0f
         val normalizedContent = content.lowercase(Locale.US)
@@ -252,7 +265,7 @@ class BrainRetriever(
         limit: Int
     ): List<BrainSearchHit> {
         val tokens = BrainLexicalScorer.meaningfulTokens(query).take(MAX_QUERY_TERMS)
-        if (tokens.isEmpty()) return semantic.take(limit)
+        if (!BrainLexicalScorer.isSignificantQuery(tokens)) return semantic.take(limit)
 
         val lexical = tokens.flatMap { token ->
             chunkDao.lexical(token, limit * 4)
@@ -263,7 +276,10 @@ class BrainRetriever(
 
         lexical.forEach { chunk ->
             val lexicalScore = BrainLexicalScorer.score(query, tokens, chunk.content, chunk.filePath)
-            if (lexicalScore >= MIN_LEXICAL_SCORE) {
+            if (
+                lexicalScore >= MIN_LEXICAL_SCORE &&
+                BrainLexicalScorer.coverage(query, tokens, chunk.content, chunk.filePath) >= MIN_LEXICAL_COVERAGE
+            ) {
                 scores[chunk.id] = maxOf(scores[chunk.id] ?: 0f, lexicalScore)
             }
         }
@@ -297,7 +313,8 @@ class BrainRetriever(
     companion object {
         private const val PAGE_SIZE = 128
         private const val MIN_VECTOR_SCORE = 0.20f
-        private const val MIN_LEXICAL_SCORE = 0.32f
+        private const val MIN_LEXICAL_SCORE = 0.55f
+        private const val MIN_LEXICAL_COVERAGE = 0.50f
         private const val MAX_QUERY_TERMS = 12
         private const val MAX_FILE_SOURCES = 12
         private const val MAX_RELATED_NODES = 24
