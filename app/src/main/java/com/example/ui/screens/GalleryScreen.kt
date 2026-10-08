@@ -800,6 +800,34 @@ fun GalleryScreen(
         }
     }
 }
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Move to Trash?") },
+            text = {
+                Text(
+                    "Move " + uiState.gallerySelection.size +
+                        " selected item(s) to the Recycle Bin? You can restore them later."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        viewModel.deleteGallerySelection(toTrash = true)
+                    }
+                ) {
+                    Text("Move to Trash")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            },
+            modifier = Modifier.testTag("gallery_delete_confirm_dialog")
+        )
+    }
 
 
 sealed interface GalleryGridItem {
